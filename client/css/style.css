@@ -161,7 +161,7 @@ nav ul {
 nav a {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 7px;
     padding: 14px 30px;
     text-decoration: none;
     color:black;
