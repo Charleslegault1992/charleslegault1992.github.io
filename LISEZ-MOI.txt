@@ -1,0 +1,12 @@
+========================================== 
+  DIRECTIVES DE REMISE - PROJET 
+========================================== 
+ 
+Avant de remettre votre TP, assurez-vous de : 
+1. Ne placer AUCUN style CSS dans vos fichiers HTML. 
+2. Avoir une barre de navigation fixe sur toutes les pages. 
+3. Respecter la structure de dossiers generee. 
+4. Tester tous vos liens pour verifier qu'ils fonctionnent. 
+ 
+Pour la remise : 
+Compressez le dossier racine complet au format .zip et deposez-le sur Studium. 
