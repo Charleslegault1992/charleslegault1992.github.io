@@ -155,7 +155,7 @@ nav ul {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    gap: 80px;
+    gap: 60px;
 }
 
 nav a {
