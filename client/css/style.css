@@ -186,7 +186,9 @@ blockquote span {
 blockquote span i {
     padding: 10px;
 }
-
+.tableau {
+    margin-bottom: 80px;
+}
 table {
     margin: auto;
     width: 1200px;
@@ -469,4 +471,24 @@ button {
 button:hover {
     box-shadow: 0px 0px 10px 7px #6be9c7;
     transform: scale(1.06);
+}
+
+.audio-section {
+    margin-top: 80px;
+}
+
+.audio-box {
+    max-width: 900px;
+    margin: 40px auto 0;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0px 0px 10px 6px #00000080;
+    display: flex;
+    justify-content: center;
+    transition: 0.4s;
+}
+
+.audio-box audio {
+    width: 100%;
+    max-width: 500px;
 }
