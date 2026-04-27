@@ -1,0 +1,104 @@
+===== pages/chalet.html =====
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      defer
+    ></script>
+    <script src="../js/script.js" defer></script>
+    <link rel="stylesheet" href="../css/style.css" />
+    <title>Chalets - Centre Mieux-Être</title>
+  </head>
+  <body>
+    <header>
+      <nav class="navbar">
+        <div class="logo">
+          <a href="accueil.html">
+            <img src="../images/logo.png" alt="Logo Centre du mieux-être" />
+            <span class="titre-logo">
+              Centre du <span class="accent-logo">mieux-être</span>
+            </span>
+          </a>
+        </div>
+
+        <button class="menu-toggle" aria-label="Ouvrir le menu">☰</button>
+
+        <ul class="nav-links">
+          <li><a href="accueil.html">Accueil</a></li>
+          <li><a href="site.html">Le centre</a></li>
+          <li><a href="hebergement.html" class="active">Hébergement</a></li>
+          <li><a href="activites.html">Activités</a></li>
+          <li><a href="reservation.html">Réservation</a></li>
+          <li><a href="propo.html">A propos</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="contenu-principal page-chalet">
+      <section class="hero-chalet-page">
+        <div class="hero-hebergement-overlay">
+          <div class="hero-hebergement-texte">
+            <p class="hebergement-sous-titre">Confort • Douceur • Chaleur</p>
+            <h1>Les chalets</h1>
+            <p class="hebergement-intro">
+              Un hébergement chaleureux et confortable pour profiter du calme du
+              centre dans une ambiance reposante.
+            </p>
+            <a href="#interieur-chalet" class="btn btn-principal">Voir l'intérieur</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-hebergement-bloc" id="interieur-chalet">
+        <div class="hebergement-conteneur">
+          <div class="hebergement-image">
+            <img src="../images/interrieurchalet.png" alt="Intérieur d’un chalet" />
+          </div>
+
+          <div class="hebergement-texte">
+            <h2>Un espace cosy et accueillant</h2>
+            <p>
+              L’intérieur du chalet propose une ambiance chaleureuse où l’on se
+              sent rapidement bien, détendu et reposé.
+            </p>
+            <p>
+              C’est un choix idéal pour profiter pleinement du site tout en
+              gardant un sentiment de confort et de douceur.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-hebergement-cartes">
+        <div class="hebergement-titre-centre">
+          <h2>Pourquoi choisir un chalet ?</h2>
+        </div>
+
+        <div class="hebergement-cartes hebergement-cartes-trois">
+          <article class="hebergement-carte">
+            <h3>Confort</h3>
+            <p>Un hébergement rassurant, pratique et agréable pour un séjour paisible.</p>
+          </article>
+
+          <article class="hebergement-carte">
+            <h3>Chaleur</h3>
+            <p>Une ambiance cocon qui invite au repos, à la détente et au bien-être.</p>
+          </article>
+
+          <article class="hebergement-carte">
+            <h3>Repos</h3>
+            <p>Un cadre parfait pour se ressourcer après les activités du centre.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+

@@ -1,0 +1,106 @@
+===== pages/conference.html =====
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      defer
+    ></script>
+    <script src="../js/script.js" defer></script>
+    <link rel="stylesheet" href="../css/style.css" />
+    <title>Conférence - Centre Mieux-Être</title>
+  </head>
+  <body>
+    <header>
+      <nav class="navbar">
+        <div class="logo">
+          <a href="accueil.html">
+            <img src="../images/logo.png" alt="Logo Centre du mieux-être" />
+            <span class="titre-logo">
+              Centre du <span class="accent-logo">mieux-être</span>
+            </span>
+          </a>
+        </div>
+
+        <button class="menu-toggle" aria-label="Ouvrir le menu">☰</button>
+
+        <ul class="nav-links">
+          <li><a href="accueil.html" class="active">Accueil</a></li>
+          <li><a href="site.html">Le centre</a></li>
+          <li><a href="hebergement.html">Hébergement</a></li>
+          <li><a href="activites.html">Activités</a></li>
+          <li><a href="reservation.html">Réservation</a></li>
+          <li><a href="propo.html">A propos</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="contenu-principal page-conference">
+      <section class="hero-conference-page">
+        <div class="hero-service-overlay">
+          <div class="hero-service-texte">
+            <p class="service-sous-titre">Événements • Réunions • Ateliers</p>
+            <h1>Salle de conférence</h1>
+            <p class="service-intro">
+              Un espace accueillant et apaisant pour organiser vos conférences,
+              ateliers, formations ou rencontres de groupe.
+            </p>
+            <a href="#conference-details" class="btn btn-principal">
+              Voir les détails
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-service-bloc" id="conference-details">
+        <div class="service-conteneur">
+          <div class="service-image">
+            <img src="../images/conference.png" alt="Salle de conférence du centre" />
+          </div>
+
+          <div class="service-texte">
+            <h2>Un lieu propice aux échanges</h2>
+            <p>
+              Notre salle de conférence offre une ambiance calme, élégante et
+              chaleureuse, idéale pour les événements professionnels ou les
+              rencontres inspirantes.
+            </p>
+            <p>
+              Le cadre naturel du centre apporte une touche unique qui favorise
+              l’écoute, la concentration et la qualité des échanges.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-service-cartes">
+        <div class="service-titre-centre">
+          <h2>Pourquoi louer notre salle ?</h2>
+        </div>
+
+        <div class="service-cartes">
+          <article class="service-carte">
+            <h3>Ambiance paisible</h3>
+            <p>Un environnement calme qui soutient les échanges et la concentration.</p>
+          </article>
+
+          <article class="service-carte">
+            <h3>Polyvalence</h3>
+            <p>Parfaite pour conférences, formations, ateliers ou rencontres de groupe.</p>
+          </article>
+
+          <article class="service-carte">
+            <h3>Cadre unique</h3>
+            <p>Un lieu en nature qui ajoute une valeur humaine et chaleureuse à vos événements.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

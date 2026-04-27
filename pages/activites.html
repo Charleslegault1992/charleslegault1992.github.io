@@ -1,0 +1,193 @@
+===== pages/activites.html =====
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      defer
+    ></script>
+    <script src="../js/script.js" defer></script>
+    <link rel="stylesheet" href="../css/style.css" />
+    <title>Activités - Centre Mieux-Être</title>
+  </head>
+  <body>
+    <header>
+      <nav class="navbar">
+        <div class="logo">
+          <a href="accueil.html">
+            <img src="../images/logo.png" alt="Logo Centre du mieux-être" />
+            <span class="titre-logo">
+              Centre du <span class="accent-logo">mieux-être</span>
+            </span>
+          </a>
+        </div>
+
+        <button class="menu-toggle" aria-label="Ouvrir le menu">☰</button>
+
+        <ul class="nav-links">
+          <li><a href="accueil.html">Accueil</a></li>
+          <li><a href="site.html">Le centre</a></li>
+          <li><a href="hebergement.html">Hébergement</a></li>
+          <li><a href="activites.html" class="active">Activités</a></li>
+          <li><a href="reservation.html">Réservation</a></li>
+          <li><a href="propo.html">A propos</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="contenu-principal page-activites">
+      <section class="hero-activites-page">
+        <div class="hero-activites-overlay">
+          <div class="hero-activites-texte">
+            <p class="activites-sous-titre">Nature • Mouvement • Bien-être</p>
+            <h1>Nos activités</h1>
+            <p class="activites-intro">
+              Découvrez les expériences offertes au centre pour relaxer, bouger,
+              respirer et vous reconnecter à l’essentiel.
+            </p>
+            <a href="#liste-activites" class="btn btn-principal">
+              Voir les activités
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-activites-cartes" id="liste-activites">
+        <div class="activites-titre-centre">
+          <h2>Explorer les activités du centre</h2>
+          <p>
+            Chaque activité offre une ambiance différente, mais toujours dans un
+            esprit de calme, de ressourcement et de connexion à la nature.
+          </p>
+        </div>
+
+        <div class="activites-cartes">
+          <article class="activite-carte">
+            <img src="../images/meditations2.png" alt="Méditation" />
+            <div class="activite-carte-contenu">
+              <h3>Méditation</h3>
+              <p>
+                Un moment de calme pour ralentir, respirer et retrouver de
+                l’espace intérieur.
+              </p>
+              <a href="meditation.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+
+          <article class="activite-carte">
+            <img src="../images/yoga.png" alt="Yoga" />
+            <div class="activite-carte-contenu">
+              <h3>Yoga</h3>
+              <p>
+                Une pratique douce pour harmoniser le corps, le souffle et
+                l’esprit.
+              </p>
+              <a href="yoga.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+
+          <article class="activite-carte">
+            <img src="../images/lac.png" alt="Lac" />
+            <div class="activite-carte-contenu">
+              <h3>Lac</h3>
+              <p>
+                Un lieu paisible pour contempler, respirer et profiter de la
+                douceur du paysage.
+              </p>
+              <a href="lac.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+
+          <article class="activite-carte">
+            <img src="../images/cannoe.png" alt="Canoë" />
+            <div class="activite-carte-contenu">
+              <h3>Canoë</h3>
+              <p>
+                Une activité calme sur l’eau pour vivre le lac autrement et en
+                toute légèreté.
+              </p>
+              <a href="canoe.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+
+          <article class="activite-carte">
+            <img src="../images/montagnes.png" alt="Montagne" />
+            <div class="activite-carte-contenu">
+              <h3>Montagne</h3>
+              <p>
+                Un décor inspirant pour se recentrer, marcher et profiter du
+                grand air.
+              </p>
+              <a href="montagne.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+
+          <article class="activite-carte">
+            <img src="../images/Forest.png" alt="Sentier en forêt" />
+            <div class="activite-carte-contenu">
+              <h3>Sentier</h3>
+              <p>
+                Une immersion en forêt pour marcher consciemment et retrouver un
+                ancrage naturel.
+              </p>
+              <a href="forest.html" class="btn btn-principal">Voir la page</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-gym">
+        <div class="gym-conteneur">
+          <div class="gym-image">
+            <img src="../images/gym.png" alt="Espace gym du centre" />
+          </div>
+
+          <div class="gym-texte">
+            <p class="mini-etiquette">Activité sur place</p>
+            <h2>Gym</h2>
+            <p>
+              Un espace pour bouger à votre rythme, garder de l’énergie et
+              compléter votre séjour avec une activité physique simple et
+              accessible.
+            </p>
+            <p>
+              Le gym s’intègre parfaitement à l’expérience du centre pour celles
+              et ceux qui aiment combiner détente, mouvement et bien-être.
+            </p>
+
+            <ul class="liste-gym">
+              <li>Mouvement à votre rythme</li>
+              <li>Complément idéal aux autres activités</li>
+              <li>Ambiance calme et motivante</li>
+              <li>Accessible pendant le séjour</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-boutique">
+  <div class="boutique-conteneur-page">
+    <div class="boutique-image-page">
+      <img src="../images/produit.png" alt="Boutique du centre" />
+    </div>
+
+    <div class="boutique-boite">
+      <p class="mini-etiquette">Découverte</p>
+      <h2>Boutique</h2>
+      <p>
+        Découvrez la boutique du centre et explorez une sélection de produits
+        pensés pour prolonger l’expérience bien-être à la maison.
+      </p>
+      <a href="boutique.html" class="btn btn-principal">Voir la boutique</a>
+    </div>
+  </div>
+</section>
+    </main>
+  </body>
+</html>

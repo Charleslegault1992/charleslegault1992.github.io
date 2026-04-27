@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Heart / Anahata</title>
+<rect width="100%" height="100%" fill="none"/>
+<ellipse cx="803.33" cy="512.00" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(90.00 803.33 512.00)"/>
+<ellipse cx="764.30" cy="657.66" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(120.00 764.30 657.66)"/>
+<ellipse cx="657.66" cy="764.30" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(150.00 657.66 764.30)"/>
+<ellipse cx="512.00" cy="803.33" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(180.00 512.00 803.33)"/>
+<ellipse cx="366.34" cy="764.30" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(210.00 366.34 764.30)"/>
+<ellipse cx="259.70" cy="657.66" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(240.00 259.70 657.66)"/>
+<ellipse cx="220.67" cy="512.00" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(270.00 220.67 512.00)"/>
+<ellipse cx="259.70" cy="366.34" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(300.00 259.70 366.34)"/>
+<ellipse cx="366.34" cy="259.70" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(330.00 366.34 259.70)"/>
+<ellipse cx="512.00" cy="220.67" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(360.00 512.00 220.67)"/>
+<ellipse cx="657.66" cy="259.70" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(390.00 657.66 259.70)"/>
+<ellipse cx="764.30" cy="366.34" rx="48.64" ry="66.56" fill="#2E7D32" fill-opacity="0.92" transform="rotate(420.00 764.30 366.34)"/>
+<circle cx="512.0" cy="512.0" r="337.92" fill="none" stroke="#2E7D32" stroke-width="18.432" opacity="0.95"/>
+<circle cx="512.0" cy="512.0" r="184.32" fill="none" stroke="#2E7D32" stroke-width="18.432" opacity="0.95"/>
+<circle cx="512.0" cy="512.0" r="30.72" fill="#2E7D32" opacity="0.95"/>
+<polygon points="512.00,389.12 618.42,573.44 405.58,573.44" fill="none" stroke="#2E7D32" stroke-width="14.75"/>
+<polygon points="512.00,634.88 405.58,450.56 618.42,450.56" fill="none" stroke="#2E7D32" stroke-width="14.75"/>
+</svg>

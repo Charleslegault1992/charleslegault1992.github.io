@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Solar Plexus / Manipura</title>
+<rect width="100%" height="100%" fill="none"/>
+<ellipse cx="803.33" cy="512.00" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(90.00 803.33 512.00)"/>
+<ellipse cx="747.69" cy="683.24" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(126.00 747.69 683.24)"/>
+<ellipse cx="602.03" cy="789.07" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(162.00 602.03 789.07)"/>
+<ellipse cx="421.97" cy="789.07" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(198.00 421.97 789.07)"/>
+<ellipse cx="276.31" cy="683.24" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(234.00 276.31 683.24)"/>
+<ellipse cx="220.67" cy="512.00" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(270.00 220.67 512.00)"/>
+<ellipse cx="276.31" cy="340.76" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(306.00 276.31 340.76)"/>
+<ellipse cx="421.97" cy="234.93" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(342.00 421.97 234.93)"/>
+<ellipse cx="602.03" cy="234.93" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(378.00 602.03 234.93)"/>
+<ellipse cx="747.69" cy="340.76" rx="48.64" ry="66.56" fill="#F9A825" fill-opacity="0.92" transform="rotate(414.00 747.69 340.76)"/>
+<circle cx="512.0" cy="512.0" r="337.92" fill="none" stroke="#F9A825" stroke-width="18.432" opacity="0.95"/>
+<circle cx="512.0" cy="512.0" r="184.32" fill="none" stroke="#F9A825" stroke-width="18.432" opacity="0.95"/>
+<circle cx="512.0" cy="512.0" r="30.72" fill="#F9A825" opacity="0.95"/>
+<polygon points="512.00,629.76 410.02,453.12 613.98,453.12" fill="none" stroke="#F9A825" stroke-width="14.75"/>
+</svg>

@@ -1,0 +1,167 @@
+[
+  {
+    "id": 1,
+    "nom": "Ancrage",
+    "motCle": "Stabilité",
+    "energie": "Revenir au présent",
+    "message": "Ton énergie t’invite à ralentir et à reprendre contact avec ce qui est solide en toi.",
+    "conseil": "Prends quelques minutes pour respirer profondément et sentir le sol sous tes pieds.",
+    "couleur": "#7B8F7A",
+    "image": "logos/ancrage.png",
+    "fond": "backgrounds/foret-brume.png"
+  },
+  {
+    "id": 2,
+    "nom": "Intuition",
+    "motCle": "Écoute intérieure",
+    "energie": "Faire confiance à son ressenti",
+    "message": "Une réponse existe déjà en toi. Prends le temps d’écouter ce que ton cœur murmure.",
+    "conseil": "Éloigne-toi du bruit et note la première pensée calme qui revient.",
+    "couleur": "#8B6F9B",
+    "image": "logos/intuition.png",
+    "fond": "backgrounds/lune-violette.png"
+  },
+  {
+    "id": 3,
+    "nom": "Lâcher-prise",
+    "motCle": "Détachement",
+    "energie": "Relâcher le contrôle",
+    "message": "Tout n’a pas besoin d’être forcé. Certaines choses avancent mieux dans la douceur.",
+    "conseil": "Choisis aujourd’hui une inquiétude que tu décides de déposer.",
+    "couleur": "#C8A97E",
+    "image": "logos/lacher-prise.png",
+    "fond": "backgrounds/nuages-doux.png"
+  },
+  {
+    "id": 4,
+    "nom": "Clarté",
+    "motCle": "Vision",
+    "energie": "Voir plus juste",
+    "message": "Le brouillard se dissipe tranquillement. Tu n’as pas besoin de tout comprendre d’un coup.",
+    "conseil": "Concentre-toi sur la prochaine étape seulement, pas sur tout le chemin.",
+    "couleur": "#A6B7C8",
+    "image": "logos/clarte.png",
+    "fond": "backgrounds/aube-claire.png"
+  },
+  {
+    "id": 5,
+    "nom": "Guérison",
+    "motCle": "Réparation",
+    "energie": "Apaisement intérieur",
+    "message": "Quelque chose en toi demande de la tendresse et du temps. La guérison avance même en silence.",
+    "conseil": "Offre-toi aujourd’hui un geste de douceur que tu repousses depuis trop longtemps.",
+    "couleur": "#D2A6B4",
+    "image": "logos/guerison.png",
+    "fond": "backgrounds/rose-brume.png"
+  },
+  {
+    "id": 6,
+    "nom": "Équilibre",
+    "motCle": "Harmonie",
+    "energie": "Retrouver le centre",
+    "message": "Ton corps, ton esprit et ton cœur cherchent à se réaligner. Reviens à ce qui t’apaise.",
+    "conseil": "Réduis un excès dans ta journée et redonne de l’espace à l’essentiel.",
+    "couleur": "#8FAE9E",
+    "image": "logos/equilibre.png",
+    "fond": "backgrounds/pierres-zen.png"
+  },
+  {
+    "id": 7,
+    "nom": "Reconnexion",
+    "motCle": "Présence",
+    "energie": "Retour à soi",
+    "message": "Tu es invité à revenir vers toi-même, sans masque, sans pression, simplement avec vérité.",
+    "conseil": "Prends un moment seul pour te demander sincèrement comment tu te sens.",
+    "couleur": "#6F8C84",
+    "image": "logos/reconnexion.png",
+    "fond": "backgrounds/lac-calme.png"
+  },
+  {
+    "id": 8,
+    "nom": "Ouverture",
+    "motCle": "Réceptivité",
+    "energie": "Accueillir",
+    "message": "Quelque chose de nouveau veut entrer dans ta vie. Laisse un peu plus de place à l’inattendu.",
+    "conseil": "Dis oui à une petite chose différente aujourd’hui.",
+    "couleur": "#D5BF8F",
+    "image": "logos/ouverture.png",
+    "fond": "backgrounds/porte-lumiere.png"
+  },
+  {
+    "id": 9,
+    "nom": "Lumière intérieure",
+    "motCle": "Rayonnement",
+    "energie": "Confiance tranquille",
+    "message": "Tu possèdes déjà une lumière capable d’éclairer ce moment. N’oublie pas ta valeur.",
+    "conseil": "Rappelle-toi une qualité en toi que tu sous-estimes souvent.",
+    "couleur": "#E0C36C",
+    "image": "logos/lumiere-interieure.png",
+    "fond": "backgrounds/halo-dore.png"
+  },
+  {
+    "id": 10,
+    "nom": "Patience",
+    "motCle": "Temps juste",
+    "energie": "Maturation",
+    "message": "Ce qui est en train de grandir en toi n’a pas besoin d’être précipité.",
+    "conseil": "Respecte ton rythme au lieu de te comparer à celui des autres.",
+    "couleur": "#B9A58E",
+    "image": "logos/patience.png",
+    "fond": "backgrounds/sable-calme.png"
+  },
+  {
+    "id": 11,
+    "nom": "Transformation",
+    "motCle": "Changement",
+    "energie": "Renouveau",
+    "message": "Une ancienne version de toi est en train de laisser place à quelque chose de plus vrai.",
+    "conseil": "Accueille le changement au lieu de résister à chaque mouvement.",
+    "couleur": "#8A6FA8",
+    "image": "logos/transformation.png",
+    "fond": "backgrounds/papillons-lune.png"
+  },
+  {
+    "id": 12,
+    "nom": "Silence",
+    "motCle": "Calme",
+    "energie": "Écoute profonde",
+    "message": "Le silence peut t’offrir aujourd’hui plus de réponses que le bruit.",
+    "conseil": "Coupe les distractions quelques instants et reste simplement présent.",
+    "couleur": "#97A1A8",
+    "image": "logos/silence.png",
+    "fond": "backgrounds/neige-legere.png"
+  },
+  {
+    "id": 13,
+    "nom": "Confiance",
+    "motCle": "Foi",
+    "energie": "Avancer avec assurance",
+    "message": "Même si tout n’est pas visible, tu peux continuer d’avancer avec confiance.",
+    "conseil": "Fais un pas simple aujourd’hui dans la direction qui t’appelle.",
+    "couleur": "#7C8FB2",
+    "image": "logos/confiance.png",
+    "fond": "backgrounds/ciel-ouvert.png"
+  },
+  {
+    "id": 14,
+    "nom": "Gratitude",
+    "motCle": "Reconnaissance",
+    "energie": "Voir le beau",
+    "message": "En revenant à ce qui est déjà là, ton cœur retrouve de la paix.",
+    "conseil": "Écris trois choses simples pour lesquelles tu ressens de la gratitude.",
+    "couleur": "#D8B56A",
+    "image": "logos/gratitude.png",
+    "fond": "backgrounds/soleil-doux.png"
+  },
+  {
+    "id": 15,
+    "nom": "Protection",
+    "motCle": "Sécurité",
+    "energie": "Être soutenu",
+    "message": "Tu n’es pas seul. Une force douce veille sur ton chemin.",
+    "conseil": "Crée autour de toi un espace plus calme et sécurisant aujourd’hui.",
+    "couleur": "#6D7D9C",
+    "image": "logos/protection.png",
+    "fond": "backgrounds/aura-sacree.png"
+  }
+]

@@ -1,0 +1,3444 @@
+===== css/style.css =====
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Poppins", sans-serif;
+}
+
+/* Accueil */
+.accueilMain {
+  min-height: 100vh;
+  background-image: url("../images/Accueil.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+.boutons-accueil {
+  position: absolute;
+  left: 50%;
+  bottom: 22vh;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 55px;
+}
+
+.imgAccueil {
+  width: 100%;
+}
+
+.btn-principal,
+.btn-secondaire {
+  background-color: white;
+  color: black;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 14px 28px;
+  min-width: 240px;
+  text-align: center;
+  font-size: 1.1rem;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  transition: 0.5s;
+}
+
+.btn-principal:hover,
+.btn-secondaire:hover {
+  background-color: black;
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 0 10px white;
+}
+
+/* NavBar */
+body {
+  margin: 0;
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background-color: #f5f1e8;
+  border-bottom: 1px solid #d8d2c4;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1000;
+  background-image: url("../images/navbar.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  backdrop-filter: blur(1px);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+}
+
+.logo a {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.logo img {
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  display: block;
+  margin-right: 10px;
+}
+
+.titre-logo {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #264653;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+}
+
+.titre-logo,
+.nav-links a {
+  text-shadow: 0 1px 1px rgb(255, 255, 255);
+}
+
+.accent-logo {
+  color: #3e6f44;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0 30px;
+}
+
+.nav-links a {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+  color: #1c3b2f;
+  font-size: 1.1rem;
+  font-weight: bolder;
+  padding: 10px 16px;
+  border-radius: 999px;
+  transition:
+    color 0.3s ease,
+    background-color 0.3s ease,
+    transform 0.3s ease;
+}
+
+.nav-links a::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  bottom: 6px;
+  width: calc(100% - 32px);
+  height: 2px;
+  background-color: #7a9e7e;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+
+.nav-links a:hover {
+  color: #264653;
+  background-color: rgba(245, 252, 209, 0.644);
+  transform: translateY(-1px);
+}
+
+.nav-links a:hover::after {
+  transform: scaleX(1);
+}
+
+.nav-links a.active {
+  color: #264653;
+  opacity: 0.7;
+}
+
+.nav-links a.active::after {
+  transform: scaleX(1);
+}
+
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #355c4d;
+  cursor: pointer;
+}
+
+.contenu-principal {
+  padding-top: 120px;
+}
+
+/* Section carte */
+.section-carte {
+  width: 100%;
+  padding: 40px 20px;
+}
+
+.carte-interactive {
+  width: min(98vw, 2400px);
+  margin: 0 auto;
+}
+
+.carte {
+  position: relative;
+  width: 100%;
+}
+
+.carte img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.carte-mobile {
+  display: none;
+}
+
+/* Hitbox invisibles */
+.zone,
+.zone-mobile {
+  position: absolute;
+  display: block;
+  background: transparent;
+  border-radius: 12px;
+  z-index: 2;
+  cursor: pointer;
+  transition:
+    box-shadow 0.25s ease,
+    background-color 0.25s ease,
+    transform 0.25s ease;
+}
+
+.zone::after,
+.zone-mobile::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  bottom: 2.5px;
+  width: calc(100% - 32px);
+  height: 2px;
+  background-color: #ffe604;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+
+.zone:hover::after,
+.zone-mobile:hover::after {
+  transform: scaleX(1);
+}
+
+.zone:hover,
+.zone-mobile:hover {
+  box-shadow: 0 0 5px rgba(248, 202, 50, 0.863);
+  background-color: rgba(240, 252, 130, 0.281);
+}
+
+/* =========================
+   DESKTOP
+   Basé sur tes coords image-map
+   ========================= */
+
+.carte-desktop .montagne {
+  left: 54.4%;
+  top: 6.8%;
+  width: 7.5%;
+  height: 4.2%;
+}
+
+.carte-desktop .tipi {
+  left: 16.6%;
+  top: 33.9%;
+  width: 3.9%;
+  height: 4%;
+}
+
+.carte-desktop .chalet {
+  left: 28.6%;
+  top: 38.3%;
+  width: 5.3%;
+  height: 4.3%;
+}
+
+.carte-desktop .lac {
+  left: 55.3%;
+  top: 32.3%;
+  width: 4.2%;
+  height: 3.9%;
+}
+
+.carte-desktop .canoe {
+  left: 55.3%;
+  top: 40.6%;
+  width: 4.6%;
+  height: 4.1%;
+}
+
+.carte-desktop .sentier {
+  left: 44.8%;
+  top: 56%;
+  width: 5.8%;
+  height: 4.1%;
+}
+
+.carte-desktop .accueil {
+  left: 27.2%;
+  top: 63.8%;
+  width: 5.8%;
+  height: 4.1%;
+}
+
+.carte-desktop .meditation {
+  left: 71.7%;
+  top: 46.1%;
+  width: 10.3%;
+  height: 4.2%;
+}
+
+.carte-desktop .yoga {
+  left: 78.85%;
+  top: 66.4%;
+  width: 4.7%;
+  height: 4.2%;
+}
+
+/* =========================
+   MOBILE
+   Basé sur tes coords image-map
+   ========================= */
+
+.carte-mobile .montagne {
+  left: 47.2%;
+  top: 5.5%;
+  width: 17%;
+  height: 3%;
+}
+
+.carte-mobile .lac {
+  left: 51.6%;
+  top: 26.7%;
+  width: 9.5%;
+  height: 3.1%;
+}
+
+.carte-mobile .canoe {
+  left: 50.5%;
+  top: 34.6%;
+  width: 10.6%;
+  height: 3%;
+}
+
+.carte-mobile .chalet {
+  left: 14.6%;
+  top: 33%;
+  width: 12%;
+  height: 3.1%;
+}
+
+.carte-mobile .tipi {
+  left: 4.3%;
+  top: 45.3%;
+  width: 8.9%;
+  height: 3.1%;
+}
+
+.carte-mobile .sentier {
+  left: 37.7%;
+  top: 46.1%;
+  width: 12.7%;
+  height: 3%;
+}
+
+.carte-mobile .accueil {
+  left: 26.1%;
+  top: 54.3%;
+  width: 12.6%;
+  height: 2.6%;
+}
+
+.carte-mobile .meditation {
+  left: 72.4%;
+  top: 41.6%;
+  width: 24.1%;
+  height: 3.2%;
+}
+
+.carte-mobile .yoga {
+  left: 77.3%;
+  top: 62.2%;
+  width: 10.8%;
+  height: 3.2%;
+}
+
+/* Responsive */
+@media (min-width: 1800px) {
+  .boutons-accueil {
+    bottom: 28vh;
+  }
+}
+
+@media (max-width: 1310px) {
+  .accueilMain {
+    background-image: url("../images/accueilCell.png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
+
+  .carte-desktop {
+    display: none;
+  }
+
+  .carte-mobile {
+    display: block;
+  }
+
+  .section-carte {
+    padding: 20px 10px;
+  }
+
+  .boutons-accueil {
+    bottom: 12vh;
+    gap: 16px;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    padding: 0 20px;
+  }
+
+  .btn-principal,
+  .btn-secondaire {
+    width: 100%;
+    max-width: 320px;
+    min-width: 0;
+    padding: 16px 24px;
+    font-size: 1rem;
+  }
+
+  .menu-toggle {
+    display: block;
+    margin-right: 30px;
+  }
+
+  .nav-links {
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+    width: 100%;
+    margin-top: 20px;
+    padding: 20px 0 10px 0;
+    border-top: 1px solid #d8d2c4;
+  }
+
+  .nav-links.active {
+    display: flex;
+  }
+
+  .nav-links a {
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .titre-logo {
+    font-size: 1.5rem;
+  }
+
+  .logo img {
+    width: 50px;
+    height: 50px;
+    margin: 10px 10px;
+  }
+  .section-carte {
+  margin-top: 30px;
+  }
+}
+
+@media (max-width: 450px) {
+  .titre-logo {
+    font-size: 1.2rem;
+  }
+
+  .logo img {
+    width: 37px;
+    height: 37px;
+    margin: 10px 5px;
+  }
+}
+
+/* =========================
+   PAGE MONTAGNE
+   ========================= */
+
+.page-montagne {
+  background: linear-gradient(to bottom, #f6f1e8 0%, #eef3eb 100%);
+}
+
+.hero-montagne-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(17, 34, 24, 0.28), rgba(17, 34, 24, 0.45)),
+    url("../images/montagnes.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-montagne-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-montagne-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.montagne-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-montagne-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.montagne-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-montagne-bloc {
+  padding: 90px 20px;
+}
+
+.montagne-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.montagne-texte,
+.montagne-image {
+  flex: 1;
+}
+
+.montagne-texte h2 {
+  font-size: 2.2rem;
+  color: #264653;
+  margin-bottom: 20px;
+}
+
+.montagne-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #2f463c;
+  margin-bottom: 16px;
+}
+
+.montagne-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(38, 70, 83, 0.12);
+}
+
+.section-montagne-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.montagne-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.montagne-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #264653;
+  margin-bottom: 12px;
+}
+
+.montagne-titre-centre p {
+  font-size: 1.05rem;
+  color: #446256;
+  line-height: 1.8;
+}
+
+.montagne-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.montagne-carte {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(120, 150, 120, 0.16);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(38, 70, 83, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.montagne-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(38, 70, 83, 0.12);
+}
+
+.montagne-carte h3 {
+  color: #355c4d;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.montagne-carte p {
+  color: #40574b;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-montagne-inversee {
+  background: linear-gradient(to bottom, rgba(232, 240, 233, 0.7), rgba(246, 241, 232, 0.9));
+}
+
+.liste-montagne {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-montagne li {
+  margin-bottom: 12px;
+  color: #2f463c;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-montagne {
+  padding: 70px 20px 100px;
+}
+
+.citation-montagne-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(53, 92, 77, 0.95), rgba(38, 70, 83, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(38, 70, 83, 0.14);
+}
+
+.citation-montagne-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-montagne-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .montagne-conteneur {
+    flex-direction: column;
+  }
+
+  .section-montagne-inversee .montagne-conteneur {
+    flex-direction: column;
+  }
+
+  .montagne-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-montagne-bloc,
+  .section-montagne-cartes,
+  .citation-montagne {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-montagne-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .montagne-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .montagne-intro {
+    font-size: 1rem;
+  }
+
+  .montagne-texte h2,
+  .montagne-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-montagne-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+/* =========================
+   PAGE LAC
+   ========================= */
+
+.page-lac {
+  background: linear-gradient(to bottom, #f4efe7 0%, #eaf4f6 100%);
+}
+
+.hero-lac-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(18, 44, 52, 0.28), rgba(18, 44, 52, 0.42)),
+    url("../images/lac.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-lac-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-lac-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.lac-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-lac-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.lac-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-lac-bloc {
+  padding: 90px 20px;
+}
+
+.lac-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.lac-texte,
+.lac-image {
+  flex: 1;
+}
+
+.lac-texte h2 {
+  font-size: 2.2rem;
+  color: #1f4f5f;
+  margin-bottom: 20px;
+}
+
+.lac-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #32525a;
+  margin-bottom: 16px;
+}
+
+.lac-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(31, 79, 95, 0.12);
+}
+
+.section-lac-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.lac-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.lac-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #1f4f5f;
+  margin-bottom: 12px;
+}
+
+.lac-titre-centre p {
+  font-size: 1.05rem;
+  color: #47656e;
+  line-height: 1.8;
+}
+
+.lac-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.lac-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(103, 155, 170, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(31, 79, 95, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.lac-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(31, 79, 95, 0.12);
+}
+
+.lac-carte h3 {
+  color: #2d6a7b;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.lac-carte p {
+  color: #426069;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-lac-inversee {
+  background: linear-gradient(to bottom, rgba(228, 241, 244, 0.78), rgba(244, 239, 231, 0.95));
+}
+
+.liste-lac {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-lac li {
+  margin-bottom: 12px;
+  color: #32525a;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-lac {
+  padding: 70px 20px 100px;
+}
+
+.citation-lac-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(45, 106, 123, 0.95), rgba(31, 79, 95, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(31, 79, 95, 0.14);
+}
+
+.citation-lac-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-lac-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .lac-conteneur {
+    flex-direction: column;
+  }
+
+  .section-lac-inversee .lac-conteneur {
+    flex-direction: column;
+  }
+
+  .lac-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-lac-bloc,
+  .section-lac-cartes,
+  .citation-lac {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-lac-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .lac-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .lac-intro {
+    font-size: 1rem;
+  }
+
+  .lac-texte h2,
+  .lac-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-lac-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+/* =========================
+   PAGE FORÊT
+   ========================= */
+
+.page-foret {
+  background: linear-gradient(to bottom, #f5efe6 0%, #edf3ea 100%);
+}
+
+.hero-foret-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(24, 46, 30, 0.3), rgba(24, 46, 30, 0.45)),
+    url("../images/Forest.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-foret-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-foret-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.foret-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-foret-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.foret-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-foret-bloc {
+  padding: 90px 20px;
+}
+
+.foret-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.foret-texte,
+.foret-image {
+  flex: 1;
+}
+
+.foret-texte h2 {
+  font-size: 2.2rem;
+  color: #2d4c34;
+  margin-bottom: 20px;
+}
+
+.foret-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #3f5644;
+  margin-bottom: 16px;
+}
+
+.foret-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(45, 76, 52, 0.12);
+}
+
+.section-foret-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.foret-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.foret-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #2d4c34;
+  margin-bottom: 12px;
+}
+
+.foret-titre-centre p {
+  font-size: 1.05rem;
+  color: #506853;
+  line-height: 1.8;
+}
+
+.foret-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.foret-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(98, 132, 95, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(45, 76, 52, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.foret-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(45, 76, 52, 0.12);
+}
+
+.foret-carte h3 {
+  color: #42664a;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.foret-carte p {
+  color: #4c6150;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-foret-inversee {
+  background: linear-gradient(to bottom, rgba(231, 239, 230, 0.8), rgba(245, 239, 230, 0.95));
+}
+
+.liste-foret {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-foret li {
+  margin-bottom: 12px;
+  color: #3f5644;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-foret {
+  padding: 70px 20px 100px;
+}
+
+.citation-foret-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(66, 102, 74, 0.95), rgba(45, 76, 52, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(45, 76, 52, 0.14);
+}
+
+.citation-foret-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-foret-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .foret-conteneur {
+    flex-direction: column;
+  }
+
+  .section-foret-inversee .foret-conteneur {
+    flex-direction: column;
+  }
+
+  .foret-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-foret-bloc,
+  .section-foret-cartes,
+  .citation-foret {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-foret-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .foret-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .foret-intro {
+    font-size: 1rem;
+  }
+
+  .foret-texte h2,
+  .foret-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-foret-boite p {
+    font-size: 1.1rem;
+  }
+}
+/* =========================
+   HEBERGEMENT / TIPI / CHALET
+   ========================= */
+
+.page-hebergement,
+.page-tipi,
+.page-chalet {
+  background: linear-gradient(to bottom, #f5efe6 0%, #eef3eb 100%);
+}
+
+.hero-hebergement-page,
+.hero-tipi-page,
+.hero-chalet-page {
+  min-height: 88vh;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-hebergement-page {
+  background-image:
+    linear-gradient(rgba(34, 42, 30, 0.3), rgba(34, 42, 30, 0.45)),
+    url("../images/chalet.png");
+}
+
+.hero-tipi-page {
+  background-image:
+    linear-gradient(rgba(66, 48, 28, 0.28), rgba(66, 48, 28, 0.42)),
+    url("../images/tipi.png");
+}
+
+.hero-chalet-page {
+  background-image:
+    linear-gradient(rgba(44, 34, 26, 0.28), rgba(44, 34, 26, 0.42)),
+    url("../images/chalet.png");
+}
+
+.hero-hebergement-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-hebergement-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.hebergement-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-hebergement-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.hebergement-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-hebergement-bloc {
+  padding: 90px 20px;
+}
+
+.hebergement-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.hebergement-texte,
+.hebergement-image {
+  flex: 1;
+}
+
+.hebergement-texte h2 {
+  font-size: 2.2rem;
+  color: #4f5d3a;
+  margin-bottom: 20px;
+}
+
+.hebergement-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #4d5b43;
+  margin-bottom: 16px;
+}
+
+.hebergement-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(60, 72, 54, 0.12);
+}
+
+.section-hebergement-inversee {
+  background: linear-gradient(to bottom, rgba(235, 240, 232, 0.8), rgba(245, 239, 230, 0.95));
+}
+
+.section-hebergement-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.hebergement-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.hebergement-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4f5d3a;
+  margin-bottom: 12px;
+}
+
+.hebergement-titre-centre p {
+  font-size: 1.05rem;
+  color: #647158;
+  line-height: 1.8;
+}
+
+.hebergement-cartes {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.hebergement-cartes-trois {
+  max-width: 1250px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.hebergement-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(120, 140, 108, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(60, 72, 54, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.hebergement-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(60, 72, 54, 0.12);
+}
+
+.hebergement-carte h3 {
+  color: #66784d;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.hebergement-carte p {
+  color: #56624a;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+@media (max-width: 1310px) {
+  .hero-hebergement-page,
+  .hero-tipi-page,
+  .hero-chalet-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .hebergement-conteneur {
+    flex-direction: column;
+  }
+
+  .hebergement-cartes,
+  .hebergement-cartes-trois {
+    grid-template-columns: 1fr;
+  }
+
+  .section-hebergement-bloc,
+  .section-hebergement-cartes {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-hebergement-page,
+  .hero-tipi-page,
+  .hero-chalet-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .hebergement-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .hebergement-intro {
+    font-size: 1rem;
+  }
+
+  .hebergement-texte h2,
+  .hebergement-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+}
+
+/* =========================
+   PAGE CANOE
+   ========================= */
+
+.page-canoe {
+  background: linear-gradient(to bottom, #f4efe7 0%, #e7f1f4 100%);
+}
+
+.hero-canoe-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(21, 55, 66, 0.28), rgba(21, 55, 66, 0.42)),
+    url("../images/cannoe.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-canoe-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-canoe-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.canoe-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-canoe-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.canoe-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-canoe-bloc {
+  padding: 90px 20px;
+}
+
+.canoe-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.canoe-texte,
+.canoe-image {
+  flex: 1;
+}
+
+.canoe-texte h2 {
+  font-size: 2.2rem;
+  color: #1f5160;
+  margin-bottom: 20px;
+}
+
+.canoe-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #395861;
+  margin-bottom: 16px;
+}
+
+.canoe-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(31, 81, 96, 0.12);
+}
+
+.section-canoe-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.canoe-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.canoe-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #1f5160;
+  margin-bottom: 12px;
+}
+
+.canoe-titre-centre p {
+  font-size: 1.05rem;
+  color: #4b6971;
+  line-height: 1.8;
+}
+
+.canoe-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.canoe-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(108, 156, 170, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(31, 81, 96, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.canoe-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(31, 81, 96, 0.12);
+}
+
+.canoe-carte h3 {
+  color: #2e6a7c;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.canoe-carte p {
+  color: #45636b;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-canoe-inversee {
+  background: linear-gradient(to bottom, rgba(228, 239, 243, 0.8), rgba(244, 239, 231, 0.95));
+}
+
+.liste-canoe {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-canoe li {
+  margin-bottom: 12px;
+  color: #395861;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-canoe {
+  padding: 70px 20px 100px;
+}
+
+.citation-canoe-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(46, 106, 124, 0.95), rgba(31, 81, 96, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(31, 81, 96, 0.14);
+}
+
+.citation-canoe-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-canoe-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .canoe-conteneur {
+    flex-direction: column;
+  }
+
+  .section-canoe-inversee .canoe-conteneur {
+    flex-direction: column;
+  }
+
+  .canoe-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-canoe-bloc,
+  .section-canoe-cartes,
+  .citation-canoe {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-canoe-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .canoe-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .canoe-intro {
+    font-size: 1rem;
+  }
+
+  .canoe-texte h2,
+  .canoe-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-canoe-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+/* =========================
+   PAGE MEDITATION
+   ========================= */
+
+.page-meditation {
+  background: linear-gradient(to bottom, #f5efe7 0%, #efeaf4 100%);
+}
+
+.hero-meditation-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(48, 40, 66, 0.3), rgba(48, 40, 66, 0.44)),
+    url("../images/meditations.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-meditation-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-meditation-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.meditation-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-meditation-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.meditation-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-meditation-bloc {
+  padding: 90px 20px;
+}
+
+.meditation-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.meditation-texte,
+.meditation-image {
+  flex: 1;
+}
+
+.meditation-texte h2 {
+  font-size: 2.2rem;
+  color: #5a4670;
+  margin-bottom: 20px;
+}
+
+.meditation-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #5b5366;
+  margin-bottom: 16px;
+}
+
+.meditation-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(90, 70, 112, 0.12);
+}
+
+.section-meditation-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.meditation-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.meditation-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #5a4670;
+  margin-bottom: 12px;
+}
+
+.meditation-titre-centre p {
+  font-size: 1.05rem;
+  color: #6a6077;
+  line-height: 1.8;
+}
+
+.meditation-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.meditation-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(146, 125, 170, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(90, 70, 112, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.meditation-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(90, 70, 112, 0.12);
+}
+
+.meditation-carte h3 {
+  color: #755a91;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.meditation-carte p {
+  color: #60586d;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-meditation-inversee {
+  background: linear-gradient(to bottom, rgba(237, 232, 243, 0.82), rgba(245, 239, 231, 0.95));
+}
+
+.liste-meditation {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-meditation li {
+  margin-bottom: 12px;
+  color: #5b5366;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-meditation {
+  padding: 70px 20px 100px;
+}
+
+.citation-meditation-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(117, 90, 145, 0.95), rgba(90, 70, 112, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(90, 70, 112, 0.14);
+}
+
+.citation-meditation-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-meditation-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .meditation-conteneur {
+    flex-direction: column;
+  }
+
+  .section-meditation-inversee .meditation-conteneur {
+    flex-direction: column;
+  }
+
+  .meditation-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-meditation-bloc,
+  .section-meditation-cartes,
+  .citation-meditation {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-meditation-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .meditation-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .meditation-intro {
+    font-size: 1rem;
+  }
+
+  .meditation-texte h2,
+  .meditation-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-meditation-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+/* =========================
+   PAGE YOGA
+   ========================= */
+
+.page-yoga {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef4ea 100%);
+}
+
+.hero-yoga-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(58, 74, 44, 0.3), rgba(58, 74, 44, 0.44)),
+    url("../images/yoga.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-yoga-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-yoga-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.yoga-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-yoga-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.yoga-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-yoga-bloc {
+  padding: 90px 20px;
+}
+
+.yoga-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.yoga-texte,
+.yoga-image {
+  flex: 1;
+}
+
+.yoga-texte h2 {
+  font-size: 2.2rem;
+  color: #4d6638;
+  margin-bottom: 20px;
+}
+
+.yoga-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #56624c;
+  margin-bottom: 16px;
+}
+
+.yoga-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(77, 102, 56, 0.12);
+}
+
+.section-yoga-cartes {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.yoga-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.yoga-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4d6638;
+  margin-bottom: 12px;
+}
+
+.yoga-titre-centre p {
+  font-size: 1.05rem;
+  color: #67745b;
+  line-height: 1.8;
+}
+
+.yoga-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.yoga-carte {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(128, 151, 110, 0.14);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(77, 102, 56, 0.08);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.yoga-carte:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 35px rgba(77, 102, 56, 0.12);
+}
+
+.yoga-carte h3 {
+  color: #6b8750;
+  margin-bottom: 14px;
+  font-size: 1.35rem;
+}
+
+.yoga-carte p {
+  color: #5d6853;
+  line-height: 1.8;
+  font-size: 1rem;
+}
+
+.section-yoga-inversee {
+  background: linear-gradient(to bottom, rgba(233, 240, 229, 0.82), rgba(245, 239, 231, 0.95));
+}
+
+.liste-yoga {
+  padding-left: 22px;
+  margin-top: 20px;
+}
+
+.liste-yoga li {
+  margin-bottom: 12px;
+  color: #56624c;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.citation-yoga {
+  padding: 70px 20px 100px;
+}
+
+.citation-yoga-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(107, 135, 80, 0.95), rgba(77, 102, 56, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(77, 102, 56, 0.14);
+}
+
+.citation-yoga-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-yoga-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .yoga-conteneur {
+    flex-direction: column;
+  }
+
+  .section-yoga-inversee .yoga-conteneur {
+    flex-direction: column;
+  }
+
+  .yoga-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-yoga-bloc,
+  .section-yoga-cartes,
+  .citation-yoga {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-yoga-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .yoga-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .yoga-intro {
+    font-size: 1rem;
+  }
+
+  .yoga-texte h2,
+  .yoga-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-yoga-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+/* =========================
+   PAGE ACTIVITES
+   ========================= */
+
+.page-activites {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef3eb 100%);
+}
+
+.hero-activites-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(34, 52, 40, 0.32), rgba(34, 52, 40, 0.46)),
+    url("../images/activites.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-activites-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-activites-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.activites-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-activites-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.activites-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-activites-cartes {
+  padding: 90px 20px;
+}
+
+.activites-titre-centre {
+  max-width: 820px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.activites-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #44593f;
+  margin-bottom: 12px;
+}
+
+.activites-titre-centre p {
+  font-size: 1.05rem;
+  color: #5c6a55;
+  line-height: 1.8;
+}
+
+.activites-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.activite-carte:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 36px rgba(60, 72, 54, 0.14);
+}
+
+.activite-carte img {
+  width: 100%;
+  height: 240px;
+  object-fit: cover;
+  display: block;
+}
+
+.activite-carte-contenu p {
+  color: #5a6552;
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+
+.section-gym {
+  padding: 90px 20px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.gym-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.gym-image,
+.gym-texte {
+  flex: 1;
+}
+
+.gym-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(66, 83, 63, 0.12);
+}
+
+.gym-texte h2 {
+  font-size: 2.2rem;
+  color: #44593f;
+  margin-bottom: 16px;
+}
+
+.gym-texte p {
+  color: #5a6552;
+  line-height: 1.9;
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+}
+
+.mini-etiquette {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #6d845c;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 0.9rem;
+}
+
+.liste-gym {
+  padding-left: 22px;
+  margin-top: 18px;
+}
+
+.liste-gym li {
+  margin-bottom: 12px;
+  color: #5a6552;
+  line-height: 1.8;
+  font-size: 1.02rem;
+}
+
+.section-boutique {
+  padding: 80px 20px 100px;
+}
+
+.boutique-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(107, 135, 80, 0.95), rgba(77, 102, 56, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 46px 30px;
+  box-shadow: 0 18px 35px rgba(77, 102, 56, 0.14);
+}
+
+.boutique-boite .mini-etiquette {
+  color: #edf5e4;
+}
+
+.boutique-boite h2 {
+  font-size: 2.1rem;
+  margin-bottom: 14px;
+}
+
+.boutique-boite p {
+  max-width: 700px;
+  margin: 0 auto 24px;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+@media (max-width: 1310px) {
+  .hero-activites-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .activites-cartes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .gym-conteneur {
+    flex-direction: column;
+  }
+
+  .section-activites-cartes,
+  .section-gym,
+  .section-boutique {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+@media (max-width: 800px) {
+  .activites-cartes {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-activites-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .activites-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .activites-intro {
+    font-size: 1rem;
+  }
+
+  .activites-titre-centre h2,
+  .gym-texte h2,
+  .boutique-boite h2 {
+    font-size: 1.7rem;
+  }
+
+  .activite-carte img {
+    height: 220px;
+  }
+}
+
+.activite-carte {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.09);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.activite-carte-contenu {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.activite-carte-contenu .btn {
+  margin-top: auto;
+  align-self: center;
+}
+
+.activite-carte-contenu h3 {
+  color: #4f6b3d;
+  margin-bottom: 14px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+}
+
+.activite-carte-contenu h3::after {
+  content: "";
+  display: block;
+  width: 55px;
+  height: 5px;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(to right, #8db36f, #5a7248);
+}
+/* =========================
+   ACCUEIL
+   ========================= */
+
+.page-accueil {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef3eb 100%);
+}
+
+.hero-accueil-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-accueil-texte {
+  text-align: center;
+  color: white;
+  max-width: 820px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.accueil-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-accueil-texte h1 {
+  font-size: clamp(2.6rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.accueil-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-accueil-liens {
+  padding: 90px 20px;
+}
+
+.accueil-titre-centre {
+  max-width: 820px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.accueil-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 12px;
+}
+
+.accueil-titre-centre p {
+  font-size: 1.05rem;
+  color: #5f6b57;
+  line-height: 1.8;
+}
+
+.accueil-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.accueil-carte {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.09);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.accueil-carte:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 18px 36px rgba(60, 72, 54, 0.14);
+}
+
+.accueil-carte img {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  display: block;
+}
+
+.accueil-carte-contenu {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.accueil-carte-contenu h3 {
+  color: #3f5f2f;
+  margin-bottom: 14px;
+  font-size: 1.7rem;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.4px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  position: relative;
+  padding-bottom: 12px;
+}
+
+.accueil-carte-contenu h3::after {
+  content: "";
+  display: block;
+  width: 55px;
+  height: 4px;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(to right, #8db36f, #5a7248);
+}
+
+.accueil-carte-contenu p {
+  color: #5a6552;
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+
+.accueil-carte-contenu .btn {
+  margin-top: auto;
+  align-self: center;
+}
+
+/* =========================
+   CONFERENCE / MASSAGE / BOUTIQUE
+   ========================= */
+
+.page-conference,
+.page-massage,
+.page-boutique {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef3eb 100%);
+}
+
+.hero-conference-page,
+.hero-massage-page,
+.hero-boutique-page {
+  min-height: 88vh;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-conference-page {
+  background-image:
+    linear-gradient(rgba(34, 44, 52, 0.3), rgba(34, 44, 52, 0.44)),
+    url("../images/conference.png");
+}
+
+.hero-massage-page {
+  background-image:
+    linear-gradient(rgba(72, 52, 44, 0.28), rgba(72, 52, 44, 0.42)),
+    url("../images/massage.png");
+}
+
+.hero-boutique-page {
+  background-image:
+    linear-gradient(rgba(54, 44, 33, 0.28), rgba(54, 44, 33, 0.42)),
+    url("../images/produit.png");
+}
+.hero-accueil-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(33, 50, 40, 0.32), rgba(33, 50, 40, 0.46)),
+    url("../images/interrieurAcceuil1.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-service-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-service-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.service-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-service-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.service-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-service-bloc {
+  padding: 90px 20px;
+}
+
+.service-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.service-image,
+.service-texte {
+  flex: 1;
+}
+
+.service-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(60, 72, 54, 0.12);
+}
+
+.service-texte h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 20px;
+}
+
+.service-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #5a6552;
+  margin-bottom: 16px;
+}
+
+.section-service-cartes {
+  padding: 90px 20px 100px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.service-titre-centre {
+  max-width: 820px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.service-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 12px;
+}
+
+.service-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.service-carte {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+}
+
+.service-carte h3 {
+  color: #5a7248;
+  margin-bottom: 14px;
+  font-size: 1.4rem;
+  text-align: center;
+  font-weight: 800;
+}
+
+.service-carte p {
+  color: #5a6552;
+  line-height: 1.8;
+  text-align: center;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-accueil-page,
+  .hero-conference-page,
+  .hero-massage-page,
+  .hero-boutique-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .accueil-cartes,
+  .service-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .service-conteneur {
+    flex-direction: column;
+  }
+
+  .section-accueil-liens,
+  .section-service-bloc,
+  .section-service-cartes {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-accueil-page,
+  .hero-conference-page,
+  .hero-massage-page,
+  .hero-boutique-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .accueil-sous-titre,
+  .service-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .accueil-intro,
+  .service-intro {
+    font-size: 1rem;
+  }
+
+  .accueil-titre-centre h2,
+  .service-titre-centre h2,
+  .service-texte h2 {
+    font-size: 1.7rem;
+  }
+
+  .accueil-carte img {
+    height: 220px;
+  }
+}
+
+/* =========================
+   PAGE A PROPOS
+   ========================= */
+
+.page-apropos {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef3eb 100%);
+}
+
+.hero-apropos-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(37, 51, 41, 0.34), rgba(37, 51, 41, 0.48)),
+    url("../images/propo.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-apropos-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-apropos-texte {
+  text-align: center;
+  color: white;
+  max-width: 780px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.apropos-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-apropos-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.apropos-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-apropos-profil,
+.section-apropos-histoire,
+.section-apropos-valeurs,
+.citation-apropos {
+  padding: 90px 20px;
+}
+
+.apropos-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 50px;
+}
+
+.apropos-image,
+.apropos-texte {
+  flex: 1;
+}
+
+.apropos-image img {
+  width: 100%;
+  border-radius: 26px;
+  display: block;
+  box-shadow: 0 18px 40px rgba(60, 72, 54, 0.12);
+}
+
+.apropos-texte h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 20px;
+}
+
+.apropos-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #5a6552;
+  margin-bottom: 16px;
+}
+
+.apropos-histoire-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 28px;
+  padding: 40px 32px;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+}
+
+.apropos-histoire-boite h2 {
+  font-size: 2.1rem;
+  color: #4b613e;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.apropos-histoire-boite p {
+  color: #5a6552;
+  line-height: 1.9;
+  margin-bottom: 16px;
+  font-size: 1.05rem;
+}
+
+.apropos-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.apropos-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 12px;
+}
+
+.apropos-titre-centre p {
+  font-size: 1.05rem;
+  color: #5f6b57;
+  line-height: 1.8;
+}
+
+.apropos-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.apropos-carte {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+}
+
+.apropos-carte h3 {
+  color: #5a7248;
+  margin-bottom: 14px;
+  font-size: 1.4rem;
+  text-align: center;
+  font-weight: 800;
+}
+
+.apropos-carte p {
+  color: #5a6552;
+  line-height: 1.8;
+  text-align: center;
+  margin: 0;
+}
+
+.citation-apropos-boite {
+  max-width: 950px;
+  margin: 0 auto;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(107, 135, 80, 0.95), rgba(77, 102, 56, 0.95));
+  color: white;
+  border-radius: 30px;
+  padding: 40px 28px;
+  box-shadow: 0 18px 35px rgba(77, 102, 56, 0.14);
+}
+
+.citation-apropos-boite p {
+  font-size: 1.35rem;
+  line-height: 1.8;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-apropos-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .apropos-conteneur {
+    flex-direction: column;
+  }
+
+  .apropos-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-apropos-profil,
+  .section-apropos-histoire,
+  .section-apropos-valeurs,
+  .citation-apropos {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-apropos-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .apropos-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .apropos-intro {
+    font-size: 1rem;
+  }
+
+  .apropos-texte h2,
+  .apropos-histoire-boite h2,
+  .apropos-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .citation-apropos-boite p {
+    font-size: 1.1rem;
+  }
+}
+
+.apropos-histoire-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+.apropos-histoire-boite,
+.apropos-histoire-image {
+  flex: 1;
+}
+
+.apropos-histoire-image img {
+  width: 100%;
+  display: block;
+  border-radius: 28px;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.12);
+}
+
+@media (max-width: 1310px) {
+  .apropos-histoire-conteneur {
+    flex-direction: column;
+  }
+}
+
+.apropos-histoire-boite .mini-etiquette,
+.apropos-histoire-boite h2 {
+  text-align: center;
+}
+
+.apropos-histoire-boite .mini-etiquette {
+  display: block;
+  text-align: center;
+}
+/* =========================
+   PAGE RESERVATION
+   ========================= */
+
+.page-reservation {
+  background: linear-gradient(to bottom, #f5efe7 0%, #eef3eb 100%);
+}
+
+.hero-reservation-page {
+  min-height: 88vh;
+  background-image:
+    linear-gradient(rgba(41, 54, 43, 0.32), rgba(41, 54, 43, 0.46)),
+    url("../images/interrieurAcceuil1.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+}
+
+.hero-reservation-overlay {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero-reservation-texte {
+  text-align: center;
+  color: white;
+  max-width: 800px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.reservation-sous-titre {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.hero-reservation-texte h1 {
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  margin-bottom: 18px;
+  font-weight: 800;
+}
+
+.reservation-intro {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 30px;
+}
+
+.section-reservation-formulaire,
+.section-reservation-infos {
+  padding: 90px 20px;
+}
+
+.reservation-conteneur {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+}
+
+.reservation-texte,
+.reservation-formulaire-boite {
+  flex: 1;
+}
+
+.reservation-texte h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 20px;
+}
+
+.reservation-texte p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: #5a6552;
+  margin-bottom: 16px;
+}
+
+.reservation-formulaire-boite {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 28px;
+  padding: 32px;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+}
+
+.formulaire-reservation {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.groupe-formulaire {
+  display: flex;
+  flex-direction: column;
+}
+
+.groupe-formulaire label {
+  font-weight: 700;
+  color: #4b613e;
+  margin-bottom: 8px;
+}
+
+.groupe-formulaire input,
+.groupe-formulaire select,
+.groupe-formulaire textarea {
+  border: 1px solid #d7dfcf;
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 1rem;
+  font-family: "Poppins", sans-serif;
+  background: #fff;
+  color: #44504a;
+  outline: none;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.groupe-formulaire input:focus,
+.groupe-formulaire select:focus,
+.groupe-formulaire textarea:focus {
+  border-color: #8db36f;
+  box-shadow: 0 0 0 4px rgba(141, 179, 111, 0.15);
+}
+
+.groupe-formulaire textarea {
+  resize: vertical;
+}
+
+.groupe-formulaire-plein {
+  grid-column: 1 / -1;
+}
+
+.bouton-formulaire {
+  display: flex;
+  justify-content: center;
+}
+
+.section-reservation-infos {
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.reservation-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.reservation-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 12px;
+}
+
+.reservation-titre-centre p {
+  font-size: 1.05rem;
+  color: #5f6b57;
+  line-height: 1.8;
+}
+
+.reservation-cartes {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.reservation-carte {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 30px 24px;
+  box-shadow: 0 10px 25px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+}
+
+.reservation-carte h3 {
+  color: #5a7248;
+  margin-bottom: 14px;
+  font-size: 1.4rem;
+  text-align: center;
+  font-weight: 800;
+}
+
+.reservation-carte p {
+  color: #5a6552;
+  line-height: 1.8;
+  text-align: center;
+  margin: 0;
+}
+
+@media (max-width: 1310px) {
+  .hero-reservation-page {
+    min-height: 75vh;
+    padding-top: 120px;
+  }
+
+  .reservation-conteneur {
+    flex-direction: column;
+  }
+
+  .formulaire-reservation,
+  .reservation-cartes {
+    grid-template-columns: 1fr;
+  }
+
+  .section-reservation-formulaire,
+  .section-reservation-infos {
+    padding: 70px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-reservation-page {
+    min-height: 65vh;
+    padding: 120px 16px 60px;
+    background-position: center;
+  }
+
+  .reservation-sous-titre {
+    font-size: 0.85rem;
+    letter-spacing: 1.2px;
+  }
+
+  .reservation-intro {
+    font-size: 1rem;
+  }
+
+  .reservation-texte h2,
+  .reservation-titre-centre h2 {
+    font-size: 1.7rem;
+  }
+
+  .reservation-formulaire-boite {
+    padding: 22px;
+  }
+}
+
+
+.boutique-conteneur-page {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+.boutique-image-page,
+.boutique-boite {
+  flex: 1;
+}
+
+.boutique-image-page img {
+  width: 100%;
+  display: block;
+  border-radius: 26px;
+  box-shadow: 0 18px 35px rgba(77, 102, 56, 0.14);
+}
+
+@media (max-width: 1310px) {
+  .boutique-conteneur-page {
+    flex-direction: column;
+  }
+}
+
+.section-produits-boutique {
+  padding: 90px 20px 100px;
+}
+
+.boutique-titre-centre {
+  max-width: 800px;
+  margin: 0 auto 45px auto;
+  text-align: center;
+}
+
+.boutique-titre-centre h2 {
+  font-size: 2.2rem;
+  color: #4b613e;
+  margin-bottom: 12px;
+}
+
+.boutique-titre-centre p {
+  font-size: 1.05rem;
+  color: #5f6b57;
+  line-height: 1.8;
+}
+
+.grille-produits-boutique {
+  max-width: 1250px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.carte-produit-boutique {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  padding: 28px 24px;
+  text-align: center;
+  box-shadow: 0 12px 28px rgba(60, 72, 54, 0.08);
+  border: 1px solid rgba(120, 140, 108, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.carte-produit-boutique img {
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  margin: 0 auto 18px;
+  display: block;
+}
+
+.carte-produit-boutique h3 {
+  color: #4f6b3d;
+  margin-bottom: 10px;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.prix-produit {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #6b8750;
+  margin-bottom: 12px;
+}
+
+.carte-produit-boutique p {
+  color: #5a6552;
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+
+.carte-produit-boutique .btn {
+  margin-top: auto;
+  align-self: center;
+}
+
+@media (max-width: 1310px) {
+  .grille-produits-boutique {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .grille-produits-boutique {
+    grid-template-columns: 1fr;
+  }
+}

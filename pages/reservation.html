@@ -1,0 +1,170 @@
+===== pages/reservation.html =====
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      defer
+    ></script>
+    <script src="../js/script.js" defer></script>
+    <link rel="stylesheet" href="../css/style.css" />
+    <title>Réservation - Centre Mieux-Être</title>
+  </head>
+  <body>
+    <header>
+      <nav class="navbar">
+        <div class="logo">
+          <a href="accueil.html">
+            <img src="../images/logo.png" alt="Logo Centre du mieux-être" />
+            <span class="titre-logo">
+              Centre du <span class="accent-logo">mieux-être</span>
+            </span>
+          </a>
+        </div>
+
+        <button class="menu-toggle" aria-label="Ouvrir le menu">☰</button>
+
+        <ul class="nav-links">
+          <li><a href="accueil.html">Accueil</a></li>
+          <li><a href="site.html">Le centre</a></li>
+          <li><a href="hebergement.html">Hébergement</a></li>
+          <li><a href="activites.html">Activités</a></li>
+          <li><a href="reservation.html" class="active">Réservation</a></li>
+          <li><a href="propo.html">A propos</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="contenu-principal page-reservation">
+      <section class="hero-reservation-page">
+        <div class="hero-reservation-overlay">
+          <div class="hero-reservation-texte">
+            <p class="reservation-sous-titre">Séjour • Détente • Planification</p>
+            <h1>Réservation</h1>
+            <p class="reservation-intro">
+              Planifiez votre passage au Centre Mieux-Être et faites une demande
+              de réservation pour vivre une expérience de calme et de
+              ressourcement.
+            </p>
+            <a href="#formulaire-reservation" class="btn btn-principal">
+              Réserver maintenant
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-reservation-formulaire" id="formulaire-reservation">
+        <div class="reservation-conteneur">
+          <div class="reservation-texte">
+            <p class="mini-etiquette">Votre séjour commence ici</p>
+            <h2>Faire une demande</h2>
+            <p>
+              Remplissez le formulaire ci-dessous pour nous indiquer vos
+              préférences. Nous pourrons ensuite vous recontacter pour confirmer
+              les détails de votre réservation.
+            </p>
+            <p>
+              Vous pouvez mentionner le type d’hébergement souhaité, les
+              activités qui vous intéressent et toute information utile pour
+              préparer votre visite.
+            </p>
+          </div>
+
+          <div class="reservation-formulaire-boite">
+            <form class="formulaire-reservation">
+              <div class="groupe-formulaire">
+                <label for="nom">Nom complet</label>
+                <input type="text" id="nom" name="nom" placeholder="Votre nom complet" required />
+              </div>
+
+              <div class="groupe-formulaire">
+                <label for="courriel">Courriel</label>
+                <input type="email" id="courriel" name="courriel" placeholder="exemple@email.com" required />
+              </div>
+
+              <div class="groupe-formulaire">
+                <label for="telephone">Téléphone</label>
+                <input type="tel" id="telephone" name="telephone" placeholder="Votre numéro" />
+              </div>
+
+              <div class="groupe-formulaire">
+                <label for="date-arrivee">Date d’arrivée</label>
+                <input type="date" id="date-arrivee" name="date-arrivee" />
+              </div>
+
+              <div class="groupe-formulaire">
+                <label for="date-depart">Date de départ</label>
+                <input type="date" id="date-depart" name="date-depart" />
+              </div>
+
+              <div class="groupe-formulaire">
+                <label for="hebergement">Type d’hébergement</label>
+                <select id="hebergement" name="hebergement">
+                  <option value="">Choisir</option>
+                  <option value="tipi">Tipi</option>
+                  <option value="chalet">Chalet</option>
+                  <option value="aucun">Sans hébergement</option>
+                </select>
+              </div>
+
+              <div class="groupe-formulaire groupe-formulaire-plein">
+                <label for="message">Message</label>
+                <textarea
+                  id="message"
+                  name="message"
+                  rows="6"
+                  placeholder="Parlez-nous de votre séjour, des activités souhaitées ou de vos besoins particuliers."
+                ></textarea>
+              </div>
+
+              <div class="groupe-formulaire-plein bouton-formulaire">
+                <button type="submit" class="btn btn-principal">Envoyer la demande</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-reservation-infos">
+        <div class="reservation-titre-centre">
+          <h2>Informations utiles</h2>
+          <p>
+            Quelques points importants avant de faire votre réservation.
+          </p>
+        </div>
+
+        <div class="reservation-cartes">
+          <article class="reservation-carte">
+            <h3>Hébergement</h3>
+            <p>
+              Choisissez entre les tipis et les chalets selon l’expérience que
+              vous souhaitez vivre.
+            </p>
+          </article>
+
+          <article class="reservation-carte">
+            <h3>Activités</h3>
+            <p>
+              Vous pouvez compléter votre séjour avec les activités offertes sur
+              le site.
+            </p>
+          </article>
+
+          <article class="reservation-carte">
+            <h3>Confirmation</h3>
+            <p>
+              Une demande envoyée devra être confirmée avant que la réservation
+              soit finalisée.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
