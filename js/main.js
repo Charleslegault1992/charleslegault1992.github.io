@@ -178,15 +178,18 @@ const isNearPlayer = (target) => {
 };
 
 const handleInteraction = () => {
-  const nearItem = worldItems.find((item) => {
+  const nearItemIndex = worldItems.findIndex((item) => {
     return isNearPlayer(item);
   });
 
-  if (nearItem) {
-    console.log(nearItem.name);
-  } else {
+  if (nearItemIndex === -1) {
     console.log("Aucun items proche");
-  }
+  } else {
+    const removedItems = worldItems.splice(nearItemIndex, 1);
+    const pickedItems = removedItems[0]
+    playerState.inventory.push(pickedItems);
+    updatePlayerInventory();
+ }
 };
 
 /* Attribution des touches */
@@ -199,13 +202,13 @@ document.addEventListener("keydown", (e) => {
 
   let nextX = playerState.x;
   let nextY = playerState.y;
-  if (e.key === "ArrowRight") {
+  if (e.key === "ArrowRight" || e.key === "d") {
     nextX += MOVE_SPEED;
-  } else if (e.key === "ArrowLeft") {
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
     nextX -= MOVE_SPEED;
-  } else if (e.key === "ArrowUp") {
+  } else if (e.key === "ArrowUp" || e.key === "w") {
     nextY -= MOVE_SPEED;
-  } else if (e.key === "ArrowDown") {
+  } else if (e.key === "ArrowDown" || e.key === "s") {
     nextY += MOVE_SPEED;
   } else {
     return;
@@ -215,9 +218,6 @@ document.addEventListener("keydown", (e) => {
     playerState.y = nextY;
   }
   updatePlayerPosition();
-  worldItems.forEach((item) => {
-    console.log(`${item.name}: ${isNearPlayer(item)}`);
-  });
 });
 
 /* console log */
