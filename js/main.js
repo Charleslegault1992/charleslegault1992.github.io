@@ -4,6 +4,7 @@ const playerInventory = document.querySelector("#player-inventory");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
 const boiteJeux = document.querySelector("#boite-jeux");
+const monsterHp = 10;
 
 /* CONSTANTE DE JEUX */
 const GAME_WIDTH = 640;
@@ -18,6 +19,7 @@ const WALL = 1;
 let nextWorldItemId = 1;
 let nextMonsterId = 1;
 let selectedMonsterId = null;
+const worldItems = [];
 
 /* Creation du joueur */
 const playerState = {
@@ -29,6 +31,14 @@ const playerState = {
   level: 1,
   experience: 0,
   gold: 0,
+  damage: 5,
+  magicSkill: 0,
+  swordSkill: 1,
+  maceSkill: 1,
+  axeSkill: 1,
+  distanceSkill: 1,
+  shieldSkill: 1,
+  weight: 400,
   inventory: [
     {
       name: "Sword",
@@ -47,6 +57,7 @@ const playerState = {
     },
   ],
 };
+
 /* BLOQUER CLIC DROIT DANS LE JEUX */
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -71,6 +82,10 @@ const gameMap = [
 ];
 
 /* --------- Fonction -------- */
+/* RANDOM NUMBER */
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 /* WORLD ITEMS */
 const createWorldItem = (name, type, quantity, x, y) => {
   const worldItem = {
@@ -107,7 +122,6 @@ const renderWorldItems = (items) => {
     game.appendChild(div);
   }
 };
-const worldItems = [];
 
 const addWorldItem = (worldItem) => {
   worldItems.push(worldItem);
@@ -184,6 +198,12 @@ const updatePlayerStats = () => {
                               <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
                               <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
                               <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
+                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
+                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
+                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
+                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
+                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
+                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
                             </div>`;
 };
 updatePlayerStats();
@@ -293,7 +313,12 @@ const renderMonsters = (monstersList) => {
     if (monster.id === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
+    const hpContainer = document.createElement("div");
+    hpContainer.classList.add("hp-bar");
+    const hpRed = document.createElement("div");
+    hpRed.classList.add("hp-red");
     div.setAttribute("data-monster-id", monster.id);
+    hpRed.setAttribute("data-monster-id", monster.id);
     div.addEventListener("contextmenu", () => {
       clearMonsterSelection();
       if (monster.id === selectedMonsterId) {
@@ -301,10 +326,13 @@ const renderMonsters = (monstersList) => {
         return;
       }
       selectedMonsterId = monster.id;
-      selectMonsterElement(monster.id);
+      selectMonsterElement(selectedMonsterId);
+      attackMonster(monster);
     });
     div.style.left = `${monster.x}px`;
     div.style.top = `${monster.y}px`;
+    hpContainer.appendChild(hpRed);
+    div.appendChild(hpContainer);
     game.appendChild(div);
   }
 };
@@ -345,6 +373,23 @@ const selectMonsterElement = (monsterId) => {
   if (monsterElement) {
     monsterElement.classList.add("monster-selected");
   }
+};
+
+/* REFRESH HP */
+const hpRefresh = (monster) => {
+  const monsterHp = document.querySelector(
+    `.hp-red[data-monster-id="${monster.id}"]`,
+  );
+  monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+};
+/* ATTAQUER */
+const attackMonster = (monster) => {
+  monster.hp -= getRandomInt(1, playerState.damage);
+  if (monster.hp <= 0) {
+    monster.hp = 0;
+  }
+  hpRefresh(monster);
+  console.log(monster.hp);
 };
 
 /* console log */
