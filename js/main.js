@@ -320,7 +320,7 @@ const clearMonsters = () => {
 const clearMonsterSelection = () => {
   const monsterSelection = document.querySelectorAll(".monster-selected");
   monsterSelection.forEach((monster) => {
-  monster.classList.remove("monster-selected");
+    monster.classList.remove("monster-selected");
   });
 };
 /* TROUVER Monstre */
