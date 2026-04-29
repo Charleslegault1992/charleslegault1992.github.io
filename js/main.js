@@ -14,24 +14,7 @@ const MAP_COLS = GAME_WIDTH / TILE_SIZE;
 const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
 const FLOOR = 0;
 const WALL = 1;
-
-/* ITEMS */
-const worldItems = [
-  {
-    name: "Apple",
-    type: "food",
-    quantity: 1,
-    x: 128,
-    y: 64,
-  },
-  {
-    name: "Health Potion",
-    type: "consumable",
-    quantity: 1,
-    x: 128,
-    y: 256,
-  },
-];
+let nextWorldItemId = 1;
 
 /* Creation du joueur */
 const playerState = {
@@ -81,7 +64,53 @@ const gameMap = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-/* Fonction */
+/* --------- Fonction -------- */
+/* WORLD ITEMS */
+const createWorldItem = (name, type, quantity, x, y) => {
+  const worldItem = {
+    name,
+    type,
+    quantity,
+    x,
+    y,
+    id: nextWorldItemId++,
+  };
+  return worldItem;
+};
+
+const createCorpse = (name, x, y) => {
+  const corpse = {
+    name,
+    type: "corpse",
+    quantity: 1,
+    x,
+    y,
+    id: nextWorldItemId++,
+  };
+  return corpse;
+};
+
+const renderWorldItems = (items) => {
+  for (let i = 0; i < items.length; i++) {
+    const div = document.createElement("div");
+    const item = items[i];
+    div.classList.add("world-item");
+    div.setAttribute("data-item-id", item.id);
+    div.style.left = `${item.x}px`;
+    div.style.top = `${item.y}px`;
+    game.appendChild(div);
+  }
+};
+const worldItems = [];
+
+const addWorldItem = (worldItem) => {
+  worldItems.push(worldItem);
+  renderWorldItems([worldItem]);
+};
+
+addWorldItem(createWorldItem("Apple", "food", 3, 128, 64));
+addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
+addWorldItem(createCorpse("Rat Corpse", 224, 128));
 
 /* Mouvement */
 const updatePlayerPosition = () => {
@@ -129,18 +158,6 @@ const renderMap = (map) => {
 };
 renderMap(gameMap);
 
-const renderWorldItems = (items) => {
-  for (let i = 0; i < items.length; i++) {
-    const div = document.createElement("div");
-    const item = items[i];
-    div.classList.add("world-item");
-    div.style.left = `${item.x}px`;
-    div.style.top = `${item.y}px`;
-    game.appendChild(div);
-  }
-};
-renderWorldItems(worldItems);
-
 /* UI */
 const updatePlayerInventory = () => {
   let html = `<div class="boite-boite">
@@ -177,19 +194,43 @@ const isNearPlayer = (target) => {
   );
 };
 
+/* INTERACTION RAMASSER */
+const addItemToInventory = (itemToAdd) => {
+  const inventoryItem = {
+    name: itemToAdd.name,
+    type: itemToAdd.type,
+    quantity: itemToAdd.quantity,
+  };
+  const existingItem = playerState.inventory.find((item) => {
+    return item.name === inventoryItem.name && item.type === inventoryItem.type;
+  });
+  if (existingItem) {
+    existingItem.quantity += inventoryItem.quantity;
+  } else {
+    playerState.inventory.push(inventoryItem);
+  }
+  updatePlayerInventory();
+};
+
 const handleInteraction = () => {
   const nearItemIndex = worldItems.findIndex((item) => {
     return isNearPlayer(item);
   });
 
   if (nearItemIndex === -1) {
-    console.log("Aucun items proche");
+    console.log("Aucun item proche");
   } else {
-    const removedItems = worldItems.splice(nearItemIndex, 1);
-    const pickedItems = removedItems[0]
-    playerState.inventory.push(pickedItems);
-    updatePlayerInventory();
- }
+    const nearItem = worldItems[nearItemIndex];
+    const itemElement = document.querySelector(
+      `.world-item[data-item-id="${nearItem.id}"]`,
+    );
+    if (itemElement) {
+      itemElement.remove();
+    }
+    const removedItem = worldItems.splice(nearItemIndex, 1);
+    const pickedItem = removedItem[0];
+    addItemToInventory(pickedItem);
+  }
 };
 
 /* Attribution des touches */
