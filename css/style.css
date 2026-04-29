@@ -104,6 +104,7 @@ main {
   width: 32px;
   height: 32px;
   z-index: 10;
+  transition : 0.5s;
 }
 
 #player img {
@@ -176,4 +177,16 @@ main {
   height: 32px;
   background-color: blue;
   z-index: 5;
+}
+
+.monster {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background-color: rgb(173, 196, 2);
+  z-index: 11;
+}
+
+.monster-selected {
+  outline: 1px solid red;
 }

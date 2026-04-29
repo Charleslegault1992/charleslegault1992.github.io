@@ -3,6 +3,7 @@ const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
+const boiteJeux = document.querySelector("#boite-jeux");
 
 /* CONSTANTE DE JEUX */
 const GAME_WIDTH = 640;
@@ -15,6 +16,8 @@ const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
 const FLOOR = 0;
 const WALL = 1;
 let nextWorldItemId = 1;
+let nextMonsterId = 1;
+let selectedMonsterId = null;
 
 /* Creation du joueur */
 const playerState = {
@@ -44,7 +47,10 @@ const playerState = {
     },
   ],
 };
-
+/* BLOQUER CLIC DROIT DANS LE JEUX */
+boiteJeux.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+});
 /* MAP */
 const gameMap = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -138,7 +144,7 @@ const canMoveTo = (testX, testY) => {
   return nextTile === FLOOR;
 };
 
-/* RENDER */
+/* RENDER MAP*/
 const renderMap = (map) => {
   for (let row = 0; row < map.length; row++) {
     for (let col = 0; col < map[row].length; col++) {
@@ -260,6 +266,86 @@ document.addEventListener("keydown", (e) => {
   }
   updatePlayerPosition();
 });
+
+/* Monstre */
+const monsters = [];
+const createMonster = (name, x, y, hp) => {
+  const monster = {
+    name,
+    x,
+    y,
+    hp,
+    maxHp: hp,
+    id: nextMonsterId++,
+  };
+  return monster;
+};
+
+monsters.push(createMonster("Rat", 320, 192, 20));
+monsters.push(createMonster("Rat", 64, 192, 20));
+
+/* RENDER MONSTER */
+const renderMonsters = (monstersList) => {
+  for (let i = 0; i < monstersList.length; i++) {
+    const div = document.createElement("div");
+    const monster = monstersList[i];
+    div.classList.add("monster");
+    if (monster.id === selectedMonsterId) {
+      div.classList.add("monster-selected");
+    }
+    div.setAttribute("data-monster-id", monster.id);
+    div.addEventListener("contextmenu", () => {
+      clearMonsterSelection();
+      if (monster.id === selectedMonsterId) {
+        selectedMonsterId = null;
+        return;
+      }
+      selectedMonsterId = monster.id;
+      selectMonsterElement(monster.id);
+    });
+    div.style.left = `${monster.x}px`;
+    div.style.top = `${monster.y}px`;
+    game.appendChild(div);
+  }
+};
+renderMonsters(monsters);
+
+/* CLEAR MONSTER */
+const clearMonsters = () => {
+  const monstersElements = document.querySelectorAll(".monster");
+  monstersElements.forEach((monster) => {
+    monster.remove();
+  });
+};
+const clearMonsterSelection = () => {
+  const monsterSelection = document.querySelectorAll(".monster-selected");
+  monsterSelection.forEach((monster) => {
+  monster.classList.remove("monster-selected");
+  });
+};
+/* TROUVER Monstre */
+const findNearMonster = (monsterList) => {
+  const nearMonsterIndex = monsterList.findIndex((monster) => {
+    return isNearPlayer(monster);
+  });
+  return nearMonsterIndex;
+};
+
+const findMonsterById = (monsterId) => {
+  const monster = monsters.find((monster) => {
+    return monsterId === monster.id;
+  });
+  return monster;
+};
+
+const selectMonsterElement = (monsterId) => {
+  const monsterElement = document.querySelector(
+    `.monster[data-monster-id="${monsterId}"]`,
+  );
+  if (monsterElement) {
+    monsterElement.classList.add("monster-selected");
+  }
+};
 
 /* console log */
 console.log(gameMap);
