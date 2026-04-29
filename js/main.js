@@ -116,6 +116,7 @@ const renderWorldItems = (items) => {
     const div = document.createElement("div");
     const item = items[i];
     div.classList.add("world-item");
+    div.style.backgroundImage = `url("../images/items/${item.name}.png")`;
     div.setAttribute("data-item-id", item.id);
     div.style.left = `${item.x}px`;
     div.style.top = `${item.y}px`;
@@ -130,7 +131,6 @@ const addWorldItem = (worldItem) => {
 
 addWorldItem(createWorldItem("Apple", "food", 3, 128, 64));
 addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
-addWorldItem(createCorpse("Rat Corpse", 224, 128));
 
 /* Mouvement */
 const updatePlayerPosition = () => {
@@ -310,9 +310,13 @@ const renderMonsters = (monstersList) => {
     const div = document.createElement("div");
     const monster = monstersList[i];
     div.classList.add("monster");
+    div.style.backgroundImage = `url("../images/monstres/${monster.name}.png")`;
     if (monster.id === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
+    const monsterName = document.createElement("div");
+    monsterName.classList.add("name");
+    monsterName.textContent = `${monster.name}`;
     const hpContainer = document.createElement("div");
     hpContainer.classList.add("hp-bar");
     const hpRed = document.createElement("div");
@@ -332,13 +336,28 @@ const renderMonsters = (monstersList) => {
     div.style.left = `${monster.x}px`;
     div.style.top = `${monster.y}px`;
     hpContainer.appendChild(hpRed);
-    div.appendChild(hpContainer);
+    div.appendChild(monsterName);
+    div.appendChild(hpContainer);    
     game.appendChild(div);
   }
 };
 renderMonsters(monsters);
 
 /* CLEAR MONSTER */
+const removeMonster = (monsterId) => {
+  const monsterElement = document.querySelector(
+    `.monster[data-monster-id="${monsterId}"]`,
+  );
+  if (monsterElement) {
+    monsterElement.remove();
+  }
+  const monsterIndex = monsters.findIndex((monster) => {
+    return monsterId === monster.id;
+  });
+
+  const removedMonster = monsters.splice(monsterIndex, 1);
+};
+
 const clearMonsters = () => {
   const monstersElements = document.querySelectorAll(".monster");
   monstersElements.forEach((monster) => {
@@ -380,16 +399,23 @@ const hpRefresh = (monster) => {
   const monsterHp = document.querySelector(
     `.hp-red[data-monster-id="${monster.id}"]`,
   );
-  monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+  if (monsterHp) {
+    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+  }
 };
 /* ATTAQUER */
 const attackMonster = (monster) => {
   monster.hp -= getRandomInt(1, playerState.damage);
   if (monster.hp <= 0) {
     monster.hp = 0;
+    console.log(`${monster.name} est mort`);
   }
   hpRefresh(monster);
   console.log(monster.hp);
+};
+/* mort du monstre */
+const deadMonster = (monster) => {
+  addWorldItem(createCorpse(monster.name, monster.x, monster.y));
 };
 
 /* console log */
