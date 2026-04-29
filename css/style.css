@@ -102,7 +102,7 @@ main {
 #player {
   position: absolute;
   width: 32px;
-  height: 32px;
+  height: 64px;
   z-index: 10;
   transition: 0.5s;
 }
@@ -221,15 +221,15 @@ main {
 
 .name {
   position: absolute;
-  top: -30px;
-  left: 0;
-  width: 100%;
+  top: -26px;
   height: 5px;
-  text-align: center;
   color: rgb(60, 255, 0);
-  font-family: "Cinzel", serif;
-  font-size: 12px;
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.7px;
   text-shadow: 1px 1px 2px black;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }

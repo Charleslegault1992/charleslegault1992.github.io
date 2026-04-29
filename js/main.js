@@ -57,6 +57,14 @@ const playerState = {
     },
   ],
 };
+const createPlayerName = (name) => {
+  const playerName = document.createElement("div");
+  playerName.classList.add("name");
+  playerName.textContent = `${name}`;
+  player.appendChild(playerName)
+};
+
+createPlayerName(playerState.name);
 
 /* BLOQUER CLIC DROIT DANS LE JEUX */
 boiteJeux.addEventListener("contextmenu", (e) => {
@@ -135,7 +143,7 @@ addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
 /* Mouvement */
 const updatePlayerPosition = () => {
   player.style.left = `${playerState.x}px`;
-  player.style.top = `${playerState.y}px`;
+  player.style.top = `${playerState.y-32}px`;
 };
 updatePlayerPosition();
 
@@ -210,8 +218,8 @@ updatePlayerStats();
 
 /* NEAR PLAYER */
 const isNearPlayer = (target) => {
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
+  const playerCol = (playerState.x) / TILE_SIZE;
+  const playerRow = (playerState.y) / TILE_SIZE;
   const targetCol = target.x / TILE_SIZE;
   const targetRow = target.y / TILE_SIZE;
 
@@ -337,7 +345,7 @@ const renderMonsters = (monstersList) => {
     div.style.top = `${monster.y}px`;
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterName);
-    div.appendChild(hpContainer);    
+    div.appendChild(hpContainer);
     game.appendChild(div);
   }
 };
@@ -354,8 +362,9 @@ const removeMonster = (monsterId) => {
   const monsterIndex = monsters.findIndex((monster) => {
     return monsterId === monster.id;
   });
-
+    if (monsterIndex != -1) {
   const removedMonster = monsters.splice(monsterIndex, 1);
+    }
 };
 
 const clearMonsters = () => {
