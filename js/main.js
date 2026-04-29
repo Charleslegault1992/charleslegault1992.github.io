@@ -363,7 +363,7 @@ const removeMonster = (monsterId) => {
     return monsterId === monster.id;
   });
   if (monsterIndex != -1) {
-    const removedMonster = monsters.splice(monsterIndex, 1);
+    monsters.splice(monsterIndex, 1);
   }
 };
 
