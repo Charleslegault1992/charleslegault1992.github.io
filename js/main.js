@@ -31,7 +31,7 @@ const playerState = {
   level: 1,
   experience: 0,
   gold: 0,
-  damage: 5,
+  damage: 9,
   magicSkill: 0,
   swordSkill: 1,
   maceSkill: 1,
@@ -61,7 +61,7 @@ const createPlayerName = (name) => {
   const playerName = document.createElement("div");
   playerName.classList.add("name");
   playerName.textContent = `${name}`;
-  player.appendChild(playerName)
+  player.appendChild(playerName);
 };
 
 createPlayerName(playerState.name);
@@ -124,7 +124,7 @@ const renderWorldItems = (items) => {
     const div = document.createElement("div");
     const item = items[i];
     div.classList.add("world-item");
-    div.style.backgroundImage = `url("../images/items/${item.name}.png")`;
+    div.style.backgroundImage = `url("../images/items/${item.name.toLowerCase().replaceAll(" ", "-")}.png")`;
     div.setAttribute("data-item-id", item.id);
     div.style.left = `${item.x}px`;
     div.style.top = `${item.y}px`;
@@ -143,7 +143,7 @@ addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
 /* Mouvement */
 const updatePlayerPosition = () => {
   player.style.left = `${playerState.x}px`;
-  player.style.top = `${playerState.y-32}px`;
+  player.style.top = `${playerState.y - 32}px`;
 };
 updatePlayerPosition();
 
@@ -218,8 +218,8 @@ updatePlayerStats();
 
 /* NEAR PLAYER */
 const isNearPlayer = (target) => {
-  const playerCol = (playerState.x) / TILE_SIZE;
-  const playerRow = (playerState.y) / TILE_SIZE;
+  const playerCol = playerState.x / TILE_SIZE;
+  const playerRow = playerState.y / TILE_SIZE;
   const targetCol = target.x / TILE_SIZE;
   const targetRow = target.y / TILE_SIZE;
 
@@ -318,7 +318,7 @@ const renderMonsters = (monstersList) => {
     const div = document.createElement("div");
     const monster = monstersList[i];
     div.classList.add("monster");
-    div.style.backgroundImage = `url("../images/monstres/${monster.name}.png")`;
+    div.style.backgroundImage = `url("../images/monstres/${monster.name.toLowerCase().replaceAll(" ", "-")}.png")`;
     if (monster.id === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
@@ -362,9 +362,9 @@ const removeMonster = (monsterId) => {
   const monsterIndex = monsters.findIndex((monster) => {
     return monsterId === monster.id;
   });
-    if (monsterIndex != -1) {
-  const removedMonster = monsters.splice(monsterIndex, 1);
-    }
+  if (monsterIndex != -1) {
+    const removedMonster = monsters.splice(monsterIndex, 1);
+  }
 };
 
 const clearMonsters = () => {
@@ -379,6 +379,14 @@ const clearMonsterSelection = () => {
     monster.classList.remove("monster-selected");
   });
 };
+
+/* mort du monstre */
+const deadMonster = (monster) => {
+  addWorldItem(createCorpse(`${monster.name} Corpse`, monster.x, monster.y));
+  removeMonster(monster.id);
+  selectedMonsterId = null;
+};
+
 /* TROUVER Monstre */
 const findNearMonster = (monsterList) => {
   const nearMonsterIndex = monsterList.findIndex((monster) => {
@@ -403,6 +411,19 @@ const selectMonsterElement = (monsterId) => {
   }
 };
 
+/* ATTAQUER */
+const attackMonster = (monster) => {
+  monster.hp -= getRandomInt(1, playerState.damage);
+  if (monster.hp <= 0) {
+    monster.hp = 0;
+    hpRefresh(monster);
+    deadMonster(monster);
+    return;
+  }
+  hpRefresh(monster);
+  console.log(monster.hp);
+};
+
 /* REFRESH HP */
 const hpRefresh = (monster) => {
   const monsterHp = document.querySelector(
@@ -411,20 +432,6 @@ const hpRefresh = (monster) => {
   if (monsterHp) {
     monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
   }
-};
-/* ATTAQUER */
-const attackMonster = (monster) => {
-  monster.hp -= getRandomInt(1, playerState.damage);
-  if (monster.hp <= 0) {
-    monster.hp = 0;
-    console.log(`${monster.name} est mort`);
-  }
-  hpRefresh(monster);
-  console.log(monster.hp);
-};
-/* mort du monstre */
-const deadMonster = (monster) => {
-  addWorldItem(createCorpse(monster.name, monster.x, monster.y));
 };
 
 /* console log */
