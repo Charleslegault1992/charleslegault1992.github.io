@@ -20,6 +20,13 @@ let nextWorldItemId = 1;
 let nextMonsterId = 1;
 let selectedMonsterId = null;
 const worldItems = [];
+/* TIMING */
+const GAME_LOOP_MS = 10;
+let PLAYER_ATTACK_COOLDOWN_MS = 1000;
+let PLAYER_MOVE_COOLDOWN_MS = 200;
+let nextPlayerMoveTime = 0;
+let nextPlayerAttackTime = 0;
+let nextMonsterAttackTime = 0;
 
 /* Creation du joueur */
 const playerState = {
@@ -39,6 +46,7 @@ const playerState = {
   distanceSkill: 1,
   shieldSkill: 1,
   weight: 400,
+  speed: 1,
   inventory: [
     {
       name: "Sword",
@@ -270,30 +278,86 @@ const handleInteraction = () => {
 /* Attribution des touches */
 document.addEventListener("keydown", (e) => {
   e.preventDefault();
+  if (e.repeat) {
+    return;
+  }
   if (e.key === "e") {
     handleInteraction();
     return;
   }
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = true;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = true;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = true;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = true;
+  } else {
+    return;
+  }
+});
 
+document.addEventListener("keyup", (e) => {
+  e.preventDefault();
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = false;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = false;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = false;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = false;
+  } else {
+    return;
+  }
+});
+
+const getWantedDirection = () => {
+  if (keysPressed.right) {
+    return "right";
+  } else if (keysPressed.left) {
+    return "left";
+  } else if (keysPressed.up) {
+    return "up";
+  } else if (keysPressed.down) {
+    return "down";
+  } else {
+    return;
+  }
+};
+
+const updateMovement = () => {
+  const direction = getWantedDirection();
+  if (!direction) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now < nextPlayerMoveTime) {
+    return;
+  }
   let nextX = playerState.x;
   let nextY = playerState.y;
-  if (e.key === "ArrowRight" || e.key === "d") {
+  if (direction === "right") {
     nextX += MOVE_SPEED;
-  } else if (e.key === "ArrowLeft" || e.key === "a") {
+  } else if (direction === "left") {
     nextX -= MOVE_SPEED;
-  } else if (e.key === "ArrowUp" || e.key === "w") {
+  } else if (direction === "up") {
     nextY -= MOVE_SPEED;
-  } else if (e.key === "ArrowDown" || e.key === "s") {
+  } else if (direction === "down") {
     nextY += MOVE_SPEED;
   } else {
     return;
   }
+
   if (canMoveTo(nextX, nextY)) {
     playerState.x = nextX;
     playerState.y = nextY;
   }
   updatePlayerPosition();
-});
+  nextPlayerMoveTime = now + PLAYER_MOVE_COOLDOWN_MS;
+};
 
 /* Monstre */
 const monsters = [];
@@ -339,7 +403,6 @@ const renderMonsters = (monstersList) => {
       }
       selectedMonsterId = monster.id;
       selectMonsterElement(selectedMonsterId);
-      attackMonster(monster);
     });
     div.style.left = `${monster.x}px`;
     div.style.top = `${monster.y}px`;
@@ -423,6 +486,24 @@ const attackMonster = (monster) => {
   hpRefresh(monster);
   console.log(monster.hp);
 };
+const updateCombat = () => {
+  if (selectedMonsterId === null) {
+    return;
+  }
+  const monster = findMonsterById(selectedMonsterId);
+  if (!monster) {
+    return;
+  }
+  if (!isNearPlayer(monster)) {
+    return;
+  }
+  const now = Date.now();
+  if (now < nextPlayerAttackTime) {
+    return;
+  }
+  attackMonster(monster);
+  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+};
 
 /* REFRESH HP */
 const hpRefresh = (monster) => {
@@ -433,6 +514,22 @@ const hpRefresh = (monster) => {
     monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
   }
 };
+
+/* Keypressed */
+const keysPressed = {
+  right: false,
+  left: false,
+  up: false,
+  down: false,
+};
+
+/* GAME LOOP */
+const gameLoop = () => {
+  updateMovement();
+  updateCombat();
+};
+
+setInterval(gameLoop, GAME_LOOP_MS);
 
 /* console log */
 console.log(gameMap);
