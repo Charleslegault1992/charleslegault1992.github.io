@@ -62,7 +62,7 @@ const playerState = {
   x: 64,
   y: 64,
   name: "Charles",
-  hp: 10,
+  hp: 25,
   maxHp: 10,
   level: 0,
   experience: 0,
