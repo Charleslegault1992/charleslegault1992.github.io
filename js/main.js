@@ -1,4 +1,7 @@
-/* Éléments HTML */
+/* =====================================================
+   ELEMENTS HTML
+===================================================== */
+
 const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
 const player = document.querySelector("#player");
@@ -6,7 +9,10 @@ const game = document.querySelector("#game");
 const boiteJeux = document.querySelector("#boite-jeux");
 const monsterHp = 10;
 
-/* CONSTANTE DE JEUX */
+/* =====================================================
+    VARIABLES GLOBALES
+===================================================== */
+
 const GAME_WIDTH = 640;
 const GAME_HEIGHT = 480;
 const PLAYER_SIZE = 32;
@@ -14,24 +20,44 @@ const TILE_SIZE = 32;
 const MOVE_SPEED = TILE_SIZE;
 const MAP_COLS = GAME_WIDTH / TILE_SIZE;
 const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
+
 const FLOOR = 0;
 const WALL = 1;
+
 let nextWorldItemId = 1;
 let nextMonsterId = 1;
 let selectedMonsterId = null;
+
 const worldItems = [];
-/* TIMING */
+const monsters = [];
+
+/* =====================================================
+   TIMING
+===================================================== */
+
 const GAME_LOOP_MS = 10;
+
 let PLAYER_ATTACK_COOLDOWN_MS = 1000;
 let PLAYER_MOVE_COOLDOWN_MS = 200;
+
 let nextPlayerMoveTime = 0;
 let nextPlayerAttackTime = 0;
 let nextMonsterAttackTime = 0;
+
+const MONSTER_ATTACK_COOLDOWN_MS = 1500;
+
+/* =====================================================
+   SPRITE JOUEUR
+===================================================== */
+
 const PLAYER_FRAME_WIDTH = 32;
 const PLAYER_FRAME_HEIGHT = 64;
 const PLAYER_ANIMATION_FRAMES = 3;
 
-/* Creation du joueur */
+/* =====================================================
+   JOUEUR
+===================================================== */
+
 const playerState = {
   x: 64,
   y: 64,
@@ -70,14 +96,13 @@ const playerState = {
     },
   ],
 };
+
 const showPlayerName = (name) => {
   const playerName = document.createElement("div");
   playerName.classList.add("name");
   playerName.textContent = `${name}`;
   player.appendChild(playerName);
 };
-
-showPlayerName(playerState.name);
 
 const getDirectionRow = (playerDirection) => {
   if (playerDirection === "down") {
@@ -91,6 +116,7 @@ const getDirectionRow = (playerDirection) => {
   }
   return 0;
 };
+
 const updatePlayerSprite = () => {
   const colonne = playerState.walkFrame;
   const ligne = getDirectionRow(playerState.direction);
@@ -98,12 +124,17 @@ const updatePlayerSprite = () => {
   const y = -ligne * PLAYER_FRAME_HEIGHT;
   player.style.backgroundPosition = `${x}px ${y}px`;
 };
-updatePlayerSprite();
-/* BLOQUER CLIC DROIT DANS LE JEUX */
-boiteJeux.addEventListener("contextmenu", (e) => {
-  e.preventDefault();
-});
-/* MAP */
+
+const updatePlayerPosition = () => {
+  player.style.left = `${playerState.x}px`;
+  player.style.top = `${playerState.y - 32}px`;
+  player.style.zIndex = playerState.y;
+};
+
+/* =====================================================
+   MAP
+===================================================== */
+
 const gameMap = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
@@ -122,13 +153,67 @@ const gameMap = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-/* --------- Fonction -------- */
-/* RANDOM NUMBER */
-function getRandomInt(min, max) {
+const renderMap = (map) => {
+  for (let row = 0; row < map.length; row++) {
+    for (let col = 0; col < map[row].length; col++) {
+      const tileValue = map[row][col];
+      const div = document.createElement("div");
+      div.classList.add("tile");
+      if (tileValue === FLOOR) {
+        div.classList.add("floor");
+      } else if (tileValue === WALL) {
+        div.classList.add("wall");
+      }
+      div.style.left = `${col * TILE_SIZE}px`;
+      div.style.top = `${row * TILE_SIZE}px`;
+      game.appendChild(div);
+    }
+  }
+};
+
+const isInsideMap = (testX, testY) => {
+  return (
+    testX >= 0 &&
+    testX <= GAME_WIDTH - PLAYER_SIZE &&
+    testY >= 0 &&
+    testY <= GAME_HEIGHT - PLAYER_SIZE
+  );
+};
+
+const canMoveTo = (testX, testY) => {
+  if (!isInsideMap(testX, testY)) {
+    return false;
+  }
+  const nextCol = testX / TILE_SIZE;
+  const nextRow = testY / TILE_SIZE;
+  const nextTile = gameMap[nextRow][nextCol];
+  return nextTile === FLOOR;
+};
+
+/* =====================================================
+   OUTILS / HELPERS
+===================================================== */
+
+getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-/* WORLD ITEMS */
-const createWorldItem = (name, type, quantity, x, y) => {
+};
+
+const isNearPlayer = (target) => {
+  const playerCol = playerState.x / TILE_SIZE;
+  const playerRow = playerState.y / TILE_SIZE;
+  const targetCol = target.x / TILE_SIZE;
+  const targetRow = target.y / TILE_SIZE;
+
+  return (
+    Math.abs(playerCol - targetCol) <= 1 && Math.abs(playerRow - targetRow) <= 1
+  );
+};
+
+/* =====================================================
+   WORLD ITEMS
+===================================================== */
+
+const createWorldItem = (name, type, quantity, x, y, blockMovement, isTall) => {
   const worldItem = {
     name,
     type,
@@ -136,6 +221,8 @@ const createWorldItem = (name, type, quantity, x, y) => {
     x,
     y,
     id: nextWorldItemId++,
+    blockMovement,
+    isTall,
   };
   return worldItem;
 };
@@ -159,8 +246,19 @@ const renderWorldItems = (items) => {
     div.classList.add("world-item");
     div.style.backgroundImage = `url("../images/items/${item.name.toLowerCase().replaceAll(" ", "-")}.png")`;
     div.setAttribute("data-item-id", item.id);
-    div.style.left = `${item.x}px`;
-    div.style.top = `${item.y}px`;
+
+    div.style.zIndex = item.y - 1;
+    if (item.isTall) {
+      div.style.left = `${item.x}px`;
+      div.style.top = `${item.y - 32}px`;
+      div.style.zIndex = item.y;
+      div.style.height = "64px";
+    } else {
+      div.style.left = `${item.x}px`;
+      div.style.top = `${item.y}px`;
+      div.style.zIndex = item.y - 1;
+      div.style.height = "32px";
+    }
     game.appendChild(div);
   }
 };
@@ -170,118 +268,16 @@ const addWorldItem = (worldItem) => {
   renderWorldItems([worldItem]);
 };
 
-addWorldItem(createWorldItem("Apple", "food", 3, 128, 64));
-addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
-
-/* Mouvement */
-const updatePlayerPosition = () => {
-  player.style.left = `${playerState.x}px`;
-  player.style.top = `${playerState.y - 32}px`;
-  player.style.zIndex = playerState.y;
-};
-updatePlayerPosition();
-
-const isInsideMap = (testX, testY) => {
-  return (
-    testX >= 0 &&
-    testX <= GAME_WIDTH - PLAYER_SIZE &&
-    testY >= 0 &&
-    testY <= GAME_HEIGHT - PLAYER_SIZE
-  );
-};
-
-const getPlayerMoveCooldown = () => {
-  if (playerState.level < 100) {
-    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
-  } else {
-    return (
-      PLAYER_MOVE_COOLDOWN_MS -
-      100 -
-      (playerState.level - 100) / 2 -
-      playerState.speed
-    );
-  }
-};
-
-const isMonsterAtPosition = (x, y) => {
-  return monsters.some((monster) => {
-    return monster.x === x && monster.y === y;
+const isBlockingItemAtPosition = (x, y) => {
+  return worldItems.some((item) => {
+    return item.blockMovement && item.x === x && item.y === y;
   });
 };
 
-const canMoveTo = (testX, testY) => {
-  if (!isInsideMap(testX, testY)) {
-    return false;
-  }
-  const nextCol = testX / TILE_SIZE;
-  const nextRow = testY / TILE_SIZE;
-  const nextTile = gameMap[nextRow][nextCol];
-  return nextTile === FLOOR;
-};
+/* =====================================================
+   INVENTAIRE ET INTERACTIONS
+===================================================== */
 
-/* RENDER MAP*/
-const renderMap = (map) => {
-  for (let row = 0; row < map.length; row++) {
-    for (let col = 0; col < map[row].length; col++) {
-      const tileValue = map[row][col];
-      const div = document.createElement("div");
-      div.classList.add("tile");
-      if (tileValue === FLOOR) {
-        div.classList.add("floor");
-      } else if (tileValue === WALL) {
-        div.classList.add("wall");
-      }
-      div.style.left = `${col * TILE_SIZE}px`;
-      div.style.top = `${row * TILE_SIZE}px`;
-      game.appendChild(div);
-    }
-  }
-};
-renderMap(gameMap);
-
-/* UI */
-const updatePlayerInventory = () => {
-  let html = `<div class="boite-boite">
-                <div class="boite-jeux-titre">Inventory</div>`;
-  playerState.inventory.forEach((item) => {
-    html += `<div class="boite-row"><span class="item-name">${item.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
-  });
-  html += `</div>`;
-  playerInventory.innerHTML = html;
-};
-updatePlayerInventory();
-
-const updatePlayerStats = () => {
-  playerStats.innerHTML = `<div class="boite-boite">
-                              <div class="boite-jeux-titre">Stats</div>
-                              <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
-                              <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
-                              <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
-                              <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
-                              <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
-                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
-                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
-                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
-                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
-                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
-                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
-                            </div>`;
-};
-updatePlayerStats();
-
-/* NEAR PLAYER */
-const isNearPlayer = (target) => {
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
-  const targetCol = target.x / TILE_SIZE;
-  const targetRow = target.y / TILE_SIZE;
-
-  return (
-    Math.abs(playerCol - targetCol) <= 1 && Math.abs(playerRow - targetRow) <= 1
-  );
-};
-
-/* INTERACTION RAMASSER */
 const addItemToInventory = (itemToAdd) => {
   const inventoryItem = {
     name: itemToAdd.name,
@@ -320,43 +316,69 @@ const handleInteraction = () => {
   }
 };
 
-/* Attribution des touches */
-document.addEventListener("keydown", (e) => {
-  e.preventDefault();
-  if (e.repeat) {
-    return;
-  }
-  if (e.key === "e") {
-    handleInteraction();
-    return;
-  }
-  if (e.key === "ArrowRight" || e.key === "d") {
-    keysPressed.right = true;
-  } else if (e.key === "ArrowLeft" || e.key === "a") {
-    keysPressed.left = true;
-  } else if (e.key === "ArrowUp" || e.key === "w") {
-    keysPressed.up = true;
-  } else if (e.key === "ArrowDown" || e.key === "s") {
-    keysPressed.down = true;
-  } else {
-    return;
-  }
-});
+/* =====================================================
+   UI
+===================================================== */
 
-document.addEventListener("keyup", (e) => {
-  e.preventDefault();
-  if (e.key === "ArrowRight" || e.key === "d") {
-    keysPressed.right = false;
-  } else if (e.key === "ArrowLeft" || e.key === "a") {
-    keysPressed.left = false;
-  } else if (e.key === "ArrowUp" || e.key === "w") {
-    keysPressed.up = false;
-  } else if (e.key === "ArrowDown" || e.key === "s") {
-    keysPressed.down = false;
-  } else {
-    return;
+const updatePlayerInventory = () => {
+  let html = `<div class="boite-boite">
+                <div class="boite-jeux-titre">Inventory</div>`;
+  playerState.inventory.forEach((item) => {
+    html += `<div class="boite-row"><span class="item-name">${item.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
+  });
+  html += `</div>`;
+  playerInventory.innerHTML = html;
+};
+
+const updatePlayerStats = () => {
+  playerStats.innerHTML = `<div class="boite-boite">
+                              <div class="boite-jeux-titre">Stats</div>
+                              <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
+                              <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
+                              <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
+                              <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
+                              <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
+                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
+                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
+                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
+                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
+                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
+                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
+                            </div>`;
+};
+
+const hpRefresh = (monster) => {
+  const monsterHp = document.querySelector(
+    `.hp-red[data-monster-id="${monster.id}"]`,
+  );
+  if (monsterHp) {
+    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
   }
-});
+};
+
+/* =====================================================
+   MOUVEMENT
+===================================================== */
+
+const keysPressed = {
+  right: false,
+  left: false,
+  up: false,
+  down: false,
+};
+
+const getPlayerMoveCooldown = () => {
+  if (playerState.level < 100) {
+    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
+  } else {
+    return (
+      PLAYER_MOVE_COOLDOWN_MS -
+      100 -
+      (playerState.level - 100) / 2 -
+      playerState.speed
+    );
+  }
+};
 
 const getWantedDirection = () => {
   if (keysPressed.right) {
@@ -398,7 +420,11 @@ const updateMovement = () => {
     return;
   }
 
-  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY)) {
+  if (
+    canMoveTo(nextX, nextY) &&
+    !isMonsterAtPosition(nextX, nextY) &&
+    !isBlockingItemAtPosition(nextX, nextY)
+  ) {
     playerState.x = nextX;
     playerState.y = nextY;
     playerState.direction = direction;
@@ -412,8 +438,51 @@ const updateMovement = () => {
   nextPlayerMoveTime = now + getPlayerMoveCooldown();
 };
 
-/* Monstre */
-const monsters = [];
+/* =====================================================
+   INPUTS
+===================================================== */
+
+document.addEventListener("keydown", (e) => {
+  e.preventDefault();
+  if (e.repeat) {
+    return;
+  }
+  if (e.key === "e") {
+    handleInteraction();
+    return;
+  }
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = true;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = true;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = true;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = true;
+  } else {
+    return;
+  }
+});
+
+document.addEventListener("keyup", (e) => {
+  e.preventDefault();
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = false;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = false;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = false;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = false;
+  } else {
+    return;
+  }
+});
+
+/* =====================================================
+   MONSTRES
+===================================================== */
+
 const createMonster = (name, x, y, hp) => {
   const monster = {
     name,
@@ -426,10 +495,6 @@ const createMonster = (name, x, y, hp) => {
   return monster;
 };
 
-monsters.push(createMonster("Rat", 320, 192, 20));
-monsters.push(createMonster("Rat", 64, 192, 20));
-
-/* RENDER MONSTER */
 const renderMonsters = (monstersList) => {
   for (let i = 0; i < monstersList.length; i++) {
     const div = document.createElement("div");
@@ -466,9 +531,13 @@ const renderMonsters = (monstersList) => {
     game.appendChild(div);
   }
 };
-renderMonsters(monsters);
 
-/* CLEAR MONSTER */
+const isMonsterAtPosition = (x, y) => {
+  return monsters.some((monster) => {
+    return monster.x === x && monster.y === y;
+  });
+};
+
 const removeMonster = (monsterId) => {
   const monsterElement = document.querySelector(
     `.monster[data-monster-id="${monsterId}"]`,
@@ -490,6 +559,7 @@ const clearMonsters = () => {
     monster.remove();
   });
 };
+
 const clearMonsterSelection = () => {
   const monsterSelection = document.querySelectorAll(".monster-selected");
   monsterSelection.forEach((monster) => {
@@ -497,14 +567,12 @@ const clearMonsterSelection = () => {
   });
 };
 
-/* mort du monstre */
 const deadMonster = (monster) => {
   addWorldItem(createCorpse(`${monster.name} Corpse`, monster.x, monster.y));
   removeMonster(monster.id);
   selectedMonsterId = null;
 };
 
-/* TROUVER Monstre */
 const findNearMonster = (monsterList) => {
   const nearMonsterIndex = monsterList.findIndex((monster) => {
     return isNearPlayer(monster);
@@ -528,7 +596,10 @@ const selectMonsterElement = (monsterId) => {
   }
 };
 
-/* ATTAQUER */
+/* =====================================================
+   COMBAT
+===================================================== */
+
 const attackMonster = (monster) => {
   monster.hp -= getRandomInt(1, playerState.damage);
   if (monster.hp <= 0) {
@@ -540,6 +611,7 @@ const attackMonster = (monster) => {
   hpRefresh(monster);
   console.log(monster.hp);
 };
+
 const updateCombat = () => {
   if (selectedMonsterId === null) {
     return;
@@ -559,25 +631,18 @@ const updateCombat = () => {
   nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
 };
 
-/* REFRESH HP */
-const hpRefresh = (monster) => {
-  const monsterHp = document.querySelector(
-    `.hp-red[data-monster-id="${monster.id}"]`,
-  );
-  if (monsterHp) {
-    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
-  }
-};
+/* =====================================================
+   EVENTS DU JEU
+===================================================== */
 
-/* Keypressed */
-const keysPressed = {
-  right: false,
-  left: false,
-  up: false,
-  down: false,
-};
+boiteJeux.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+});
 
-/* GAME LOOP */
+/* =====================================================
+   GAME LOOP
+===================================================== */
+
 const gameLoop = () => {
   updateMovement();
   updateCombat();
@@ -585,9 +650,33 @@ const gameLoop = () => {
 
 setInterval(gameLoop, GAME_LOOP_MS);
 
-/* console log */
+/* =====================================================
+   INITIALISATION DU JEU
+===================================================== */
+
+showPlayerName(playerState.name);
+updatePlayerSprite();
+updatePlayerPosition();
+
+renderMap(gameMap);
+
+updatePlayerInventory();
+updatePlayerStats();
+
+addWorldItem(createWorldItem("Apple", "food", 3, 64, 288, false, false));
+addWorldItem(
+  createWorldItem("Health Potion", "consumable", 1, 512, 224, false, false),
+);
+addWorldItem(createWorldItem("Box", "container", 1, 64, 256, true, true));
+
+monsters.push(createMonster("Rat", 512, 192, 20));
+monsters.push(createMonster("Rat", 448, 384, 20));
+renderMonsters(monsters);
+
+/* =====================================================
+   CONSOLE LOG
+===================================================== */
+
 console.log(gameMap);
 console.log(player);
 console.log(`Map = ${MAP_COLS} colonnes X ${MAP_ROWS} lignes`);
-
-/* TEST */
