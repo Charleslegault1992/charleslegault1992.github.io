@@ -62,9 +62,9 @@ const playerState = {
   x: 64,
   y: 64,
   name: "Charles",
-  hp: 100,
-  maxHp: 100,
-  level: 1,
+  hp: 10,
+  maxHp: 10,
+  level: 0,
   experience: 0,
   gold: 0,
   damage: 9,
@@ -131,6 +131,24 @@ const updatePlayerPosition = () => {
   player.style.zIndex = playerState.y;
 };
 
+const hpRefresh = () => {
+  const playerHp = document.querySelector(".php-red");
+  if (playerHp) {
+    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
+  }
+};
+const playerDead = () => {
+  playerState.experience = Math.floor(playerState.experience * 0.9);
+  if (playerState.experience < 0) {
+    playerState.experience = 0;
+  }
+  playerState.hp = playerState.maxHp;
+  playerState.x = 64;
+  playerState.y = 64;
+  updatePlayerPosition();
+  updatePlayerExperience();
+  hpRefresh();
+};
 /* =====================================================
    MAP
 ===================================================== */
@@ -194,7 +212,7 @@ const canMoveTo = (testX, testY) => {
    OUTILS / HELPERS
 ===================================================== */
 
-getRandomInt = (min, max) => {
+const getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
@@ -347,15 +365,12 @@ const updatePlayerStats = () => {
                             </div>`;
 };
 
-const hpRefresh = (monster) => {
-  const monsterHp = document.querySelector(
-    `.hp-red[data-monster-id="${monster.id}"]`,
-  );
-  if (monsterHp) {
-    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
-  }
+const updatePlayerExperience = () => {
+  const EXP_PER_LEVEL = 100;
+  playerState.level = Math.floor(playerState.experience / EXP_PER_LEVEL);
+  const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
+  updatePlayerStats();
 };
-
 /* =====================================================
    MOUVEMENT
 ===================================================== */
@@ -482,14 +497,23 @@ document.addEventListener("keyup", (e) => {
 /* =====================================================
    MONSTRES
 ===================================================== */
-
-const createMonster = (name, x, y, hp) => {
+const MonsterHpRefresh = (monster) => {
+  const monsterHp = document.querySelector(
+    `.hp-red[data-monster-id="${monster.id}"]`,
+  );
+  if (monsterHp) {
+    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+  }
+};
+const createMonster = (name, x, y, maxHp, damage, experience) => {
   const monster = {
     name,
     x,
     y,
-    hp,
-    maxHp: hp,
+    hp: maxHp,
+    maxHp,
+    damage,
+    experience,
     id: nextMonsterId++,
   };
   return monster;
@@ -595,6 +619,27 @@ const selectMonsterElement = (monsterId) => {
     monsterElement.classList.add("monster-selected");
   }
 };
+const updateMonsterCombat = () => {
+  monsters.forEach((monster) => {
+    if (isNearPlayer(monster)) {
+      const now = Date.now();
+      if (now < nextMonsterAttackTime) {
+        return;
+      }
+      nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
+      playerState.hp -= getRandomInt(1, monster.damage);
+      updatePlayerStats();
+      hpRefresh();
+      console.log(`hp : ${playerState.hp}`);
+      if (playerState.hp <= 0) {
+        playerState.hp = 0;
+        hpRefresh();
+        playerDead();
+      }
+      return;
+    }
+  });
+};
 
 /* =====================================================
    COMBAT
@@ -604,12 +649,13 @@ const attackMonster = (monster) => {
   monster.hp -= getRandomInt(1, playerState.damage);
   if (monster.hp <= 0) {
     monster.hp = 0;
-    hpRefresh(monster);
+    MonsterHpRefresh(monster);
     deadMonster(monster);
+    playerState.experience += monster.experience;
+    updatePlayerExperience();
     return;
   }
-  hpRefresh(monster);
-  console.log(monster.hp);
+  MonsterHpRefresh(monster);
 };
 
 const updateCombat = () => {
@@ -646,6 +692,7 @@ boiteJeux.addEventListener("contextmenu", (e) => {
 const gameLoop = () => {
   updateMovement();
   updateCombat();
+  updateMonsterCombat();
 };
 
 setInterval(gameLoop, GAME_LOOP_MS);
@@ -669,8 +716,8 @@ addWorldItem(
 );
 addWorldItem(createWorldItem("Box", "container", 1, 64, 256, true, true));
 
-monsters.push(createMonster("Rat", 512, 192, 20));
-monsters.push(createMonster("Rat", 448, 384, 20));
+monsters.push(createMonster("Rat", 512, 192, 20, 4, 50));
+monsters.push(createMonster("Rat", 448, 384, 20, 4, 50));
 renderMonsters(monsters);
 
 /* =====================================================
