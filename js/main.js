@@ -27,6 +27,9 @@ let PLAYER_MOVE_COOLDOWN_MS = 200;
 let nextPlayerMoveTime = 0;
 let nextPlayerAttackTime = 0;
 let nextMonsterAttackTime = 0;
+const PLAYER_FRAME_WIDTH = 32;
+const PLAYER_FRAME_HEIGHT = 64;
+const PLAYER_ANIMATION_FRAMES = 3;
 
 /* Creation du joueur */
 const playerState = {
@@ -47,6 +50,8 @@ const playerState = {
   shieldSkill: 1,
   weight: 400,
   speed: 1,
+  direction: "down",
+  walkFrame: 1,
   inventory: [
     {
       name: "Sword",
@@ -65,15 +70,35 @@ const playerState = {
     },
   ],
 };
-const createPlayerName = (name) => {
+const showPlayerName = (name) => {
   const playerName = document.createElement("div");
   playerName.classList.add("name");
   playerName.textContent = `${name}`;
   player.appendChild(playerName);
 };
 
-createPlayerName(playerState.name);
+showPlayerName(playerState.name);
 
+const getDirectionRow = (playerDirection) => {
+  if (playerDirection === "down") {
+    return 0;
+  } else if (playerDirection === "left") {
+    return 1;
+  } else if (playerDirection === "right") {
+    return 2;
+  } else if (playerDirection === "up") {
+    return 3;
+  }
+  return 0;
+};
+const updatePlayerSprite = () => {
+  const colonne = playerState.walkFrame;
+  const ligne = getDirectionRow(playerState.direction);
+  const x = -colonne * PLAYER_FRAME_WIDTH;
+  const y = -ligne * PLAYER_FRAME_HEIGHT;
+  player.style.backgroundPosition = `${x}px ${y}px`;
+};
+updatePlayerSprite();
 /* BLOQUER CLIC DROIT DANS LE JEUX */
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -164,6 +189,13 @@ const isInsideMap = (testX, testY) => {
   );
 };
 
+const getPlayerMoveCooldown = () => {
+  if (playerState.level < 100) {
+    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
+  } else {
+    return (PLAYER_MOVE_COOLDOWN_MS - 100) - ((playerState.level - 100) / 2) - playerState.speed;
+  }
+};
 const canMoveTo = (testX, testY) => {
   if (!isInsideMap(testX, testY)) {
     return false;
@@ -330,6 +362,8 @@ const getWantedDirection = () => {
 const updateMovement = () => {
   const direction = getWantedDirection();
   if (!direction) {
+    playerState.walkFrame = 1;
+    updatePlayerSprite();
     return;
   }
 
@@ -354,9 +388,15 @@ const updateMovement = () => {
   if (canMoveTo(nextX, nextY)) {
     playerState.x = nextX;
     playerState.y = nextY;
+    playerState.direction = direction;
+    playerState.walkFrame += 1;
+    if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
+      playerState.walkFrame = 0;
+    }
   }
+  updatePlayerSprite();
   updatePlayerPosition();
-  nextPlayerMoveTime = now + PLAYER_MOVE_COOLDOWN_MS;
+  nextPlayerMoveTime = now + getPlayerMoveCooldown();
 };
 
 /* Monstre */
