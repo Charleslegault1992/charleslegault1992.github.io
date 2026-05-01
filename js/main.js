@@ -62,7 +62,7 @@ const playerState = {
   x: 64,
   y: 64,
   name: "Charles",
-  hp: 10,
+  hp: 25,
   maxHp: 25,
   level: 0,
   experience: 0,
@@ -137,6 +137,7 @@ const hpRefresh = () => {
     playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
   }
 };
+
 const playerDead = () => {
   playerState.experience = Math.floor(playerState.experience * 0.9);
   if (playerState.experience < 0) {
@@ -149,6 +150,7 @@ const playerDead = () => {
   updatePlayerExperience();
   hpRefresh();
 };
+
 /* =====================================================
    MAP
 ===================================================== */
@@ -364,13 +366,14 @@ const updatePlayerStats = () => {
                               <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
                             </div>`;
 };
-
 const updatePlayerExperience = () => {
   const EXP_PER_LEVEL = 100;
   playerState.level = Math.floor(playerState.experience / EXP_PER_LEVEL);
   const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
   updatePlayerStats();
 };
+
+
 /* =====================================================
    MOUVEMENT
 ===================================================== */
