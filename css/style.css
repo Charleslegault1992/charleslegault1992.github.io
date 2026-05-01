@@ -103,7 +103,6 @@ main {
   position: absolute;
   width: 32px;
   height: 64px;
-  z-index: 10;
   transition: left 0.18s linear, top 0.18s linear;
   background-size: 96px 256px;
   background-image : url(../images/Joueurs/walkingsheet.png);
@@ -188,14 +187,14 @@ main {
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  z-index: 5;
+  z-index: 3;
 }
 
 .monster {
   position: absolute;
   width: 32px;
   height: 32px;
-  z-index: 11;
+  z-index: 2;
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;

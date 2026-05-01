@@ -177,6 +177,7 @@ addWorldItem(createWorldItem("Health Potion", "consumable", 1, 128, 256));
 const updatePlayerPosition = () => {
   player.style.left = `${playerState.x}px`;
   player.style.top = `${playerState.y - 32}px`;
+  player.style.zIndex = playerState.y;
 };
 updatePlayerPosition();
 
@@ -193,9 +194,21 @@ const getPlayerMoveCooldown = () => {
   if (playerState.level < 100) {
     return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
   } else {
-    return (PLAYER_MOVE_COOLDOWN_MS - 100) - ((playerState.level - 100) / 2) - playerState.speed;
+    return (
+      PLAYER_MOVE_COOLDOWN_MS -
+      100 -
+      (playerState.level - 100) / 2 -
+      playerState.speed
+    );
   }
 };
+
+const isMonsterAtPosition = (x, y) => {
+  return monsters.some((monster) => {
+    return monster.x === x && monster.y === y;
+  });
+};
+
 const canMoveTo = (testX, testY) => {
   if (!isInsideMap(testX, testY)) {
     return false;
@@ -385,7 +398,7 @@ const updateMovement = () => {
     return;
   }
 
-  if (canMoveTo(nextX, nextY)) {
+  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY)) {
     playerState.x = nextX;
     playerState.y = nextY;
     playerState.direction = direction;
@@ -446,6 +459,7 @@ const renderMonsters = (monstersList) => {
     });
     div.style.left = `${monster.x}px`;
     div.style.top = `${monster.y}px`;
+    div.style.zIndex = monster.y;
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterName);
     div.appendChild(hpContainer);
