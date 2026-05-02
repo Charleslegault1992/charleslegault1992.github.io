@@ -1,5 +1,7 @@
+:root {
+  --game-scale: 2;
+}
 /* NAVBAR */
-
 .logo {
   width: 35px;
   height: 35px;
@@ -73,6 +75,7 @@ main {
   max-height: 40px;
   background-color: rgb(173, 164, 164);
   width: 100%;
+  display:none;
 }
 
 .boite-titre {
@@ -82,13 +85,24 @@ main {
 }
 .titre {
   color: gold;
+  font-size:25px;
 }
 
 .boite-jeux {
   background-color: rgb(5, 5, 5);
   display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: calc(480px * var(--game-scale));
+}
+
+.boite-jeux-inner {
+  display: flex;
   justify-content: center;
   align-items: center;
+  transform-origin: top center;
+  transform: scale(var(--game-scale));
+  width: fit-content;
 }
 
 #game {
@@ -104,9 +118,11 @@ main {
   position: absolute;
   width: 32px;
   height: 64px;
-  transition: left 0.18s linear, top 0.18s linear;
+  transition:
+    left 0.18s linear,
+    top 0.18s linear;
   background-size: 96px 256px;
-  background-image : url(../images/Joueurs/walkingsheet.png);
+  background-image: url(../images/Joueurs/walkingsheet.png);
   background-repeat: no-repeat;
   image-rendering: pixelated;
 }
@@ -114,7 +130,9 @@ main {
 .world-item,
 .monster,
 #player {
-  transition: left 0.18s linear, top 0.18s linear;
+  transition:
+    left 0.18s linear,
+    top 0.18s linear;
 }
 
 #player img {
@@ -157,7 +175,7 @@ main {
   background-size: cover;
   background-repeat: no-repeat;
   height: 480px;
-  width: 288px;
+  width: 140px;
 }
 
 .boite-boite {
@@ -174,12 +192,16 @@ main {
 
 .boite-panneau {
   color: rgb(197, 184, 4);
-  font-size: large;
-  margin: 2px 20px auto;
+  font-family: Verdana, Geneva, sans-serif;
+  text-shadow: 0 0px 2px rgb(0, 0, 0);
+  font-size: 10px;
+  margin: 30px 5px auto;
   padding: 5px;
   background-color: rgb(73, 73, 73);
   border-radius: 5px;
   width: 100%;
+  border: 0px solid rgb(39, 37, 37);
+  box-shadow: 0px 0px 15px black;
 }
 
 .boite-jeux-titre {
