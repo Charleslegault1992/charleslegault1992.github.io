@@ -31,6 +31,14 @@ let selectedMonsterId = null;
 const worldItems = [];
 const monsters = [];
 
+const playerSpawnX = 13 * 32
+const playerSpawnY = 8 * 32
+
+const camera = {
+  x: 0,
+  y: 0,
+};
+
 /* =====================================================
    TIMING
 ===================================================== */
@@ -59,8 +67,8 @@ const PLAYER_ANIMATION_FRAMES = 3;
 ===================================================== */
 
 const playerState = {
-  x: 64,
-  y: 64,
+  x: playerSpawnX,
+  y: playerSpawnY,
   name: "Charles",
   hp: 25,
   maxHp: 25,
@@ -126,8 +134,8 @@ const updatePlayerSprite = () => {
 };
 
 const updatePlayerPosition = () => {
-  player.style.left = `${playerState.x}px`;
-  player.style.top = `${playerState.y - 32}px`;
+  player.style.left = `${playerState.x - camera.x}px`;
+  player.style.top = `${playerState.y - camera.y - 32}px`;
   player.style.zIndex = playerState.y;
 };
 
@@ -144,11 +152,32 @@ const playerDead = () => {
     playerState.experience = 0;
   }
   playerState.hp = playerState.maxHp;
-  playerState.x = 64;
-  playerState.y = 64;
-  updatePlayerPosition();
+  playerState.x = playerSpawnX;
+  playerState.y = playerSpawnY;
+  updateWorldPosition();
   updatePlayerExperience();
   hpRefresh();
+};
+
+/* =====================================================
+   CAMERA
+===================================================== */
+
+const updateCamera = () => {
+  camera.x = playerState.x + 16 - GAME_WIDTH / 2;
+  camera.y = playerState.y + 16 - GAME_HEIGHT / 2;
+  if (camera.x < 0) {
+    camera.x = 0;
+  }
+  if (camera.x > mapWidth - GAME_WIDTH) {
+    camera.x = mapWidth - GAME_WIDTH;
+  }
+  if (camera.y < 0) {
+    camera.y = 0;
+  }
+  if (camera.y > mapHeight - GAME_HEIGHT) {
+    camera.y = mapHeight - GAME_HEIGHT;
+  }
 };
 
 /* =====================================================
@@ -156,22 +185,134 @@ const playerDead = () => {
 ===================================================== */
 
 const gameMap = [
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
+  [
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ],
 ];
+
+const mapWidth = gameMap[0].length * TILE_SIZE;
+const mapHeight = gameMap.length * TILE_SIZE;
 
 const renderMap = (map) => {
   for (let row = 0; row < map.length; row++) {
@@ -179,13 +320,17 @@ const renderMap = (map) => {
       const tileValue = map[row][col];
       const div = document.createElement("div");
       div.classList.add("tile");
+      div.setAttribute("data-row", row);
+      div.setAttribute("data-col", col);
       if (tileValue === FLOOR) {
         div.classList.add("floor");
       } else if (tileValue === WALL) {
         div.classList.add("wall");
       }
-      div.style.left = `${col * TILE_SIZE}px`;
-      div.style.top = `${row * TILE_SIZE}px`;
+      const worldX = col * TILE_SIZE;
+      const worldY = row * TILE_SIZE;
+      div.style.left = `${worldX - camera.x}px`;
+      div.style.top = `${worldY - camera.y}px`;
       game.appendChild(div);
     }
   }
@@ -194,9 +339,9 @@ const renderMap = (map) => {
 const isInsideMap = (testX, testY) => {
   return (
     testX >= 0 &&
-    testX <= GAME_WIDTH - PLAYER_SIZE &&
+    testX <= mapWidth - PLAYER_SIZE &&
     testY >= 0 &&
-    testY <= GAME_HEIGHT - PLAYER_SIZE
+    testY <= mapHeight - PLAYER_SIZE
   );
 };
 
@@ -208,6 +353,18 @@ const canMoveTo = (testX, testY) => {
   const nextRow = testY / TILE_SIZE;
   const nextTile = gameMap[nextRow][nextCol];
   return nextTile === FLOOR;
+};
+
+const updateMapPosition = () => {
+  const tiles = document.querySelectorAll(".tile");
+  tiles.forEach((tile) => {
+    const row = Number(tile.getAttribute("data-row"));
+    const col = Number(tile.getAttribute("data-col"));
+    const worldX = col * TILE_SIZE;
+    const worldY = row * TILE_SIZE;
+    tile.style.left = `${worldX - camera.x}px`;
+    tile.style.top = `${worldY - camera.y}px`;
+  });
 };
 
 /* =====================================================
@@ -227,6 +384,14 @@ const isNearPlayer = (target) => {
   return (
     Math.abs(playerCol - targetCol) <= 1 && Math.abs(playerRow - targetRow) <= 1
   );
+};
+
+const updateWorldPosition = () => {
+  updateCamera();
+  updateMapPosition();
+  updateItemPosition();
+  updateMonsterPosition();
+  updatePlayerPosition();
 };
 
 /* =====================================================
@@ -269,13 +434,13 @@ const renderWorldItems = (items) => {
 
     div.style.zIndex = item.y - 1;
     if (item.isTall) {
-      div.style.left = `${item.x}px`;
-      div.style.top = `${item.y - 32}px`;
+      div.style.left = `${item.x - camera.x}px`;
+      div.style.top = `${item.y - camera.y - 32}px`;
       div.style.zIndex = item.y;
       div.style.height = "64px";
     } else {
-      div.style.left = `${item.x}px`;
-      div.style.top = `${item.y}px`;
+      div.style.left = `${item.x - camera.x}px`;
+      div.style.top = `${item.y - camera.y}px`;
       div.style.zIndex = item.y - 1;
       div.style.height = "32px";
     }
@@ -336,6 +501,24 @@ const handleInteraction = () => {
   }
 };
 
+const updateItemPosition = () => {
+  worldItems.forEach((item) => {
+    const itemElement = document.querySelector(
+      `.world-item[data-item-id="${item.id}"]`,
+    );
+
+    if (itemElement) {
+      if (item.isTall) {
+        itemElement.style.left = `${item.x - camera.x}px`;
+        itemElement.style.top = `${item.y - camera.y - 32}px`;
+      } else {
+        itemElement.style.left = `${item.x - camera.x}px`;
+        itemElement.style.top = `${item.y - camera.y}px`;
+      }
+    }
+  });
+};
+
 /* =====================================================
    UI
 ===================================================== */
@@ -372,7 +555,6 @@ const updatePlayerExperience = () => {
   const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
   updatePlayerStats();
 };
-
 
 /* =====================================================
    MOUVEMENT
@@ -452,7 +634,7 @@ const updateMovement = () => {
     }
   }
   updatePlayerSprite();
-  updatePlayerPosition();
+  updateWorldPosition();
   nextPlayerMoveTime = now + getPlayerMoveCooldown();
 };
 
@@ -549,8 +731,8 @@ const renderMonsters = (monstersList) => {
       selectedMonsterId = monster.id;
       selectMonsterElement(selectedMonsterId);
     });
-    div.style.left = `${monster.x}px`;
-    div.style.top = `${monster.y}px`;
+    div.style.left = `${monster.x - camera.x}px`;
+    div.style.top = `${monster.y - camera.y}px`;
     div.style.zIndex = monster.y;
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterName);
@@ -643,6 +825,17 @@ const updateMonsterCombat = () => {
     }
   });
 };
+const updateMonsterPosition = () => {
+  monsters.forEach((monster) => {
+    const monsterElement = document.querySelector(
+      `.monster[data-monster-id="${monster.id}"]`,
+    );
+    if (monsterElement) {
+      monsterElement.style.left = `${monster.x - camera.x}px`;
+      monsterElement.style.top = `${monster.y - camera.y}px`;
+    }
+  });
+};
 
 /* =====================================================
    COMBAT
@@ -706,22 +899,21 @@ setInterval(gameLoop, GAME_LOOP_MS);
 
 showPlayerName(playerState.name);
 updatePlayerSprite();
-updatePlayerPosition();
 
 renderMap(gameMap);
 
 updatePlayerInventory();
 updatePlayerStats();
 
-addWorldItem(createWorldItem("Apple", "food", 3, 64, 288, false, false));
+addWorldItem(createWorldItem("Apple", "food", 2, 20 * 32, 24 * 32, false, false));
 addWorldItem(
-  createWorldItem("Health Potion", "consumable", 1, 512, 224, false, false),
+  createWorldItem("Health Potion", "consumable", 1, 32 * 30, 21 * 32, false, false),
 );
-addWorldItem(createWorldItem("Box", "container", 1, 64, 256, true, true));
-
-monsters.push(createMonster("Rat", 512, 192, 20, 4, 50));
-monsters.push(createMonster("Rat", 448, 384, 20, 4, 50));
+addWorldItem(createWorldItem("Box", "container", 1, 20 * 32, 23 * 32, true, true));
+monsters.push(createMonster("Rat", 30 * 32, 20 * 32, 20, 4, 50));
+monsters.push(createMonster("Rat", 33 * 32, 23 * 32, 20, 4, 50));
 renderMonsters(monsters);
+updateWorldPosition();
 
 /* =====================================================
    CONSOLE LOG

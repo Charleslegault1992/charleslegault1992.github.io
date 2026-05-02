@@ -97,6 +97,7 @@ main {
   background-color: rgb(30, 30, 30);
   border: 2px solid black;
   position: relative;
+  overflow: hidden;
 }
 
 #player {
@@ -108,6 +109,12 @@ main {
   background-image : url(../images/Joueurs/walkingsheet.png);
   background-repeat: no-repeat;
   image-rendering: pixelated;
+}
+.tile,
+.world-item,
+.monster,
+#player {
+  transition: left 0.18s linear, top 0.18s linear;
 }
 
 #player img {
