@@ -240,7 +240,9 @@ border: 1px solid black;
   border-radius: 5px;
   width: 100%;
   box-shadow: 0px 0px 15px black;
-  
+  max-height: calc(100% - 40px);
+  min-height: calc(0% + 32px);
+  overflow: hidden;
 }
 
 .boite-jeux-titre {
