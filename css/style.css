@@ -66,7 +66,7 @@ main {
 .boite-principal {
   display: flex;
   flex-direction: column;
-  width: calc(100% - 48px);
+  width: 100%;
   margin: 0 auto;
   background-color: rgb(145, 145, 145);
 }
@@ -93,7 +93,10 @@ main {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  height: calc(480px * var(--game-scale));
+  min-height: 0;
+  flex:1;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .boite-jeux-inner {
@@ -103,15 +106,38 @@ main {
   transform-origin: top center;
   transform: scale(var(--game-scale));
   width: fit-content;
+  position: absolute;
 }
 
 #game {
-  width: 640px;
+  width: 864px;
   height: 480px;
   background-color: rgb(30, 30, 30);
   border: 2px solid black;
   position: relative;
   overflow: hidden;
+}
+.boite-chat {
+  width: 100%;
+  min-height: 0;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  background-color: gray;
+  min-height: 120px;
+  background-image: url("../images/ui/chatbox.png");
+background-position:center;
+background-size: cover;
+background-repeat: no-repeat;
+border: 1px solid black;
+}
+
+#chat {
+  width: 99.5%;
+  height: 95%;
+  background-color: rgba(0, 0, 0, 0.503); 
 }
 
 #player {
@@ -162,20 +188,27 @@ main {
 }
 
 .jeux-gauche {
+  left: 0;
   display: flex;
 }
 
 .jeux-droite {
+  right: 0;
   display: flex;
 }
 
 .jeux-panneau {
-  background-image: url("../images/panneau.png");
+   background-image: url("../images/panneau.png");
   background-position: center;
-  background-size: cover;
+  background-size: 100% 100%;
   background-repeat: no-repeat;
-  height: 480px;
-  width: 140px;
+  height: 100%;
+  width: 256px;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  z-index: 5;
+  border: 1px solid rgb(39, 37, 37);
 }
 
 .boite-boite {
@@ -190,18 +223,24 @@ main {
   justify-content: space-between;
 }
 
+.separateur-panneau {
+  width: 100%;
+  height: 1px;
+  background-color: rgba(197, 184, 4, 0.6);
+}
+
 .boite-panneau {
   color: rgb(197, 184, 4);
   font-family: Verdana, Geneva, sans-serif;
   text-shadow: 0 0px 2px rgb(0, 0, 0);
   font-size: 10px;
-  margin: 30px 5px auto;
+  margin: 20px 15px auto;
   padding: 5px;
   background-color: rgb(73, 73, 73);
   border-radius: 5px;
   width: 100%;
-  border: 0px solid rgb(39, 37, 37);
   box-shadow: 0px 0px 15px black;
+  
 }
 
 .boite-jeux-titre {

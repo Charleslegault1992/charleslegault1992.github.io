@@ -1,7 +1,9 @@
 /* =====================================================
    ELEMENTS HTML
 ===================================================== */
-
+const panneauGauche = document.querySelector(".jeux-gauche");
+const panneauDroite = document.querySelector(".jeux-droite");
+const boitePrincipale = document.querySelector("#boite-principal");
 const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
 const player = document.querySelector("#player");
@@ -9,12 +11,14 @@ const game = document.querySelector("#game");
 const boiteJeux = document.querySelector("#boite-jeux");
 const nav = document.querySelector(".navbar");
 const entete = document.querySelector(".entete-jeux");
+const boiteChat = document.querySelector("#boite-chat");
+const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 
 /* =====================================================
     VARIABLES GLOBALES
 ===================================================== */
 
-const GAME_WIDTH = 640;
+const GAME_WIDTH = 864;
 const GAME_HEIGHT = 480;
 const PLAYER_SIZE = 32;
 const TILE_SIZE = 32;
@@ -39,6 +43,8 @@ const camera = {
   x: 0,
   y: 0,
 };
+
+const minChatHeight = 120;
 
 /* =====================================================
    TIMING
@@ -526,17 +532,18 @@ const updateItemPosition = () => {
 
 const updatePlayerInventory = () => {
   let html = `<div class="boite-boite">
-                <div class="boite-jeux-titre">Inventory</div>`;
+                <div class="boite-jeux-titre">Inventory</div>
+                <div class="separateur-panneau"></div>`;
   playerState.inventory.forEach((item) => {
     html += `<div class="boite-row"><span class="item-name">${item.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
   });
   html += `</div>`;
   playerInventory.innerHTML = html;
 };
-
 const updatePlayerStats = () => {
   playerStats.innerHTML = `<div class="boite-boite">
                               <div class="boite-jeux-titre">Stats</div>
+                              <div class="separateur-panneau"></div>
                               <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
                               <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
                               <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
@@ -556,16 +563,19 @@ const updatePlayerExperience = () => {
   const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
   updatePlayerStats();
 };
-
 const updateGameScale = () => {
-  const freeWidthSpace = boiteJeux.clientWidth;
-  const freeHeightSpace = window.innerHeight - nav.clientHeight;
-  const logicWidthSpace = 920;
-  const logicHeightSpace = 480;
+  boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
+  const freeWidthSpace = boiteJeux.clientWidth - panneauGauche.clientWidth - panneauDroite.clientWidth;
+  const freeHeightSpace = boitePrincipale.clientHeight - minChatHeight;
+  const logicWidthSpace = GAME_WIDTH;
+  const logicHeightSpace = GAME_HEIGHT;
   const scaleWidth = freeWidthSpace / logicWidthSpace;
   const scaleHeight = freeHeightSpace / logicHeightSpace;
   const scale = Math.min(scaleWidth, scaleHeight)
   document.documentElement.style.setProperty("--game-scale", scale);
+  const visualGameHeight = GAME_HEIGHT * scale;
+  const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
+  boiteJeuxInner.style.top = `${gameTop}px`;
 };
 
 /* =====================================================
