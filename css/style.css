@@ -113,7 +113,8 @@ main {
   width: 864px;
   height: 480px;
   background-color: rgb(30, 30, 30);
-  border: 2px solid black;
+  border: none;
+  outline: none;
   position: relative;
   overflow: hidden;
 }
@@ -203,7 +204,7 @@ border: 1px solid black;
   background-size: 100% 100%;
   background-repeat: no-repeat;
   height: 100%;
-  width: 256px;
+  width: 275px;
   flex-shrink: 0;
   position: absolute;
   top: 0;
