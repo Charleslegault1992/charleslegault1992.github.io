@@ -94,6 +94,7 @@ const playerState = {
   speed: 1,
   direction: "down",
   walkFrame: 1,
+  light: 800,
   inventory: [
     {
       name: "Sword",
@@ -321,6 +322,11 @@ const gameMap = [
 
 const mapWidth = gameMap[0].length * TILE_SIZE;
 const mapHeight = gameMap.length * TILE_SIZE;
+
+const currentMap = {
+  data: gameMap,
+  dark: true,
+};
 
 const renderMap = (map) => {
   for (let row = 0; row < map.length; row++) {
@@ -583,23 +589,92 @@ const updateGameScale = () => {
 };
 
 /* =====================================================
-   Lumiere
+   LUMIERE
 ===================================================== */
 lightCanvas.width = GAME_WIDTH;
 lightCanvas.height = GAME_HEIGHT;
 const ctx = lightCanvas.getContext("2d");
 
-const updateLight = (x, y, radius) => {
-  const screenX = x - camera.x + 16;
-  const screenY = y - camera.y + 16;
-  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.fillStyle = "rgba(0, 0, 0, 0.94)";
-  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.beginPath();
-  ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalCompositeOperation = "source-over";
+const updateLight = (source) => {
+  if (currentMap.dark) {
+    let lightRadius = 0;
+    const screenX = source.x - camera.x + 16;
+    const screenY = source.y - camera.y;
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.90)";
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.globalCompositeOperation = "destination-out";
+    if (source.light <= 0) {
+      lightRadius = 90;
+      const gradient = ctx.createRadialGradient(
+        screenX,
+        screenY,
+        20,
+        screenX,
+        screenY,
+        lightRadius,
+      );
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.2)");
+      gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.1)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(
+        screenX - lightRadius,
+        screenY - lightRadius,
+        lightRadius * 2,
+        lightRadius * 2,
+      );
+    } else {
+      const gradient = ctx.createRadialGradient(
+        screenX,
+        screenY,
+        20,
+        screenX,
+        screenY,
+        source.light,
+      );
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
+      gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(
+        screenX - source.light,
+        screenY - source.light,
+        source.light * 2,
+        source.light * 2,
+      );
+      const bright = ctx.createRadialGradient(
+        screenX,
+        screenY,
+        20,
+        screenX,
+        screenY,
+        source.light * 0.85,
+      );
+      ctx.globalCompositeOperation = "source-over";
+      bright.addColorStop(0, "rgba(251, 255, 137, 0)");
+      bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
+      bright.addColorStop(0.7, "rgba(249, 97, 2, 0.07)");
+      bright.addColorStop(0.8, "rgba(249, 2, 2, 0.07)");
+      bright.addColorStop(1, "rgba(255, 0, 0, 0)");
+      ctx.fillStyle = bright;
+
+      ctx.fillRect(
+        screenX - source.light * 0.85,
+        screenY - source.light * 0.85,
+        source.light * 2 * 0.85,
+        source.light * 2 * 0.85,
+      );
+    }
+    ctx.globalCompositeOperation = "source-over";
+    /*ctx.fillStyle = "rgba(247, 124, 52, 0.83)";
+  ctx.arc(screenX, screenY, glowColor, 0, Math.PI * 2);
+  ctx.fill();*/
+  } else {
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  }
 };
 
 /* =====================================================
@@ -976,7 +1051,7 @@ monsters.push(createMonster("Rat", 30 * 32, 20 * 32, 20, 4, 50));
 monsters.push(createMonster("Rat", 33 * 32, 23 * 32, 20, 4, 50));
 renderMonsters(monsters);
 updateWorldPosition();
-updateLight(playerState.x, playerState.y, 200);
+updateLight(playerState);
 
 /* =====================================================
    CONSOLE LOG
