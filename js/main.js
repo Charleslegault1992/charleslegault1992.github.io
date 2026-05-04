@@ -13,6 +13,7 @@ const nav = document.querySelector(".navbar");
 const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
+const lightCanvas = document.querySelector("#light-canvas");
 
 /* =====================================================
     VARIABLES GLOBALES
@@ -173,7 +174,7 @@ const playerDead = () => {
 const updateCamera = () => {
   camera.x = playerState.x + 16 - GAME_WIDTH / 2;
   camera.y = playerState.y + 16 - GAME_HEIGHT / 2;
-  if (camera.x < 0) {
+  /*if (camera.x < 0) {
     camera.x = 0;
   }
   if (camera.x > mapWidth - GAME_WIDTH) {
@@ -184,7 +185,7 @@ const updateCamera = () => {
   }
   if (camera.y > mapHeight - GAME_HEIGHT) {
     camera.y = mapHeight - GAME_HEIGHT;
-  }
+  }*/
 };
 
 /* =====================================================
@@ -565,17 +566,40 @@ const updatePlayerExperience = () => {
 };
 const updateGameScale = () => {
   boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
-  const freeWidthSpace = boiteJeux.clientWidth - panneauGauche.clientWidth - panneauDroite.clientWidth;
+  const freeWidthSpace =
+    boiteJeux.clientWidth -
+    panneauGauche.clientWidth -
+    panneauDroite.clientWidth;
   const freeHeightSpace = boitePrincipale.clientHeight - minChatHeight;
   const logicWidthSpace = GAME_WIDTH;
   const logicHeightSpace = GAME_HEIGHT;
   const scaleWidth = freeWidthSpace / logicWidthSpace;
   const scaleHeight = freeHeightSpace / logicHeightSpace;
-  const scale = Math.min(scaleWidth, scaleHeight)
+  const scale = Math.min(scaleWidth, scaleHeight);
   document.documentElement.style.setProperty("--game-scale", scale);
   const visualGameHeight = GAME_HEIGHT * scale;
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
   boiteJeuxInner.style.top = `${gameTop}px`;
+};
+
+/* =====================================================
+   Lumiere
+===================================================== */
+lightCanvas.width = GAME_WIDTH;
+lightCanvas.height = GAME_HEIGHT;
+const ctx = lightCanvas.getContext("2d");
+
+const updateLight = (x, y, radius) => {
+  const screenX = x - camera.x + 16;
+  const screenY = y - camera.y + 16;
+  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.94)";
+  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
 };
 
 /* =====================================================
@@ -952,6 +976,7 @@ monsters.push(createMonster("Rat", 30 * 32, 20 * 32, 20, 4, 50));
 monsters.push(createMonster("Rat", 33 * 32, 23 * 32, 20, 4, 50));
 renderMonsters(monsters);
 updateWorldPosition();
+updateLight(playerState.x, playerState.y, 200);
 
 /* =====================================================
    CONSOLE LOG
