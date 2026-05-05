@@ -592,7 +592,7 @@ const updateLight = (source) => {
   if (currentMap.dark) {
     let lightRadius = 0;
     const screenX = source.x - camera.x + 16;
-    const screenY = source.y - camera.y;
+    const screenY = source.y - camera.y + 16;
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     if (source.light <= 0) {
       ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
