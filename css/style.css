@@ -330,7 +330,7 @@ main {
 .hp-bar,
 .php-bar {
   position: absolute;
-  top: -15px;
+  top: -12px;
   left: 50%;
   transform: translateX(-50%);
   width: 90%;
@@ -338,9 +338,7 @@ main {
   height: 5px;
   background: black;
 }
-.php-bar {
-  top: -10px;
-}
+
 
 .hp-red,
 .php-red {
@@ -364,6 +362,4 @@ main {
   transform: translateX(-50%);
   white-space: nowrap;
 }
-.monster-name {
-  top: -30px;
-}
+
