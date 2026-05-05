@@ -817,8 +817,11 @@ const createMonster = (
   maxHp,
   damage,
   experience,
-  moveCooldown = 450,
+  moveCooldown = 250,
   pathRefreshCooldown = 800,
+  MONSTER_FRAME_WIDTH = 32,
+  MONSTER_FRAME_HEIGHT = 32,
+  MONSTER_ANIMATION_FRAMES = 3,
 ) => {
   const monster = {
     name,
@@ -831,9 +834,14 @@ const createMonster = (
     id: nextMonsterId++,
     moveCooldown,
     pathRefreshCooldown,
+    MONSTER_FRAME_WIDTH,
+    MONSTER_FRAME_HEIGHT,
+    MONSTER_ANIMATION_FRAMES,
     nextMoveTime: 0,
     path: [],
     nextPathRefreshTime: 0,
+    direction: "down",
+    walkFrame: 1,
   };
   return monster;
 };
@@ -843,6 +851,8 @@ const renderMonsters = (monstersList) => {
     const div = document.createElement("div");
     const monster = monstersList[i];
     div.classList.add("monster");
+    div.style.width = `${monster.MONSTER_FRAME_WIDTH}px`;
+    div.style.height = `${monster.MONSTER_FRAME_HEIGHT}px`;
     div.style.backgroundImage = `url("../images/monstres/${monster.name.toLowerCase().replaceAll(" ", "-")}.png")`;
     if (monster.id === selectedMonsterId) {
       div.classList.add("monster-selected");
@@ -872,9 +882,18 @@ const renderMonsters = (monstersList) => {
     div.appendChild(monsterName);
     div.appendChild(hpContainer);
     game.appendChild(div);
+    updateMonsterSprite(monster);
   }
 };
-
+const updateMonsterSprite = (monster) => {
+  const colonne = monster.walkFrame;
+  const ligne = getDirectionRow(monster.direction);
+  const x = -colonne * monster.MONSTER_FRAME_WIDTH;
+  const y = -ligne * monster.MONSTER_FRAME_HEIGHT;
+  const monsterElement = findMonsterElement(monster.id);
+  monsterElement.style.backgroundSize = `${monster.MONSTER_FRAME_WIDTH * monster.MONSTER_ANIMATION_FRAMES}px ${monster.MONSTER_FRAME_HEIGHT * 4}px`;
+  monsterElement.style.backgroundPosition = `${x}px ${y}px`;
+};
 /* =====================================================
    MONSTRES - DETECTION ET RECHERCHE
 ===================================================== */
@@ -909,6 +928,21 @@ const clearMonsters = () => {
   monstersElements.forEach((monster) => {
     monster.remove();
   });
+};
+
+const updateMonsterDirection = (selfMonster, tile) => {
+  const monsterTile = getTilePosition(selfMonster);
+  if (tile) {
+    if (monsterTile.col > tile.col && monsterTile.row === tile.row) {
+      selfMonster.direction = "left";
+    } else if (monsterTile.col < tile.col && monsterTile.row === tile.row) {
+      selfMonster.direction = "right";
+    } else if (monsterTile.col === tile.col && monsterTile.row < tile.row) {
+      selfMonster.direction = "down";
+    } else if (monsterTile.col === tile.col && monsterTile.row > tile.row) {
+      selfMonster.direction = "up";
+    }
+  }
 };
 
 /* =====================================================
@@ -949,6 +983,12 @@ const selectMonsterElement = (monsterId) => {
   if (monsterElement) {
     monsterElement.classList.add("monster-selected");
   }
+};
+const findMonsterElement = (monsterId) => {
+  const monsterElement = document.querySelector(
+    `.monster[data-monster-id="${monsterId}"]`,
+  );
+  return monsterElement;
 };
 
 /* =====================================================
@@ -1030,7 +1070,7 @@ const updateMonsterMovement = () => {
           }
         }
       }
-      
+
       if (monster.path.length <= 0) {
         return;
       }
@@ -1047,7 +1087,12 @@ const updateMonsterMovement = () => {
       if (monster.path.length <= 0) {
         return;
       }
-
+      updateMonsterDirection(monster, monster.path[0]);
+      monster.walkFrame += 1;
+      if (monster.walkFrame >= monster.MONSTER_ANIMATION_FRAMES) {
+        monster.walkFrame = 0;
+      }
+      updateMonsterSprite(monster);
       const { tileX, tileY } = getWorldPosition(monster.path[0]);
       monster.path.shift();
       monster.x = tileX;

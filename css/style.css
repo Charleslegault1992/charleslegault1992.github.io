@@ -312,13 +312,9 @@ position: absolute;
 }
 
 .monster {
-position: absolute;
-  width: 32px;
-  height: 32px;
-  z-index: 2;
-  background-position: center;
-  background-size: cover;
+  position: absolute;
   background-repeat: no-repeat;
+  image-rendering: pixelated;
 }
 
 .monster-selected {
