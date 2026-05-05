@@ -981,6 +981,7 @@ const updateMonsterPosition = () => {
     if (monsterElement) {
       monsterElement.style.left = `${monster.x - camera.x}px`;
       monsterElement.style.top = `${monster.y - camera.y}px`;
+      monsterElement.style.zIndex = monster.y;
     }
   });
 };
