@@ -95,7 +95,7 @@ const playerState = {
   speed: 1,
   direction: "down",
   walkFrame: 1,
-  light: 300,
+  light: 900,
   inventory: [
     {
       name: "Sword",
@@ -818,6 +818,7 @@ const createMonster = (
   damage,
   experience,
   moveCooldown = 450,
+  pathRefreshCooldown = 800,
 ) => {
   const monster = {
     name,
@@ -829,7 +830,10 @@ const createMonster = (
     experience,
     id: nextMonsterId++,
     moveCooldown,
+    pathRefreshCooldown,
     nextMoveTime: 0,
+    path: [],
+    nextPathRefreshTime: 0,
   };
   return monster;
 };
@@ -1002,11 +1006,50 @@ const updateMonsterMovement = () => {
       getTilePosition(playerState),
     );
     if (destination !== null) {
-      const path = findPath(monsterPosition, destination);
-      if (path.length <= 0) {
+      if (monster.path.length <= 0) {
+        monster.path = findPath(monsterPosition, destination);
+        monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+      } else {
+        const oldPathEnd = monster.path[monster.path.length - 1];
+
+        if (getDistance(oldPathEnd, destination) > 2) {
+          const newPath = findPath(monsterPosition, destination);
+          if (newPath.length > 0) {
+            monster.path = newPath;
+            monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+          }
+        } else if (date >= monster.nextPathRefreshTime) {
+          const newPath = findPath(monsterPosition, destination);
+          monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+          if (
+            getDistance(oldPathEnd, destination) > 1 &&
+            newPath &&
+            newPath.length > 0
+          ) {
+            monster.path = newPath;
+          }
+        }
+      }
+      
+      if (monster.path.length <= 0) {
         return;
       }
-      const { tileX, tileY } = getWorldPosition(path[0]);
+
+      const nextStep = monster.path[0];
+      if (!isWalkableTile(nextStep.row, nextStep.col)) {
+        const newPath = findPath(monsterPosition, destination);
+        if (newPath.length <= 0) {
+          return;
+        } else {
+          monster.path = newPath;
+        }
+      }
+      if (monster.path.length <= 0) {
+        return;
+      }
+
+      const { tileX, tileY } = getWorldPosition(monster.path[0]);
+      monster.path.shift();
       monster.x = tileX;
       monster.y = tileY;
     }
