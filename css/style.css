@@ -275,9 +275,7 @@ background-image: url("../images/tiles/brique.png");
 ===================================================== */
 
 .tile,
-.world-item,
-.monster,
-#player {
+.world-item{
 transition:
     left 0.18s linear,
     top 0.18s linear;
@@ -315,6 +313,9 @@ position: absolute;
   position: absolute;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+  transition:
+    left 0.23s linear,
+    top 0.23s linear;
 }
 
 .monster-selected {
