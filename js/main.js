@@ -819,8 +819,8 @@ const createMonster = (
   experience,
   moveCooldown = 250,
   pathRefreshCooldown = 800,
-  MONSTER_FRAME_WIDTH = 32,
-  MONSTER_FRAME_HEIGHT = 32,
+  MONSTER_FRAME_WIDTH = 48,
+  MONSTER_FRAME_HEIGHT = 48,
   MONSTER_ANIMATION_FRAMES = 3,
 ) => {
   const monster = {
@@ -851,14 +851,13 @@ const renderMonsters = (monstersList) => {
     const div = document.createElement("div");
     const monster = monstersList[i];
     div.classList.add("monster");
-    div.style.width = `${monster.MONSTER_FRAME_WIDTH}px`;
-    div.style.height = `${monster.MONSTER_FRAME_HEIGHT}px`;
-    div.style.backgroundImage = `url("../images/monstres/${monster.name.toLowerCase().replaceAll(" ", "-")}.png")`;
+    div.style.width = `${TILE_SIZE}px`;
+    div.style.height = `${TILE_SIZE}px`;
     if (monster.id === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
     const monsterName = document.createElement("div");
-    monsterName.classList.add("name");
+    monsterName.classList.add("monster-name");
     monsterName.textContent = `${monster.name}`;
     const hpContainer = document.createElement("div");
     hpContainer.classList.add("hp-bar");
@@ -866,6 +865,11 @@ const renderMonsters = (monstersList) => {
     hpRed.classList.add("hp-red");
     div.setAttribute("data-monster-id", monster.id);
     hpRed.setAttribute("data-monster-id", monster.id);
+    const monsterSprite = document.createElement("div");
+    monsterSprite.classList.add("monster-sprite");
+    monsterSprite.style.backgroundImage = `url("../images/monstres/${monster.name.toLowerCase().replaceAll(" ", "-")}.png")`;
+    monsterSprite.style.width = `${monster.MONSTER_FRAME_WIDTH}px`;
+    monsterSprite.style.height = `${monster.MONSTER_FRAME_HEIGHT}px`;
     div.addEventListener("contextmenu", () => {
       clearMonsterSelection();
       if (monster.id === selectedMonsterId) {
@@ -881,6 +885,7 @@ const renderMonsters = (monstersList) => {
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterName);
     div.appendChild(hpContainer);
+    div.appendChild(monsterSprite);
     game.appendChild(div);
     updateMonsterSprite(monster);
   }
@@ -891,9 +896,11 @@ const updateMonsterSprite = (monster) => {
   const x = -colonne * monster.MONSTER_FRAME_WIDTH;
   const y = -ligne * monster.MONSTER_FRAME_HEIGHT;
   const monsterElement = findMonsterElement(monster.id);
-  monsterElement.style.backgroundSize = `${monster.MONSTER_FRAME_WIDTH * monster.MONSTER_ANIMATION_FRAMES}px ${monster.MONSTER_FRAME_HEIGHT * 4}px`;
-  monsterElement.style.backgroundPosition = `${x}px ${y}px`;
+  const monsterSpriteElement = monsterElement.querySelector(".monster-sprite");
+  monsterSpriteElement.style.backgroundSize = `${monster.MONSTER_FRAME_WIDTH * monster.MONSTER_ANIMATION_FRAMES}px ${monster.MONSTER_FRAME_HEIGHT * 4}px`;
+  monsterSpriteElement.style.backgroundPosition = `${x}px ${y}px`;
 };
+
 /* =====================================================
    MONSTRES - DETECTION ET RECHERCHE
 ===================================================== */

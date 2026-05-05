@@ -3,58 +3,57 @@
 ===================================================== */
 
 :root {
---game-scale: 2;
+  --game-scale: 2;
 }
-
 
 /* =====================================================
    NAVBAR
 ===================================================== */
 
 .logo {
-width: 35px;
+  width: 35px;
   height: 35px;
   margin: 0px;
 }
 
 .navbar {
-background-image: url("../images/navbg.png");
+  background-image: url("../images/navbg.png");
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
 }
 
 .container-fluid {
-display: flex;
+  display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .navbar-brand,
 .nav-link {
-color: white;
+  color: white;
   text-shadow: 0 1px 5px rgb(160, 165, 116);
   letter-spacing: 1px;
 }
 
 .navbar-brand {
-display: flex;
+  display: flex;
   justify-content: center;
   align-items: center;
   gap: 10px;
 }
 
 .navbar-nav {
-gap: 20px;
+  gap: 20px;
   margin-right: 40px;
 }
 
 .nav-link:hover {
-transform: translateY(-2px);
+  transform: translateY(-2px);
 }
 
 .nav-link::after {
-content: "";
+  content: "";
   display: block;
   width: 0;
   height: 2px;
@@ -63,21 +62,20 @@ content: "";
 }
 
 .nav-link:hover::after {
-width: 100%;
+  width: 100%;
 }
-
 
 /* =====================================================
    LAYOUT PRINCIPAL
 ===================================================== */
 
 main {
-width: 100%;
+  width: 100%;
   background-color: rgba(145, 145, 145, 0.514);
 }
 
 .boite-principal {
-display: flex;
+  display: flex;
   flex-direction: column;
   width: 100%;
   margin: 0 auto;
@@ -85,30 +83,29 @@ display: flex;
 }
 
 .entete-jeux {
-max-height: 40px;
+  max-height: 40px;
   background-color: rgb(173, 164, 164);
   width: 100%;
   display: none;
 }
 
 .boite-titre {
-display: flex;
+  display: flex;
   justify-content: center;
   align-items: center;
 }
 
 .titre {
-color: gold;
+  color: gold;
   font-size: 25px;
 }
-
 
 /* =====================================================
    ZONE DE JEU
 ===================================================== */
 
 .boite-jeux {
-background-color: rgb(5, 5, 5);
+  background-color: rgb(5, 5, 5);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -119,7 +116,7 @@ background-color: rgb(5, 5, 5);
 }
 
 .boite-jeux-inner {
-display: flex;
+  display: flex;
   justify-content: center;
   align-items: center;
   transform-origin: top center;
@@ -129,7 +126,7 @@ display: flex;
 }
 
 #game {
-width: 864px;
+  width: 864px;
   height: 480px;
   background-color: rgb(30, 30, 30);
   border: none;
@@ -139,21 +136,20 @@ width: 864px;
 }
 
 #light-canvas {
-position: absolute;
-  inset:0;
+  position: absolute;
+  inset: 0;
   z-index: 9999;
-  pointer-events:none;
+  pointer-events: none;
   width: 100%;
   height: 100%;
 }
-
 
 /* =====================================================
    CHAT
 ===================================================== */
 
 .boite-chat {
-width: 100%;
+  width: 100%;
   min-height: 0;
 
   display: flex;
@@ -170,28 +166,27 @@ width: 100%;
 }
 
 #chat {
-width: 99.5%;
+  width: 99.5%;
   height: 95%;
   background-color: rgba(0, 0, 0, 0.503);
 }
-
 
 /* =====================================================
    PANNEAUX UI
 ===================================================== */
 
 .jeux-gauche {
-left: 0;
+  left: 0;
   display: flex;
 }
 
 .jeux-droite {
-right: 0;
+  right: 0;
   display: flex;
 }
 
 .jeux-panneau {
-background-image: url("../images/panneau.png");
+  background-image: url("../images/panneau.png");
   background-position: center;
   background-size: 100% 100%;
   background-repeat: no-repeat;
@@ -205,25 +200,25 @@ background-image: url("../images/panneau.png");
 }
 
 .boite-boite {
-display: flex;
+  display: flex;
   justify-content: center;
   flex-direction: column;
   gap: 5px;
 }
 
 .boite-row {
-display: flex;
+  display: flex;
   justify-content: space-between;
 }
 
 .separateur-panneau {
-width: 100%;
+  width: 100%;
   height: 1px;
   background-color: rgba(197, 184, 4, 0.6);
 }
 
 .boite-panneau {
-color: rgb(197, 184, 4);
+  color: rgb(197, 184, 4);
   font-family: Verdana, Geneva, sans-serif;
   text-shadow: 0 0px 2px rgb(0, 0, 0);
   font-size: 10px;
@@ -239,50 +234,48 @@ color: rgb(197, 184, 4);
 }
 
 .boite-jeux-titre {
-align-self: center;
+  align-self: center;
   font-weight: bold;
 }
-
 
 /* =====================================================
    TILES ET MAP
 ===================================================== */
 
 .tile {
-position: absolute;
+  position: absolute;
   width: 32px;
   height: 32px;
   z-index: 1;
 }
 
 .floor {
-background-image: url("../images/tiles/floor.png");
+  background-image: url("../images/tiles/floor.png");
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
 }
 
 .wall {
-background-image: url("../images/tiles/brique.png");
+  background-image: url("../images/tiles/brique.png");
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
 }
-
 
 /* =====================================================
    ENTITES DU MONDE
 ===================================================== */
 
 .tile,
-.world-item{
-transition:
+.world-item {
+  transition:
     left 0.18s linear,
     top 0.18s linear;
 }
 
 #player {
-position: absolute;
+  position: absolute;
   width: 32px;
   height: 64px;
   transition:
@@ -295,12 +288,12 @@ position: absolute;
 }
 
 #player img {
-width: 100%;
+  width: 100%;
   height: 100%;
 }
 
 .world-item {
-position: absolute;
+  position: absolute;
   width: 32px;
   height: 32px;
   background-position: center;
@@ -311,17 +304,24 @@ position: absolute;
 
 .monster {
   position: absolute;
-  background-repeat: no-repeat;
-  image-rendering: pixelated;
+  overflow: visible;
   transition:
     left 0.23s linear,
     top 0.23s linear;
 }
 
-.monster-selected {
-outline: 2px solid red;
+.monster-sprite {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
+.monster-selected {
+  outline: 2px solid red;
+}
 
 /* =====================================================
    BARS ET NOMS
@@ -329,28 +329,34 @@ outline: 2px solid red;
 
 .hp-bar,
 .php-bar {
-position: absolute;
-  top: -10px;
-  left: 0;
-  width: 100%;
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+
   height: 5px;
   background: black;
+}
+.php-bar {
+  top: -10px;
 }
 
 .hp-red,
 .php-red {
-height: 100%;
+  height: 100%;
   background: rgb(60, 255, 0);
   box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.71);
 }
 
-.name {
-position: absolute;
+.name,
+.monster-name {
+  position: absolute;
   top: -26px;
   height: 5px;
   color: rgb(60, 255, 0);
   font-family: Verdana, Geneva, sans-serif;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.7px;
   text-shadow: 1px 1px 2px black;
@@ -358,4 +364,6 @@ position: absolute;
   transform: translateX(-50%);
   white-space: nowrap;
 }
-
+.monster-name {
+  top: -30px;
+}
