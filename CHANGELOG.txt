@@ -1,1 +1,7 @@
-0.286 — ajout changelog
+0.287 - Rendre les items Data-Driven avec une base de donnees local
+    -Creation de la base de donne itemsDatabase
+    -Enlever les donnes fix de l'objet pour les liees dans la database local
+    -Correction des fonctions pour utilisees les donnes de la database local
+    
+0.286 — Ajout changelog
+    -Snapshot du projet

@@ -17,6 +17,68 @@ const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
 
 /* =====================================================
+   DATABASES
+===================================================== */
+const itemsDatabase = {
+  apple: {
+    itemId: "apple",
+    name: "Apple",
+    desc: "An apple.",
+    type: "food",
+    image: "./images/items/apple.png",
+    weight: 10,
+    stackable: true,
+    blockMovement: false,
+    isTall: false,
+  },
+  box: {
+    itemId: "box",
+    name: "Box",
+    desc: "A big old box.",
+    type: "container",
+    image: "./images/items/box.png",
+    weight: 50,
+    stackable: false,
+    blockMovement: true,
+    isTall: true,
+  },
+  healthPotion: {
+    itemId: "healthPotion",
+    name: "Health Potion",
+    desc: "Drinking it might give you some benefit.",
+    type: "consumable",
+    image: "./images/items/health-potion.png",
+    weight: 10,
+    stackable: true,
+    blockMovement: false,
+    isTall: false,
+  },
+  ratCorpse: {
+    itemId: "ratCorpse",
+    name: "Rat Corpse",
+    desc: "A dead rat.",
+    type: "corpse",
+    image: "./images/items/rat-corpse.png",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    isTall: false,
+  },
+  sword: {
+    itemId: "sword",
+    name: "Sword",
+    desc: "An old rusty sword.",
+    type: "weapon",
+    image: "./images/items/sword.png",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    isTall: false,
+    weaponType: "sword",
+  },
+};
+
+/* =====================================================
    VARIABLES GLOBALES
 ===================================================== */
 
@@ -98,18 +160,15 @@ const playerState = {
   light: 900,
   inventory: [
     {
-      name: "Sword",
-      type: "weapon",
+      itemId: "sword",
       quantity: 1,
     },
     {
-      name: "Health Potion",
-      type: "consumable",
+      itemId: "healthPotion",
       quantity: 1,
     },
     {
-      name: "Apple",
-      type: "food",
+      itemId: "apple",
       quantity: 1,
     },
   ],
@@ -402,24 +461,20 @@ const updateWorldPosition = () => {
    WORLD ITEMS - CREATION ET RENDU
 ===================================================== */
 
-const createWorldItem = (name, type, quantity, x, y, blockMovement, isTall) => {
+const createGroundItem = (itemId, quantity, x, y) => {
   const worldItem = {
-    name,
-    type,
+    itemId,
     quantity,
     x,
     y,
     id: nextWorldItemId++,
-    blockMovement,
-    isTall,
   };
   return worldItem;
 };
 
-const createCorpse = (name, x, y) => {
+const createCorpse = (itemId, x, y) => {
   const corpse = {
-    name,
-    type: "corpse",
+    itemId,
     quantity: 1,
     x,
     y,
@@ -428,16 +483,21 @@ const createCorpse = (name, x, y) => {
   return corpse;
 };
 
-const renderWorldItems = (items) => {
+const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
     const div = document.createElement("div");
     const item = items[i];
+    const itemData = itemsDatabase[item.itemId];
+    if (!itemData) {
+      console.error("Item introuvable dans itemsDatabase:", item.itemId);
+      continue;
+    }
     div.classList.add("world-item");
-    div.style.backgroundImage = `url("../images/items/${item.name.toLowerCase().replaceAll(" ", "-")}.png")`;
+    div.style.backgroundImage = `url("${itemData.image}")`;
     div.setAttribute("data-item-id", item.id);
 
     div.style.zIndex = item.y - 1;
-    if (item.isTall) {
+    if (itemData.isTall) {
       div.style.left = `${item.x - camera.x}px`;
       div.style.top = `${item.y - camera.y - 32}px`;
       div.style.zIndex = item.y;
@@ -452,14 +512,19 @@ const renderWorldItems = (items) => {
   }
 };
 
-const addWorldItem = (worldItem) => {
+const addGroundItem = (worldItem) => {
   worldItems.push(worldItem);
-  renderWorldItems([worldItem]);
+  renderGroundItems([worldItem]);
 };
 
 const isBlockingItemAtPosition = (x, y) => {
   return worldItems.some((item) => {
-    return item.blockMovement && item.x === x && item.y === y;
+    const itemData = itemsDatabase[item.itemId];
+    if (itemData) {
+      return itemData.blockMovement && item.x === x && item.y === y;
+    } else {
+      return false;
+    }
   });
 };
 
@@ -468,20 +533,23 @@ const isBlockingItemAtPosition = (x, y) => {
 ===================================================== */
 
 const addItemToInventory = (itemToAdd) => {
-  const inventoryItem = {
-    name: itemToAdd.name,
-    type: itemToAdd.type,
-    quantity: itemToAdd.quantity,
-  };
-  const existingItem = playerState.inventory.find((item) => {
-    return item.name === inventoryItem.name && item.type === inventoryItem.type;
-  });
-  if (existingItem) {
-    existingItem.quantity += inventoryItem.quantity;
-  } else {
-    playerState.inventory.push(inventoryItem);
-  }
-  updatePlayerInventory();
+  const itemData = itemsDatabase[itemToAdd.itemId];
+  if (itemData) {
+    const inventoryItem = {
+      itemId: itemToAdd.itemId,
+      quantity: itemToAdd.quantity,
+    };
+    const existingItem = playerState.inventory.find((item) => {
+      return item.itemId === inventoryItem.itemId;
+    });
+
+    if (existingItem && itemData.stackable) {
+      existingItem.quantity += inventoryItem.quantity;
+    } else {
+      playerState.inventory.push(inventoryItem);
+    }
+    updatePlayerInventory();
+  } else { console.log("item introuvable dans itemsDatabase")}
 };
 
 const handleInteraction = () => {
@@ -493,26 +561,21 @@ const handleInteraction = () => {
     console.log("Aucun item proche");
   } else {
     const nearItem = worldItems[nearItemIndex];
-    const itemElement = document.querySelector(
-      `.world-item[data-item-id="${nearItem.id}"]`,
-    );
-    if (itemElement) {
-      itemElement.remove();
-    }
-    const removedItem = worldItems.splice(nearItemIndex, 1);
-    const pickedItem = removedItem[0];
-    addItemToInventory(pickedItem);
+    worldItems.splice(nearItemIndex, 1);
+    addItemToInventory(nearItem);
+    removeGroundItemRender(nearItem.id);
   }
 };
 
 const updateItemPosition = () => {
   worldItems.forEach((item) => {
+    const itemData = itemsDatabase[item.itemId];
     const itemElement = document.querySelector(
       `.world-item[data-item-id="${item.id}"]`,
     );
 
-    if (itemElement) {
-      if (item.isTall) {
+    if (itemElement && itemData) {
+      if (itemData.isTall) {
         itemElement.style.left = `${item.x - camera.x}px`;
         itemElement.style.top = `${item.y - camera.y - 32}px`;
       } else {
@@ -521,6 +584,15 @@ const updateItemPosition = () => {
       }
     }
   });
+};
+
+const removeGroundItemRender = (instanceId) => {
+  const itemElement = document.querySelector(
+    `.world-item[data-item-id="${instanceId}"]`,
+  );
+  if (itemElement) {
+    itemElement.remove();
+  }
 };
 
 /* =====================================================
@@ -532,7 +604,10 @@ const updatePlayerInventory = () => {
                 <div class="boite-jeux-titre">Inventory</div>
                 <div class="separateur-panneau"></div>`;
   playerState.inventory.forEach((item) => {
-    html += `<div class="boite-row"><span class="item-name">${item.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
+    const itemData = itemsDatabase[item.itemId];
+    if (itemData) {
+      html += `<div class="boite-row"><span class="item-name">${itemData.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
+    }
   });
   html += `</div>`;
   playerInventory.innerHTML = html;
@@ -984,7 +1059,7 @@ const clearMonsterSelection = () => {
 };
 
 const deadMonster = (monster) => {
-  addWorldItem(createCorpse(`${monster.name} Corpse`, monster.x, monster.y));
+  addGroundItem(createCorpse("ratCorpse", monster.x, monster.y));
   removeMonster(monster.id);
   selectedMonsterId = null;
 };
@@ -1374,23 +1449,9 @@ renderMap(gameMap);
 updatePlayerInventory();
 updatePlayerStats();
 
-addWorldItem(
-  createWorldItem("Apple", "food", 2, 20 * 32, 24 * 32, false, false),
-);
-addWorldItem(
-  createWorldItem(
-    "Health Potion",
-    "consumable",
-    1,
-    32 * 30,
-    21 * 32,
-    false,
-    false,
-  ),
-);
-addWorldItem(
-  createWorldItem("Box", "container", 1, 20 * 32, 23 * 32, true, true),
-);
+addGroundItem(createGroundItem("box", 1, 20 * 32, 23 * 32));
+addGroundItem(createGroundItem("healthPotion", 1, 30 * 32, 21 * 32));
+addGroundItem(createGroundItem("apple", 2, 20 * 32, 24 * 32));
 monsters.push(createMonster("Rat", 30 * 32, 20 * 32, 20, 4, 50));
 monsters.push(createMonster("Rat", 33 * 32, 23 * 32, 20, 4, 50));
 renderMonsters(monsters);
