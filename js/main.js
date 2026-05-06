@@ -915,6 +915,26 @@ const isPlayerAtPosition = (x, y) => {
   return playerState.x === x && playerState.y === y;
 };
 
+const updateMonsterDirectionToPlayer = (monster) => {
+  const monsterTile = getTilePosition(monster);
+  const playerTile = getTilePosition(playerState);
+  const diffCol = playerTile.col - monsterTile.col;
+  const diffRow = playerTile.row - monsterTile.row;
+  if (Math.abs(diffCol) > Math.abs(diffRow)) {
+    if (diffCol > 0) {
+      monster.direction = "right";
+    } else if (diffCol < 0) {
+      monster.direction = "left";
+    }
+  } else {
+    if (diffRow > 0) {
+      monster.direction = "down";
+    } else if (diffRow < 0) {
+      monster.direction = "up";
+    }
+  }
+};
+
 const removeMonster = (monsterId) => {
   const monsterElement = document.querySelector(
     `.monster[data-monster-id="${monsterId}"]`,
@@ -1040,7 +1060,10 @@ const updateMonsterPosition = () => {
 const updateMonsterMovement = () => {
   const date = Date.now();
   monsters.forEach((monster) => {
-    if (!isNearPlayer(monster, 12) || isNearPlayer(monster, 1)) {
+    if (!isNearPlayer(monster, 12)) {
+      return;
+    }
+    if (isNearPlayer(monster, 1)) {
       return;
     }
     if (monster.nextMoveTime > date) {
