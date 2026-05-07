@@ -457,69 +457,73 @@ const updateWorldPosition = () => {
   updatePlayerPosition();
 };
 
+const getItemData = (itemId) => {
+  if (itemsDatabase[itemId]) {
+    return itemsDatabase[itemId];
+  } else {
+    console.log(`itemId: ${itemId} n'existe pas dans itemsDatabase`);
+    return null;
+  }
+};
+
 /* =====================================================
    WORLD ITEMS - CREATION ET RENDU
 ===================================================== */
 
 const createGroundItem = (itemId, quantity, x, y) => {
+  const itemData = getItemData(itemId);
+  if (!itemData) {
+    return null;
+  }
   const worldItem = {
     itemId,
     quantity,
     x,
     y,
-    id: nextWorldItemId++,
+    uid: nextWorldItemId++,
   };
   return worldItem;
-};
-
-const createCorpse = (itemId, x, y) => {
-  const corpse = {
-    itemId,
-    quantity: 1,
-    x,
-    y,
-    id: nextWorldItemId++,
-  };
-  return corpse;
 };
 
 const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
     const div = document.createElement("div");
     const item = items[i];
-    const itemData = itemsDatabase[item.itemId];
+    const itemData = getItemData(item.itemId);
     if (!itemData) {
-      console.error("Item introuvable dans itemsDatabase:", item.itemId);
       continue;
     }
     div.classList.add("world-item");
     div.style.backgroundImage = `url("${itemData.image}")`;
-    div.setAttribute("data-item-id", item.id);
-
-    div.style.zIndex = item.y - 1;
-    if (itemData.isTall) {
-      div.style.left = `${item.x - camera.x}px`;
-      div.style.top = `${item.y - camera.y - 32}px`;
-      div.style.zIndex = item.y;
-      div.style.height = "64px";
-    } else {
-      div.style.left = `${item.x - camera.x}px`;
-      div.style.top = `${item.y - camera.y}px`;
-      div.style.zIndex = item.y - 1;
-      div.style.height = "32px";
+    div.setAttribute("data-item-uid", item.uid);
+    const position = getItemRenderPosition(item);
+    if (!position) {
+      continue;
     }
+    applyItemRenderPosition(div, position);
     game.appendChild(div);
   }
 };
 
 const addGroundItem = (worldItem) => {
-  worldItems.push(worldItem);
-  renderGroundItems([worldItem]);
+  if (worldItem) {
+    worldItems.push(worldItem);
+    renderGroundItems([worldItem]);
+  }
+};
+
+const removeGroundItemRender = (itemUid) => {
+  const itemElement = document.querySelector(
+    `.world-item[data-item-uid="${itemUid}"]`,
+  );
+  if (itemElement) {
+    itemElement.remove();
+  }
 };
 
 const isBlockingItemAtPosition = (x, y) => {
   return worldItems.some((item) => {
-    const itemData = itemsDatabase[item.itemId];
+    const itemData = getItemData(item.itemId);
     if (itemData) {
       return itemData.blockMovement && item.x === x && item.y === y;
     } else {
@@ -528,12 +532,41 @@ const isBlockingItemAtPosition = (x, y) => {
   });
 };
 
+const getItemRenderPosition = (item) => {
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return null;
+  }
+  if (itemData.isTall) {
+    return {
+      left: `${item.x - camera.x}px`,
+      top: `${item.y - camera.y - 32}px`,
+      zIndex: item.y,
+      height: "64px",
+    };
+  } else {
+    return {
+      left: `${item.x - camera.x}px`,
+      top: `${item.y - camera.y}px`,
+      zIndex: item.y - 1,
+      height: "32px",
+    };
+  }
+};
+
+const applyItemRenderPosition = (element, position) => {
+  element.style.left = position.left;
+  element.style.top = position.top;
+  element.style.zIndex = position.zIndex;
+  element.style.height = position.height;
+};
+
 /* =====================================================
    INVENTAIRE ET INTERACTIONS
 ===================================================== */
 
 const addItemToInventory = (itemToAdd) => {
-  const itemData = itemsDatabase[itemToAdd.itemId];
+  const itemData = getItemData(itemToAdd.itemId);
   if (itemData) {
     const inventoryItem = {
       itemId: itemToAdd.itemId,
@@ -549,7 +582,7 @@ const addItemToInventory = (itemToAdd) => {
       playerState.inventory.push(inventoryItem);
     }
     updatePlayerInventory();
-  } else { console.log("item introuvable dans itemsDatabase")}
+  }
 };
 
 const handleInteraction = () => {
@@ -563,36 +596,23 @@ const handleInteraction = () => {
     const nearItem = worldItems[nearItemIndex];
     worldItems.splice(nearItemIndex, 1);
     addItemToInventory(nearItem);
-    removeGroundItemRender(nearItem.id);
+    removeGroundItemRender(nearItem.uid);
   }
 };
 
 const updateItemPosition = () => {
   worldItems.forEach((item) => {
-    const itemData = itemsDatabase[item.itemId];
+    const position = getItemRenderPosition(item);
+    if (!position) {
+      return;
+    }
     const itemElement = document.querySelector(
-      `.world-item[data-item-id="${item.id}"]`,
+      `.world-item[data-item-uid="${item.uid}"]`,
     );
-
-    if (itemElement && itemData) {
-      if (itemData.isTall) {
-        itemElement.style.left = `${item.x - camera.x}px`;
-        itemElement.style.top = `${item.y - camera.y - 32}px`;
-      } else {
-        itemElement.style.left = `${item.x - camera.x}px`;
-        itemElement.style.top = `${item.y - camera.y}px`;
-      }
+    if (itemElement) {
+      applyItemRenderPosition(itemElement, position);
     }
   });
-};
-
-const removeGroundItemRender = (instanceId) => {
-  const itemElement = document.querySelector(
-    `.world-item[data-item-id="${instanceId}"]`,
-  );
-  if (itemElement) {
-    itemElement.remove();
-  }
 };
 
 /* =====================================================
@@ -604,7 +624,7 @@ const updatePlayerInventory = () => {
                 <div class="boite-jeux-titre">Inventory</div>
                 <div class="separateur-panneau"></div>`;
   playerState.inventory.forEach((item) => {
-    const itemData = itemsDatabase[item.itemId];
+    const itemData = getItemData(item.itemId);
     if (itemData) {
       html += `<div class="boite-row"><span class="item-name">${itemData.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
     }
@@ -1059,7 +1079,7 @@ const clearMonsterSelection = () => {
 };
 
 const deadMonster = (monster) => {
-  addGroundItem(createCorpse("ratCorpse", monster.x, monster.y));
+  addGroundItem(createGroundItem("ratCorpse", 1, monster.x, monster.y));
   removeMonster(monster.id);
   selectedMonsterId = null;
 };

@@ -1,3 +1,6 @@
+0.288 -
+    -
+
 0.287 - Rendre les items Data-Driven avec une base de donnees local
     -Creation de la base de donne itemsDatabase
     -Enlever les donnes fix de l'objet pour les liees dans la database local
