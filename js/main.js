@@ -466,6 +466,24 @@ const getItemData = (itemId) => {
   }
 };
 
+const isValidWorldItem = (item) => {
+  if (!item) {
+    return false;
+  }
+  const itemData = getItemData(item.itemId);
+  if (
+    !itemData ||
+    !item.uid ||
+    !Number.isInteger(item.x) ||
+    !Number.isInteger(item.y) ||
+    !Number.isInteger(item.quantity) ||
+    item.quantity <= 0
+  ) {
+    return false;
+  }
+  return true;
+};
+
 /* =====================================================
    WORLD ITEMS - CREATION ET RENDU
 ===================================================== */
@@ -485,17 +503,25 @@ const createGroundItem = (itemId, quantity, x, y) => {
   return worldItem;
 };
 
+const createItemElement = (item) => {
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return null;
+  }
+  const div = document.createElement("div");
+  div.classList.add("world-item");
+  div.style.backgroundImage = `url("${itemData.image}")`;
+  div.setAttribute("data-item-uid", item.uid);
+  return div;
+};
+
 const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
-    const div = document.createElement("div");
     const item = items[i];
-    const itemData = getItemData(item.itemId);
-    if (!itemData) {
+    const div = createItemElement(item);
+    if (!div) {
       continue;
     }
-    div.classList.add("world-item");
-    div.style.backgroundImage = `url("${itemData.image}")`;
-    div.setAttribute("data-item-uid", item.uid);
     const position = getItemRenderPosition(item);
     if (!position) {
       continue;
@@ -506,7 +532,7 @@ const renderGroundItems = (items) => {
 };
 
 const addGroundItem = (worldItem) => {
-  if (worldItem) {
+  if (isValidWorldItem(worldItem)) {
     worldItems.push(worldItem);
     renderGroundItems([worldItem]);
   }

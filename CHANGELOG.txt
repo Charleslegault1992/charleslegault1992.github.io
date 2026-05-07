@@ -1,10 +1,9 @@
-0.288 -
-    -
-
 0.287 - Rendre les items Data-Driven avec une base de donnees local
     -Creation de la base de donne itemsDatabase
     -Enlever les donnes fix de l'objet pour les liees dans la database local
-    -Correction des fonctions pour utilisees les donnes de la database local
+    -Correction des fonctions des items pour utilisees les donnes de la database local
+    -Separation des fonctions des items en plus petites fonctions pour que chacunes d'entres elles aient un usage unique;
+    -Ajout de plusieur verification des items pour eviter les bugs
     
 0.286 — Ajout changelog
     -Snapshot du projet
