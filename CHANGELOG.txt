@@ -1,3 +1,10 @@
+0.288 -Passage 720p, tiles 64x64 et preparation atlas items
+    -Update de 480p a 720p
+    -Camera, lumiere, mouvement ajustes
+    -Atlas items 66x66 / sprites 64x64 / padding 1px
+    -Items multi-part avec render.parts
+    -Rendu items via items-sheet.png, pu d’images separees pour le monde
+
 0.287 - Rendre les items Data-Driven avec une base de donnees local
     -Creation de la base de donne itemsDatabase
     -Enlever les donnes fix de l'objet pour les liees dans la database local

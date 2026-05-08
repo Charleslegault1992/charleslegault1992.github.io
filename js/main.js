@@ -1,5 +1,5 @@
 /* =====================================================
-   ELEMENTS HTML
+   BASE - ELEMENTS HTML
 ===================================================== */
 
 const panneauGauche = document.querySelector(".jeux-gauche");
@@ -17,78 +17,19 @@ const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
 
 /* =====================================================
-   DATABASES
-===================================================== */
-const itemsDatabase = {
-  apple: {
-    itemId: "apple",
-    name: "Apple",
-    desc: "An apple.",
-    type: "food",
-    image: "./images/items/apple.png",
-    weight: 10,
-    stackable: true,
-    blockMovement: false,
-    isTall: false,
-  },
-  box: {
-    itemId: "box",
-    name: "Box",
-    desc: "A big old box.",
-    type: "container",
-    image: "./images/items/box.png",
-    weight: 50,
-    stackable: false,
-    blockMovement: true,
-    isTall: true,
-  },
-  healthPotion: {
-    itemId: "healthPotion",
-    name: "Health Potion",
-    desc: "Drinking it might give you some benefit.",
-    type: "consumable",
-    image: "./images/items/health-potion.png",
-    weight: 10,
-    stackable: true,
-    blockMovement: false,
-    isTall: false,
-  },
-  ratCorpse: {
-    itemId: "ratCorpse",
-    name: "Rat Corpse",
-    desc: "A dead rat.",
-    type: "corpse",
-    image: "./images/items/rat-corpse.png",
-    weight: 20,
-    stackable: false,
-    blockMovement: false,
-    isTall: false,
-  },
-  sword: {
-    itemId: "sword",
-    name: "Sword",
-    desc: "An old rusty sword.",
-    type: "weapon",
-    image: "./images/items/sword.png",
-    weight: 20,
-    stackable: false,
-    blockMovement: false,
-    isTall: false,
-    weaponType: "sword",
-  },
-};
-
-/* =====================================================
-   VARIABLES GLOBALES
+   BASE - CONSTANTES ET VARIABLES
 ===================================================== */
 
-const GAME_WIDTH = 864;
-const GAME_HEIGHT = 480;
-const PLAYER_SIZE = 32;
-const TILE_SIZE = 32;
+const GAME_WIDTH = 1280;
+const GAME_HEIGHT = 720;
+const TILE_SIZE = 64;
+const PLAYER_SIZE = TILE_SIZE;
 const MOVE_SPEED = TILE_SIZE;
 const MAP_COLS = GAME_WIDTH / TILE_SIZE;
 const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
+const ITEM_ATLAS_CELL_SIZE = 66;
+const ITEM_SPRITE_SIZE = 64;
+const ITEM_ATLAS_PADDING = 1;
 
 const FLOOR = 0;
 const WALL = 1;
@@ -100,8 +41,8 @@ let selectedMonsterId = null;
 const worldItems = [];
 const monsters = [];
 
-const playerSpawnX = 13 * 32;
-const playerSpawnY = 8 * 32;
+const playerSpawnX = 13 * TILE_SIZE;
+const playerSpawnY = 8 * TILE_SIZE;
 
 const camera = {
   x: 0,
@@ -111,7 +52,133 @@ const camera = {
 const minChatHeight = 120;
 
 /* =====================================================
-   TIMING
+   ITEMS - BASE DE DONNEES
+===================================================== */
+const itemsDatabase = {
+  apple: {
+    itemId: "apple",
+    name: "Apple",
+    desc: "An apple.",
+    type: "food",
+    weight: 10,
+    stackable: true,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          spriteCol: 0,
+          spriteRow: 0,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  box: {
+    itemId: "box",
+    name: "Box",
+    desc: "A big old box.",
+    type: "container",
+    weight: 50,
+    stackable: false,
+    blockMovement: true,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          spriteCol: 0,
+          spriteRow: 2,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+        {
+          spriteCol: 1,
+          spriteRow: 2,
+          offsetX: 0,
+          offsetY: -ITEM_SPRITE_SIZE,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  healthPotion: {
+    itemId: "healthPotion",
+    name: "Health Potion",
+    desc: "Drinking it might give you some benefit.",
+    type: "consumable",
+    weight: 10,
+    stackable: true,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          spriteCol: 0,
+          spriteRow: 1,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  ratCorpse: {
+    itemId: "ratCorpse",
+    name: "Rat Corpse",
+    desc: "A dead rat.",
+    type: "corpse",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          spriteCol: 0,
+          spriteRow: 3,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: -1,
+        },
+        {
+          spriteCol: 1,
+          spriteRow: 3,
+          offsetX: 0,
+          offsetY: ITEM_SPRITE_SIZE,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  sword: {
+    itemId: "sword",
+    name: "Sword",
+    desc: "An old rusty sword.",
+    type: "weapon",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    weaponType: "sword",
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          spriteCol: 0,
+          spriteRow: 4,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+};
+
+/* =====================================================
+   CORE - TIMING
 ===================================================== */
 
 const GAME_LOOP_MS = 10;
@@ -126,16 +193,18 @@ let nextMonsterAttackTime = 0;
 const MONSTER_ATTACK_COOLDOWN_MS = 1500;
 
 /* =====================================================
-   SPRITE JOUEUR
+   PLAYER - CONSTANTES SPRITE
 ===================================================== */
 
-const PLAYER_FRAME_WIDTH = 32;
-const PLAYER_FRAME_HEIGHT = 64;
+const PLAYER_FRAME_WIDTH = TILE_SIZE;
+const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
 const PLAYER_ANIMATION_FRAMES = 3;
 
 /* =====================================================
-   JOUEUR - DONNEES ET AFFICHAGE
+   PLAYER
 ===================================================== */
+
+/* ---------- JOUEUR - DONNEES ---------- */
 
 const playerState = {
   x: playerSpawnX,
@@ -174,6 +243,8 @@ const playerState = {
   ],
 };
 
+/* ---------- JOUEUR - AFFICHAGE ---------- */
+
 const showPlayerName = (name) => {
   const playerName = document.createElement("div");
   playerName.classList.add("name");
@@ -204,9 +275,11 @@ const updatePlayerSprite = () => {
 
 const updatePlayerPosition = () => {
   player.style.left = `${playerState.x - camera.x}px`;
-  player.style.top = `${playerState.y - camera.y - 32}px`;
+  player.style.top = `${playerState.y - camera.y - TILE_SIZE}px`;
   player.style.zIndex = playerState.y;
 };
+
+/* ---------- JOUEUR - VIE ET MORT ---------- */
 
 const hpRefresh = () => {
   const playerHp = document.querySelector(".php-red");
@@ -232,14 +305,18 @@ const playerDead = () => {
    CAMERA
 ===================================================== */
 
+/* ---------- CAMERA - POSITION ---------- */
+
 const updateCamera = () => {
-  camera.x = playerState.x + 16 - GAME_WIDTH / 2;
-  camera.y = playerState.y + 16 - GAME_HEIGHT / 2;
+  camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
+  camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
 };
 
 /* =====================================================
-   MAP - DONNEES ET RENDU
+   MAP
 ===================================================== */
+
+/* ---------- MAP - DONNEES ---------- */
 
 const gameMap = [
   [
@@ -376,6 +453,8 @@ const currentMap = {
   dark: true,
 };
 
+/* ---------- MAP - AFFICHAGE DOM ---------- */
+
 const renderMap = (map) => {
   for (let row = 0; row < map.length; row++) {
     for (let col = 0; col < map[row].length; col++) {
@@ -397,6 +476,8 @@ const renderMap = (map) => {
     }
   }
 };
+
+/* ---------- MAP - COLLISIONS ET LIMITES ---------- */
 
 const isInsideMap = (testX, testY) => {
   return (
@@ -430,8 +511,10 @@ const updateMapPosition = () => {
 };
 
 /* =====================================================
-   OUTILS / HELPERS
+   CORE - OUTILS / HELPERS
 ===================================================== */
+
+/* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
 const getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -449,13 +532,22 @@ const isNearPlayer = (target, range = 1) => {
   );
 };
 
+/* ---------- OUTILS - MISE A JOUR DU MONDE ---------- */
+
 const updateWorldPosition = () => {
   updateCamera();
   updateMapPosition();
   updateItemPosition();
   updateMonsterPosition();
   updatePlayerPosition();
+  updateLight(playerState);
 };
+
+/* =====================================================
+   ITEMS
+===================================================== */
+
+/* ---------- ITEMS - ACCES BASE DE DONNEES ---------- */
 
 const getItemData = (itemId) => {
   if (itemsDatabase[itemId]) {
@@ -465,6 +557,8 @@ const getItemData = (itemId) => {
     return null;
   }
 };
+
+/* ---------- ITEMS - VALIDATION GAMEPLAY ---------- */
 
 const isValidWorldItem = (item) => {
   if (!item) {
@@ -484,9 +578,101 @@ const isValidWorldItem = (item) => {
   return true;
 };
 
+/* ---------- ITEMS - DONNEES ATLAS ---------- */
+
+const getItemRenderParts = (itemId) => {
+  const itemData = getItemData(itemId);
+  if (!itemData || !itemData.render || !itemData.render.parts) {
+    return [];
+  }
+  return itemData.render.parts;
+};
+
+const getItemRenderData = (itemId) => {
+  const parts = getItemRenderParts(itemId);
+  const enrichedParts = parts.map((part) => {
+    const source = getItemAtlasSource(part);
+    return {
+      ...part,
+      ...source,
+    };
+  });
+  return enrichedParts;
+};
+
+const getItemAtlasSource = (part) => {
+  return {
+    sourceX: part.spriteCol * ITEM_ATLAS_CELL_SIZE + ITEM_ATLAS_PADDING,
+    sourceY: part.spriteRow * ITEM_ATLAS_CELL_SIZE + ITEM_ATLAS_PADDING,
+    sourceWidth: ITEM_SPRITE_SIZE,
+    sourceHeight: ITEM_SPRITE_SIZE,
+  };
+};
+
+const getItemRenderPartPosition = (item, part) => {
+  return {
+    left: item.x - camera.x + part.offsetX,
+    top: item.y - camera.y + part.offsetY,
+    zIndex: item.y + part.zOffset -1,
+    width: ITEM_SPRITE_SIZE,
+    height: ITEM_SPRITE_SIZE,
+  };
+};
+
+const getItemRenderPartsPositions = (item) => {
+  if (!item) {
+    return [];
+  }
+  const parts = getItemRenderData(item.itemId);
+  return parts.map((part) => {
+    return getItemRenderPartPosition(item, part);
+  });
+};
+
+const applyItemRenderPartPosition = (element, position) => {
+  element.style.left = `${position.left}px`;
+  element.style.top = `${position.top}px`;
+  element.style.width = `${position.width}px`;
+  element.style.height = `${position.height}px`;
+  element.style.zIndex = position.zIndex;
+};
+
+const getItemAtlasPath = (atlasName) => {
+  if (atlasName === "items") {
+    return "./images/items/items-sheet.png";
+  }
+  console.error(`atlasName: ${atlasName} n'existe pas`);
+};
+/* ---------- ITEMS - VALIDATION ATLAS FUTUR ---------- */
+
+const isValidItemRenderPart = (part) => {
+  if (
+    !part ||
+    !Number.isInteger(part.spriteCol) ||
+    !Number.isInteger(part.spriteRow) ||
+    !Number.isInteger(part.offsetX) ||
+    !Number.isInteger(part.offsetY) ||
+    !Number.isInteger(part.zOffset)
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const areValidItemRenderParts = (parts) => {
+  if (!parts || !Array.isArray(parts) || parts.length <= 0) {
+    return false;
+  }
+  return parts.every((part) => {
+    return isValidItemRenderPart(part);
+  });
+};
+
 /* =====================================================
-   WORLD ITEMS - CREATION ET RENDU
+   ITEMS - MONDE ET RENDU DOM
 ===================================================== */
+
+/* ---------- ITEMS - CREATION DONNEES ---------- */
 
 const createGroundItem = (itemId, quantity, x, y) => {
   const itemData = getItemData(itemId);
@@ -503,33 +689,47 @@ const createGroundItem = (itemId, quantity, x, y) => {
   return worldItem;
 };
 
-const createItemElement = (item) => {
+/* ---------- ITEMS - CREATION DOM ---------- */
+
+const createItemPartElement = (item, part, partIndex) => {
   const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return null;
-  }
+  const atlasPath = getItemAtlasPath(itemData.render.atlas);
   const div = document.createElement("div");
-  div.classList.add("world-item");
-  div.style.backgroundImage = `url("${itemData.image}")`;
+  div.classList.add("world-item-part");
+  div.style.backgroundImage = `url("${atlasPath}")`;
   div.setAttribute("data-item-uid", item.uid);
+  div.setAttribute("data-part-index", partIndex);
+  div.style.backgroundPosition = `-${part.sourceX}px -${part.sourceY}px`;
+  div.style.backgroundRepeat = "no-repeat";
   return div;
 };
+
+const renderGroundItemParts = (item) => {
+  if (!item) {
+    return;
+  }
+  const enrichedParts = getItemRenderData(item.itemId);
+  if (enrichedParts.length <= 0) {
+    return;
+  }
+  enrichedParts.forEach((enrichedPart, index) => {
+    const div = createItemPartElement(item, enrichedPart, index);
+    const position = getItemRenderPartPosition(item, enrichedPart);
+    applyItemRenderPartPosition(div, position);
+    game.appendChild(div);
+  });
+};
+
+/* ---------- ITEMS - AFFICHAGE DOM ---------- */
 
 const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const div = createItemElement(item);
-    if (!div) {
-      continue;
-    }
-    const position = getItemRenderPosition(item);
-    if (!position) {
-      continue;
-    }
-    applyItemRenderPosition(div, position);
-    game.appendChild(div);
+    renderGroundItemParts(item);
   }
 };
+
+/* ---------- ITEMS - AJOUT ET RETRAIT MONDE ---------- */
 
 const addGroundItem = (worldItem) => {
   if (isValidWorldItem(worldItem)) {
@@ -539,13 +739,15 @@ const addGroundItem = (worldItem) => {
 };
 
 const removeGroundItemRender = (itemUid) => {
-  const itemElement = document.querySelector(
-    `.world-item[data-item-uid="${itemUid}"]`,
+  const itemElements = document.querySelectorAll(
+    `.world-item-part[data-item-uid="${itemUid}"]`,
   );
-  if (itemElement) {
+  itemElements.forEach((itemElement) => {
     itemElement.remove();
-  }
+  });
 };
+
+/* ---------- ITEMS - COLLISION ---------- */
 
 const isBlockingItemAtPosition = (x, y) => {
   return worldItems.some((item) => {
@@ -558,38 +760,11 @@ const isBlockingItemAtPosition = (x, y) => {
   });
 };
 
-const getItemRenderPosition = (item) => {
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return null;
-  }
-  if (itemData.isTall) {
-    return {
-      left: `${item.x - camera.x}px`,
-      top: `${item.y - camera.y - 32}px`,
-      zIndex: item.y,
-      height: "64px",
-    };
-  } else {
-    return {
-      left: `${item.x - camera.x}px`,
-      top: `${item.y - camera.y}px`,
-      zIndex: item.y - 1,
-      height: "32px",
-    };
-  }
-};
-
-const applyItemRenderPosition = (element, position) => {
-  element.style.left = position.left;
-  element.style.top = position.top;
-  element.style.zIndex = position.zIndex;
-  element.style.height = position.height;
-};
-
 /* =====================================================
-   INVENTAIRE ET INTERACTIONS
+   ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS
 ===================================================== */
+
+/* ---------- INVENTAIRE - AJOUT DONNEES ---------- */
 
 const addItemToInventory = (itemToAdd) => {
   const itemData = getItemData(itemToAdd.itemId);
@@ -611,6 +786,8 @@ const addItemToInventory = (itemToAdd) => {
   }
 };
 
+/* ---------- INVENTAIRE - INTERACTION JOUEUR ---------- */
+
 const handleInteraction = () => {
   const nearItemIndex = worldItems.findIndex((item) => {
     return isNearPlayer(item);
@@ -626,24 +803,33 @@ const handleInteraction = () => {
   }
 };
 
+/* ---------- INVENTAIRE - MISE A JOUR ITEMS ---------- */
+
 const updateItemPosition = () => {
   worldItems.forEach((item) => {
-    const position = getItemRenderPosition(item);
-    if (!position) {
+    const positions = getItemRenderPartsPositions(item);
+    if (!positions || positions.length <= 0) {
       return;
     }
-    const itemElement = document.querySelector(
-      `.world-item[data-item-uid="${item.uid}"]`,
+    const itemElements = document.querySelectorAll(
+      `.world-item-part[data-item-uid="${item.uid}"]`,
     );
-    if (itemElement) {
-      applyItemRenderPosition(itemElement, position);
-    }
+    itemElements.forEach((element) => {
+      const partIndex = Number(element.getAttribute("data-part-index"));
+      const position = positions[partIndex];
+      if (!position) {
+        return;
+      }
+      applyItemRenderPartPosition(element, position);
+    });
   });
 };
 
 /* =====================================================
-   UI - PANNEAUX ET SCALE
+   UI
 ===================================================== */
+
+/* ---------- UI - INVENTAIRE ---------- */
 
 const updatePlayerInventory = () => {
   let html = `<div class="boite-boite">
@@ -658,6 +844,8 @@ const updatePlayerInventory = () => {
   html += `</div>`;
   playerInventory.innerHTML = html;
 };
+
+/* ---------- UI - STATS JOUEUR ---------- */
 
 const updatePlayerStats = () => {
   playerStats.innerHTML = `<div class="boite-boite">
@@ -684,6 +872,8 @@ const updatePlayerExperience = () => {
   updatePlayerStats();
 };
 
+/* ---------- UI - SCALE DU JEU ---------- */
+
 const updateGameScale = () => {
   boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
   const freeWidthSpace =
@@ -703,17 +893,19 @@ const updateGameScale = () => {
 };
 
 /* =====================================================
-   LUMIERE
+   LIGHT - CANVAS
 ===================================================== */
 lightCanvas.width = GAME_WIDTH;
 lightCanvas.height = GAME_HEIGHT;
 const ctx = lightCanvas.getContext("2d");
 
+/* ---------- LUMIERE - AFFICHAGE ---------- */
+
 const updateLight = (source) => {
   if (currentMap.dark) {
     let lightRadius = 0;
-    const screenX = source.x - camera.x + 16;
-    const screenY = source.y - camera.y + 16;
+    const screenX = source.x - camera.x + TILE_SIZE / 2;
+    const screenY = source.y - camera.y + TILE_SIZE / 2;
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     if (source.light <= 0) {
       ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
@@ -793,7 +985,7 @@ const updateLight = (source) => {
 };
 
 /* =====================================================
-   MOUVEMENT DU JOUEUR
+   JOUEUR - MOUVEMENT
 ===================================================== */
 
 const keysPressed = {
@@ -802,6 +994,8 @@ const keysPressed = {
   up: false,
   down: false,
 };
+
+/* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
 
 const getPlayerMoveCooldown = () => {
   if (playerState.level < 100) {
@@ -829,6 +1023,8 @@ const getWantedDirection = () => {
     return;
   }
 };
+
+/* ---------- JOUEUR - MISE A JOUR MOUVEMENT ---------- */
 
 const updateMovement = () => {
   const direction = getWantedDirection();
@@ -875,8 +1071,10 @@ const updateMovement = () => {
 };
 
 /* =====================================================
-   INPUTS CLAVIER
+   INPUTS - CLAVIER ET RESIZE
 ===================================================== */
+
+/* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
 document.addEventListener("keydown", (e) => {
   e.preventDefault();
@@ -900,6 +1098,8 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+/* ---------- INPUTS - TOUCHE RELACHEE ---------- */
+
 document.addEventListener("keyup", (e) => {
   e.preventDefault();
   if (e.key === "ArrowRight" || e.key === "d") {
@@ -915,13 +1115,18 @@ document.addEventListener("keyup", (e) => {
   }
 });
 
+/* ---------- INPUTS - RESIZE FENETRE ---------- */
+
 window.addEventListener("resize", () => {
   updateGameScale();
 });
 
 /* =====================================================
-   MONSTRES - CREATION ET AFFICHAGE
+   MONSTRES
 ===================================================== */
+
+/* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
+
 const MonsterHpRefresh = (monster) => {
   const monsterHp = document.querySelector(
     `.hp-red[data-monster-id="${monster.id}"]`,
@@ -940,8 +1145,8 @@ const createMonster = (
   experience,
   moveCooldown = 250,
   pathRefreshCooldown = 800,
-  MONSTER_FRAME_WIDTH = 48,
-  MONSTER_FRAME_HEIGHT = 48,
+  MONSTER_FRAME_WIDTH = TILE_SIZE,
+  MONSTER_FRAME_HEIGHT = TILE_SIZE,
   MONSTER_ANIMATION_FRAMES = 3,
 ) => {
   const monster = {
@@ -1011,6 +1216,7 @@ const renderMonsters = (monstersList) => {
     updateMonsterSprite(monster);
   }
 };
+
 const updateMonsterSprite = (monster) => {
   const colonne = monster.walkFrame;
   const ligne = getDirectionRow(monster.direction);
@@ -1022,9 +1228,7 @@ const updateMonsterSprite = (monster) => {
   monsterSpriteElement.style.backgroundPosition = `${x}px ${y}px`;
 };
 
-/* =====================================================
-   MONSTRES - DETECTION ET RECHERCHE
-===================================================== */
+/* ---------- MONSTRES - DETECTION ET DIRECTION ---------- */
 
 const isMonsterAtPosition = (x, y) => {
   return monsters.some((monster) => {
@@ -1093,9 +1297,7 @@ const updateMonsterDirection = (selfMonster, tile) => {
   }
 };
 
-/* =====================================================
-   MONSTRES - SELECTION ET SUPPRESSION
-===================================================== */
+/* ---------- MONSTRES - SELECTION ET MORT ---------- */
 
 const clearMonsterSelection = () => {
   const monsterSelection = document.querySelectorAll(".monster-selected");
@@ -1139,9 +1341,7 @@ const findMonsterElement = (monsterId) => {
   return monsterElement;
 };
 
-/* =====================================================
-   MONSTRES - COMBAT ET POSITION
-===================================================== */
+/* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
 
 const updateMonsterCombat = () => {
   monsters.forEach((monster) => {
@@ -1254,8 +1454,10 @@ const updateMonsterMovement = () => {
 };
 
 /* =====================================================
-   COMBAT DU JOUEUR
+   PLAYER - COMBAT
 ===================================================== */
+
+/* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
 const attackMonster = (monster) => {
   monster.hp -= getRandomInt(1, playerState.damage);
@@ -1290,8 +1492,11 @@ const updateCombat = () => {
 };
 
 /* =====================================================
-   PATHFINDING A* - POSITIONS ET VOISINS
+   PATHFINDING A*
 ===================================================== */
+
+/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
+
 const getTilePosition = (source) => {
   const col = source.x / TILE_SIZE;
   const row = source.y / TILE_SIZE;
@@ -1358,9 +1563,7 @@ const getNeighborNodes = (tile, targetTile) => {
   return neighborsNodes;
 };
 
-/* =====================================================
-   PATHFINDING A* - NODES ET LISTES
-===================================================== */
+/* ---------- PATHFINDING - NODES ET LISTES ---------- */
 
 const getSmallerF = (nodesList) => {
   if (nodesList.length > 0) {
@@ -1397,9 +1600,7 @@ const buildPath = (currentNode) => {
   return path.reverse();
 };
 
-/* =====================================================
-   PATHFINDING A* - DESTINATION ET CHEMIN
-===================================================== */
+/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
 
 const pathDestination = (selfTile, destinationTile) => {
   const neighbors = getNeighbors(destinationTile);
@@ -1462,16 +1663,20 @@ const findPath = (startTile, targetTile) => {
 };
 
 /* =====================================================
-   EVENTS DU JEU
+   EVENEMENTS DU JEU
 ===================================================== */
+
+/* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
 /* =====================================================
-   GAME LOOP
+   BOUCLE DE JEU
 ===================================================== */
+
+/* ---------- BOUCLE DE JEU - UPDATE PRINCIPAL ---------- */
 
 const gameLoop = () => {
   updateMovement();
@@ -1486,6 +1691,8 @@ setInterval(gameLoop, GAME_LOOP_MS);
    INITIALISATION DU JEU
 ===================================================== */
 
+/* ---------- INITIALISATION - DEMARRAGE ---------- */
+
 updateGameScale();
 showPlayerName(playerState.name);
 updatePlayerSprite();
@@ -1495,18 +1702,22 @@ renderMap(gameMap);
 updatePlayerInventory();
 updatePlayerStats();
 
-addGroundItem(createGroundItem("box", 1, 20 * 32, 23 * 32));
-addGroundItem(createGroundItem("healthPotion", 1, 30 * 32, 21 * 32));
-addGroundItem(createGroundItem("apple", 2, 20 * 32, 24 * 32));
-monsters.push(createMonster("Rat", 30 * 32, 20 * 32, 20, 4, 50));
-monsters.push(createMonster("Rat", 33 * 32, 23 * 32, 20, 4, 50));
+addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 23 * TILE_SIZE));
+addGroundItem(
+  createGroundItem("healthPotion", 1, 30 * TILE_SIZE, 21 * TILE_SIZE),
+);
+addGroundItem(createGroundItem("apple", 2, 20 * TILE_SIZE, 24 * TILE_SIZE));
+monsters.push(createMonster("Rat", 30 * TILE_SIZE, 20 * TILE_SIZE, 20, 4, 50));
+monsters.push(createMonster("Rat", 33 * TILE_SIZE, 23 * TILE_SIZE, 20, 4, 50));
 renderMonsters(monsters);
 updateWorldPosition();
 updateLight(playerState);
 
 /* =====================================================
-   CONSOLE LOG
+   DEBUG CONSOLE
 ===================================================== */
+
+/* ---------- DEBUG - LOGS TEMPORAIRES ---------- */
 
 console.log(gameMap);
 console.log(player);
