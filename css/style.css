@@ -4,6 +4,7 @@
 
 :root {
   --game-scale: 2;
+  --hp-color: rgb(60, 255, 0);
 }
 
 /* =====================================================
@@ -336,11 +337,10 @@ main {
   background: black;
 }
 
-
 .hp-red,
 .php-red {
   height: 100%;
-  background: rgb(60, 255, 0);
+  background: var(--hp-color);
   box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.71);
 }
 
@@ -359,4 +359,3 @@ main {
   transform: translateX(-50%);
   white-space: nowrap;
 }
-

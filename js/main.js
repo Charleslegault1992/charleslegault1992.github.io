@@ -7,6 +7,7 @@ const panneauDroite = document.querySelector(".jeux-droite");
 const boitePrincipale = document.querySelector("#boite-principal");
 const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
+const hpbar = document.querySelector("#player");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
 const boiteJeux = document.querySelector("#boite-jeux");
@@ -27,9 +28,9 @@ const PLAYER_SIZE = TILE_SIZE;
 const MOVE_SPEED = TILE_SIZE;
 const MAP_COLS = GAME_WIDTH / TILE_SIZE;
 const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
-const ITEM_ATLAS_CELL_SIZE = 66;
-const ITEM_SPRITE_SIZE = 64;
-const ITEM_ATLAS_PADDING = 1;
+const SPRITE_SIZE = 64;
+const ATLAS_CELL_SIZE = 66;
+const ATLAS_PADDING = 1;
 
 const FLOOR = 0;
 const WALL = 1;
@@ -52,7 +53,7 @@ const camera = {
 const minChatHeight = 120;
 
 /* =====================================================
-   ITEMS - BASE DE DONNEES
+   BASE DE DONNEES
 ===================================================== */
 const itemsDatabase = {
   apple: {
@@ -67,8 +68,8 @@ const itemsDatabase = {
       atlas: "items",
       parts: [
         {
-          spriteCol: 0,
-          spriteRow: 0,
+          atlasCol: 0,
+          atlasRow: 0,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
@@ -88,17 +89,17 @@ const itemsDatabase = {
       atlas: "items",
       parts: [
         {
-          spriteCol: 0,
-          spriteRow: 2,
+          atlasCol: 0,
+          atlasRow: 2,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
         },
         {
-          spriteCol: 1,
-          spriteRow: 2,
+          atlasCol: 1,
+          atlasRow: 2,
           offsetX: 0,
-          offsetY: -ITEM_SPRITE_SIZE,
+          offsetY: -SPRITE_SIZE,
           zOffset: 0,
         },
       ],
@@ -116,8 +117,8 @@ const itemsDatabase = {
       atlas: "items",
       parts: [
         {
-          spriteCol: 0,
-          spriteRow: 1,
+          atlasCol: 0,
+          atlasRow: 1,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
@@ -137,18 +138,11 @@ const itemsDatabase = {
       atlas: "items",
       parts: [
         {
-          spriteCol: 0,
-          spriteRow: 3,
+          atlasCol: 0,
+          atlasRow: 3,
           offsetX: 0,
           offsetY: 0,
           zOffset: -1,
-        },
-        {
-          spriteCol: 1,
-          spriteRow: 3,
-          offsetX: 0,
-          offsetY: ITEM_SPRITE_SIZE,
-          zOffset: 0,
         },
       ],
     },
@@ -166,14 +160,78 @@ const itemsDatabase = {
       atlas: "items",
       parts: [
         {
-          spriteCol: 0,
-          spriteRow: 4,
+          atlasCol: 0,
+          atlasRow: 4,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
         },
       ],
     },
+  },
+  spiderCorpse: {
+    itemId: "spiderCorpse",
+    name: "Spider Corpse",
+    desc: "A dead spider.",
+    type: "corpse",
+    weight: 30,
+    stackable: false,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 1,
+          atlasRow: 3,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: -1,
+        },
+      ],
+    },
+  },
+};
+
+const monstersDatabase = {
+  rat: {
+    monsterId: "rat",
+    name: "Rat",
+    desc: "A rat.",
+    maxHp: 20,
+    damage: 2,
+    experience: 50,
+    moveCooldown: 275,
+    pathRefreshCooldown: 800,
+    atlas: "monsters",
+    atlasCol: 0,
+    atlasRow: 0,
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE,
+    drawOffsetX: 0,
+    drawOffsetY: 0,
+    animationFrames: 3,
+    spriteSize: SPRITE_SIZE,
+    corpseItemId: "ratCorpse",
+  },
+  spider: {
+    monsterId: "spider",
+    name: "Spider",
+    desc: "A venomous spider.",
+    maxHp: 50,
+    damage: 4,
+    experience: 75,
+    moveCooldown: 250,
+    pathRefreshCooldown: 800,
+    atlas: "monsters",
+    atlasCol: 6,
+    atlasRow: 0,
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE,
+    drawOffsetX: 0,
+    drawOffsetY: 0,
+    animationFrames: 3,
+    spriteSize: SPRITE_SIZE,
+    corpseItemId: "spiderCorpse",
   },
 };
 
@@ -285,6 +343,10 @@ const hpRefresh = () => {
   const playerHp = document.querySelector(".php-red");
   if (playerHp) {
     playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
+    playerHp.style.setProperty(
+      "--hp-color",
+      getHpColor(playerState.hp, playerState.maxHp),
+    );
   }
 };
 
@@ -542,6 +604,32 @@ const updateWorldPosition = () => {
   updatePlayerPosition();
   updateLight(playerState);
 };
+const getAtlasSource = (col, row, spriteSize) => {
+  return {
+    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceWidth: spriteSize,
+    sourceHeight: spriteSize,
+  };
+};
+
+const getHpColor = (hp, maxHp) => {
+  const percent = hp / maxHp;
+
+  const hue = percent * 120;
+
+  return `hsl(${hue}, 100%, 45%)`;
+};
+
+const getAtlasPath = (atlasName) => {
+  if (atlasName === "items") {
+    return "./images/items/items-sheet.png";
+  }
+  if (atlasName === "monsters") {
+    return "./images/monstres/monsters-sheet.png";
+  }
+  console.error(`atlasName: ${atlasName} n'existe pas`);
+};
 
 /* =====================================================
    ITEMS
@@ -591,7 +679,7 @@ const getItemRenderParts = (itemId) => {
 const getItemRenderData = (itemId) => {
   const parts = getItemRenderParts(itemId);
   const enrichedParts = parts.map((part) => {
-    const source = getItemAtlasSource(part);
+    const source = getAtlasSource(part.atlasCol, part.atlasRow, SPRITE_SIZE);
     return {
       ...part,
       ...source,
@@ -600,22 +688,13 @@ const getItemRenderData = (itemId) => {
   return enrichedParts;
 };
 
-const getItemAtlasSource = (part) => {
-  return {
-    sourceX: part.spriteCol * ITEM_ATLAS_CELL_SIZE + ITEM_ATLAS_PADDING,
-    sourceY: part.spriteRow * ITEM_ATLAS_CELL_SIZE + ITEM_ATLAS_PADDING,
-    sourceWidth: ITEM_SPRITE_SIZE,
-    sourceHeight: ITEM_SPRITE_SIZE,
-  };
-};
-
 const getItemRenderPartPosition = (item, part) => {
   return {
     left: item.x - camera.x + part.offsetX,
     top: item.y - camera.y + part.offsetY,
-    zIndex: item.y + part.zOffset -1,
-    width: ITEM_SPRITE_SIZE,
-    height: ITEM_SPRITE_SIZE,
+    zIndex: item.y + part.zOffset - 1,
+    width: SPRITE_SIZE,
+    height: SPRITE_SIZE,
   };
 };
 
@@ -637,19 +716,13 @@ const applyItemRenderPartPosition = (element, position) => {
   element.style.zIndex = position.zIndex;
 };
 
-const getItemAtlasPath = (atlasName) => {
-  if (atlasName === "items") {
-    return "./images/items/items-sheet.png";
-  }
-  console.error(`atlasName: ${atlasName} n'existe pas`);
-};
 /* ---------- ITEMS - VALIDATION ATLAS FUTUR ---------- */
 
 const isValidItemRenderPart = (part) => {
   if (
     !part ||
-    !Number.isInteger(part.spriteCol) ||
-    !Number.isInteger(part.spriteRow) ||
+    !Number.isInteger(part.atlasCol) ||
+    !Number.isInteger(part.atlasRow) ||
     !Number.isInteger(part.offsetX) ||
     !Number.isInteger(part.offsetY) ||
     !Number.isInteger(part.zOffset)
@@ -693,7 +766,7 @@ const createGroundItem = (itemId, quantity, x, y) => {
 
 const createItemPartElement = (item, part, partIndex) => {
   const itemData = getItemData(item.itemId);
-  const atlasPath = getItemAtlasPath(itemData.render.atlas);
+  const atlasPath = getAtlasPath(itemData.render.atlas);
   const div = document.createElement("div");
   div.classList.add("world-item-part");
   div.style.backgroundImage = `url("${atlasPath}")`;
@@ -1129,40 +1202,29 @@ window.addEventListener("resize", () => {
 
 const MonsterHpRefresh = (monster) => {
   const monsterHp = document.querySelector(
-    `.hp-red[data-monster-id="${monster.id}"]`,
+    `.hp-red[data-monster-uid="${monster.uid}"]`,
   );
   if (monsterHp) {
-    monsterHp.style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+    const monsterData = getMonsterData(monster.monsterId);
+    monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
+    monsterHp.style.setProperty(
+      "--hp-color",
+      getHpColor(monster.hp, monsterData.maxHp),
+    );
   }
 };
 
-const createMonster = (
-  name,
-  x,
-  y,
-  maxHp,
-  damage,
-  experience,
-  moveCooldown = 250,
-  pathRefreshCooldown = 800,
-  MONSTER_FRAME_WIDTH = TILE_SIZE,
-  MONSTER_FRAME_HEIGHT = TILE_SIZE,
-  MONSTER_ANIMATION_FRAMES = 3,
-) => {
+const createMonster = (monsterId, x, y) => {
+  const monsterData = getMonsterData(monsterId);
+  if (!monsterData) {
+    return null;
+  }
   const monster = {
-    name,
+    monsterId,
     x,
     y,
-    hp: maxHp,
-    maxHp,
-    damage,
-    experience,
-    id: nextMonsterId++,
-    moveCooldown,
-    pathRefreshCooldown,
-    MONSTER_FRAME_WIDTH,
-    MONSTER_FRAME_HEIGHT,
-    MONSTER_ANIMATION_FRAMES,
+    hp: monsterData.maxHp,
+    uid: nextMonsterId++,
     nextMoveTime: 0,
     path: [],
     nextPathRefreshTime: 0,
@@ -1176,37 +1238,39 @@ const renderMonsters = (monstersList) => {
   for (let i = 0; i < monstersList.length; i++) {
     const div = document.createElement("div");
     const monster = monstersList[i];
+    const monsterData = getMonsterData(monster.monsterId);
     div.classList.add("monster");
-    div.style.width = `${TILE_SIZE}px`;
-    div.style.height = `${TILE_SIZE}px`;
-    if (monster.id === selectedMonsterId) {
+    div.style.width = `${monsterData.drawWidth}px`;
+    div.style.height = `${monsterData.drawHeight}px`;
+    if (monster.uid === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
     const monsterName = document.createElement("div");
     monsterName.classList.add("monster-name");
-    monsterName.textContent = `${monster.name}`;
+    monsterName.textContent = `${monsterData.name}`;
     const hpContainer = document.createElement("div");
     hpContainer.classList.add("hp-bar");
     const hpRed = document.createElement("div");
     hpRed.classList.add("hp-red");
-    div.setAttribute("data-monster-id", monster.id);
-    hpRed.setAttribute("data-monster-id", monster.id);
+    div.setAttribute("data-monster-uid", monster.uid);
+    hpRed.setAttribute("data-monster-uid", monster.uid);
     const monsterSprite = document.createElement("div");
     monsterSprite.classList.add("monster-sprite");
-    monsterSprite.style.backgroundImage = `url("../images/monstres/${monster.name.toLowerCase().replaceAll(" ", "-")}.png")`;
-    monsterSprite.style.width = `${monster.MONSTER_FRAME_WIDTH}px`;
-    monsterSprite.style.height = `${monster.MONSTER_FRAME_HEIGHT}px`;
+    const atlasPath = getAtlasPath(monsterData.atlas);
+    monsterSprite.style.backgroundImage = `url("${atlasPath}")`;
+    monsterSprite.style.width = `${monsterData.drawWidth}px`;
+    monsterSprite.style.height = `${monsterData.drawHeight}px`;
     div.addEventListener("contextmenu", () => {
       clearMonsterSelection();
-      if (monster.id === selectedMonsterId) {
+      if (monster.uid === selectedMonsterId) {
         selectedMonsterId = null;
         return;
       }
-      selectedMonsterId = monster.id;
+      selectedMonsterId = monster.uid;
       selectMonsterElement(selectedMonsterId);
     });
-    div.style.left = `${monster.x - camera.x}px`;
-    div.style.top = `${monster.y - camera.y}px`;
+    div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
+    div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
     div.style.zIndex = monster.y;
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterName);
@@ -1218,14 +1282,24 @@ const renderMonsters = (monstersList) => {
 };
 
 const updateMonsterSprite = (monster) => {
-  const colonne = monster.walkFrame;
-  const ligne = getDirectionRow(monster.direction);
-  const x = -colonne * monster.MONSTER_FRAME_WIDTH;
-  const y = -ligne * monster.MONSTER_FRAME_HEIGHT;
-  const monsterElement = findMonsterElement(monster.id);
+  const monsterData = getMonsterData(monster.monsterId);
+  const col = monsterData.atlasCol + monster.walkFrame;
+  const row = monsterData.atlasRow + getDirectionRow(monster.direction);
+  const monsterElement = findMonsterElement(monster.uid);
   const monsterSpriteElement = monsterElement.querySelector(".monster-sprite");
-  monsterSpriteElement.style.backgroundSize = `${monster.MONSTER_FRAME_WIDTH * monster.MONSTER_ANIMATION_FRAMES}px ${monster.MONSTER_FRAME_HEIGHT * 4}px`;
-  monsterSpriteElement.style.backgroundPosition = `${x}px ${y}px`;
+  const source = getAtlasSource(col, row, monsterData.spriteSize);
+  monsterSpriteElement.style.backgroundPosition = `-${source.sourceX}px -${source.sourceY}px`;
+};
+
+/* ---------- MONSTRES - COLLECTE DES DONNEES ---------- */
+
+const getMonsterData = (monsterId) => {
+  if (monstersDatabase[monsterId]) {
+    return monstersDatabase[monsterId];
+  } else {
+    console.error(`monsterId: ${monsterId} n'existe pas dans monstersDatabase`);
+    return null;
+  }
 };
 
 /* ---------- MONSTRES - DETECTION ET DIRECTION ---------- */
@@ -1262,13 +1336,13 @@ const updateMonsterDirectionToPlayer = (monster) => {
 
 const removeMonster = (monsterId) => {
   const monsterElement = document.querySelector(
-    `.monster[data-monster-id="${monsterId}"]`,
+    `.monster[data-monster-uid="${monsterId}"]`,
   );
   if (monsterElement) {
     monsterElement.remove();
   }
   const monsterIndex = monsters.findIndex((monster) => {
-    return monsterId === monster.id;
+    return monsterId === monster.uid;
   });
   if (monsterIndex != -1) {
     monsters.splice(monsterIndex, 1);
@@ -1307,8 +1381,11 @@ const clearMonsterSelection = () => {
 };
 
 const deadMonster = (monster) => {
-  addGroundItem(createGroundItem("ratCorpse", 1, monster.x, monster.y));
-  removeMonster(monster.id);
+  const monsterData = getMonsterData(monster.monsterId);
+  addGroundItem(
+    createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y),
+  );
+  removeMonster(monster.uid);
   selectedMonsterId = null;
 };
 
@@ -1321,22 +1398,23 @@ const findNearMonster = (monsterList) => {
 
 const findMonsterById = (monsterId) => {
   const monster = monsters.find((monster) => {
-    return monsterId === monster.id;
+    return monsterId === monster.uid;
   });
   return monster;
 };
 
 const selectMonsterElement = (monsterId) => {
   const monsterElement = document.querySelector(
-    `.monster[data-monster-id="${monsterId}"]`,
+    `.monster[data-monster-uid="${monsterId}"]`,
   );
   if (monsterElement) {
     monsterElement.classList.add("monster-selected");
   }
 };
+
 const findMonsterElement = (monsterId) => {
   const monsterElement = document.querySelector(
-    `.monster[data-monster-id="${monsterId}"]`,
+    `.monster[data-monster-uid="${monsterId}"]`,
   );
   return monsterElement;
 };
@@ -1346,12 +1424,13 @@ const findMonsterElement = (monsterId) => {
 const updateMonsterCombat = () => {
   monsters.forEach((monster) => {
     if (isNearPlayer(monster)) {
+      const monsterData = getMonsterData(monster.monsterId);
       const now = Date.now();
       if (now < nextMonsterAttackTime) {
         return;
       }
       nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
-      playerState.hp -= getRandomInt(1, monster.damage);
+      playerState.hp -= getRandomInt(1, monsterData.damage);
       updatePlayerStats();
       hpRefresh();
       console.log(`hp : ${playerState.hp}`);
@@ -1367,12 +1446,13 @@ const updateMonsterCombat = () => {
 
 const updateMonsterPosition = () => {
   monsters.forEach((monster) => {
+    const monsterData = getMonsterData(monster.monsterId);
     const monsterElement = document.querySelector(
-      `.monster[data-monster-id="${monster.id}"]`,
+      `.monster[data-monster-uid="${monster.uid}"]`,
     );
     if (monsterElement) {
-      monsterElement.style.left = `${monster.x - camera.x}px`;
-      monsterElement.style.top = `${monster.y - camera.y}px`;
+      monsterElement.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
+      monsterElement.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
       monsterElement.style.zIndex = monster.y;
     }
   });
@@ -1390,7 +1470,8 @@ const updateMonsterMovement = () => {
     if (monster.nextMoveTime > date) {
       return;
     }
-    monster.nextMoveTime = date + monster.moveCooldown;
+    const monsterData = getMonsterData(monster.monsterId);
+    monster.nextMoveTime = date + monsterData.moveCooldown;
     const monsterPosition = getTilePosition(monster);
     const destination = pathDestination(
       monsterPosition,
@@ -1399,7 +1480,7 @@ const updateMonsterMovement = () => {
     if (destination !== null) {
       if (monster.path.length <= 0) {
         monster.path = findPath(monsterPosition, destination);
-        monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+        monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
       } else {
         const oldPathEnd = monster.path[monster.path.length - 1];
 
@@ -1407,11 +1488,12 @@ const updateMonsterMovement = () => {
           const newPath = findPath(monsterPosition, destination);
           if (newPath.length > 0) {
             monster.path = newPath;
-            monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+            monster.nextPathRefreshTime =
+              date + monsterData.pathRefreshCooldown;
           }
         } else if (date >= monster.nextPathRefreshTime) {
           const newPath = findPath(monsterPosition, destination);
-          monster.nextPathRefreshTime = date + monster.pathRefreshCooldown;
+          monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
           if (
             getDistance(oldPathEnd, destination) > 1 &&
             newPath &&
@@ -1440,7 +1522,7 @@ const updateMonsterMovement = () => {
       }
       updateMonsterDirection(monster, monster.path[0]);
       monster.walkFrame += 1;
-      if (monster.walkFrame >= monster.MONSTER_ANIMATION_FRAMES) {
+      if (monster.walkFrame >= monsterData.animationFrames) {
         monster.walkFrame = 0;
       }
       updateMonsterSprite(monster);
@@ -1460,12 +1542,13 @@ const updateMonsterMovement = () => {
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
 const attackMonster = (monster) => {
+  const monsterData = getMonsterData(monster.monsterId);
   monster.hp -= getRandomInt(1, playerState.damage);
   if (monster.hp <= 0) {
     monster.hp = 0;
     MonsterHpRefresh(monster);
     deadMonster(monster);
-    playerState.experience += monster.experience;
+    playerState.experience += monsterData.experience;
     updatePlayerExperience();
     return;
   }
@@ -1707,8 +1790,9 @@ addGroundItem(
   createGroundItem("healthPotion", 1, 30 * TILE_SIZE, 21 * TILE_SIZE),
 );
 addGroundItem(createGroundItem("apple", 2, 20 * TILE_SIZE, 24 * TILE_SIZE));
-monsters.push(createMonster("Rat", 30 * TILE_SIZE, 20 * TILE_SIZE, 20, 4, 50));
-monsters.push(createMonster("Rat", 33 * TILE_SIZE, 23 * TILE_SIZE, 20, 4, 50));
+monsters.push(createMonster("rat", 30 * TILE_SIZE, 20 * TILE_SIZE));
+monsters.push(createMonster("rat", 33 * TILE_SIZE, 23 * TILE_SIZE));
+monsters.push(createMonster("spider", 34 * TILE_SIZE, 24 * TILE_SIZE));
 renderMonsters(monsters);
 updateWorldPosition();
 updateLight(playerState);

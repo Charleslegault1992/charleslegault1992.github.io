@@ -1,3 +1,8 @@
+0.289 - Monstres data-driven + atlas sheet
+    - Ajout monstersDatabase, monsterId/uid, stats/render
+    - Ajout atlas monstres avec atlasCol, drawOffset, HP/damage/EXP/corpse data-driven
+    - Ajout spider + spiderCorpse, rat/spider
+
 0.288 -Passage 720p, tiles 64x64 et preparation atlas items
     -Update de 480p a 720p
     -Camera, lumiere, mouvement ajustes
