@@ -1,12 +1,12 @@
-/* =====================================================
-   BASE - ELEMENTS HTML
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  BASE - ELEMENTS HTML  -----
+/* ==================================================== */
 const panneauGauche = document.querySelector(".jeux-gauche");
 const panneauDroite = document.querySelector(".jeux-droite");
 const boitePrincipale = document.querySelector("#boite-principal");
 const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
+const playerContainers = document.querySelector("#player-containers");
 const hpbar = document.querySelector("#player");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
@@ -16,11 +16,11 @@ const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
+//#endregion  -----  BASE - ELEMENTS HTML  -----
 
-/* =====================================================
-   BASE - CONSTANTES ET VARIABLES
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  BASE - CONSTANTES ET VARIABLES  -----
+/* ==================================================== */
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
 const TILE_SIZE = 64;
@@ -35,12 +35,15 @@ const ATLAS_PADDING = 1;
 const FLOOR = 0;
 const WALL = 1;
 
-let nextWorldItemId = 1;
+let nextItemInstanceId = 1;
 let nextMonsterId = 1;
 let selectedMonsterId = null;
 
 const worldItems = [];
 const monsters = [];
+const openedContainers = [];
+
+const draggedItem = null;
 
 const playerSpawnX = 13 * TILE_SIZE;
 const playerSpawnY = 8 * TILE_SIZE;
@@ -51,10 +54,11 @@ const camera = {
 };
 
 const minChatHeight = 120;
+//#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
-/* =====================================================
-   BASE DE DONNEES
-===================================================== */
+/* ==================================================== */
+//#region     -----  BASE DE DONNEES  -----
+/* ==================================================== */
 const itemsDatabase = {
   apple: {
     itemId: "apple",
@@ -134,6 +138,8 @@ const itemsDatabase = {
     weight: 20,
     stackable: false,
     blockMovement: false,
+    container: true,
+    capacity: 5,
     render: {
       atlas: "items",
       parts: [
@@ -161,7 +167,7 @@ const itemsDatabase = {
       parts: [
         {
           atlasCol: 0,
-          atlasRow: 4,
+          atlasRow: 20,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
@@ -177,6 +183,8 @@ const itemsDatabase = {
     weight: 30,
     stackable: false,
     blockMovement: false,
+    container: true,
+    capacity: 5,
     render: {
       atlas: "items",
       parts: [
@@ -186,6 +194,50 @@ const itemsDatabase = {
           offsetX: 0,
           offsetY: 0,
           zOffset: -1,
+        },
+      ],
+    },
+  },
+  bag: {
+    itemId: "bag",
+    name: "Bag",
+    desc: "A bag. (Slot: 8)",
+    type: "bag",
+    weight: 15,
+    stackable: false,
+    blockMovement: false,
+    container: true,
+    capacity: 8,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 11,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  goldCoin: {
+    itemId: "goldCoin",
+    name: "Gold Coin",
+    desc: "A gold coin.",
+    type: "currency",
+    weight: 0.1,
+    stackable: true,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 5,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
         },
       ],
     },
@@ -234,11 +286,11 @@ const monstersDatabase = {
     corpseItemId: "spiderCorpse",
   },
 };
+//#endregion  -----  BASE DE DONNEES  -----
 
-/* =====================================================
-   CORE - TIMING
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  CORE - TIMING  -----
+/* ==================================================== */
 const GAME_LOOP_MS = 10;
 
 let PLAYER_ATTACK_COOLDOWN_MS = 1000;
@@ -249,19 +301,19 @@ let nextPlayerAttackTime = 0;
 let nextMonsterAttackTime = 0;
 
 const MONSTER_ATTACK_COOLDOWN_MS = 1500;
+//#endregion  -----  CORE - TIMING  -----
 
-/* =====================================================
-   PLAYER - CONSTANTES SPRITE
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  PLAYER - CONSTANTES SPRITE  -----
+/* ==================================================== */
 const PLAYER_FRAME_WIDTH = TILE_SIZE;
 const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
 const PLAYER_ANIMATION_FRAMES = 3;
+//#endregion  -----  PLAYER - CONSTANTES SPRITE  -----
 
-/* =====================================================
-   PLAYER
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  PLAYER  -----
+/* ==================================================== */
 /* ---------- JOUEUR - DONNEES ---------- */
 
 const playerState = {
@@ -280,16 +332,25 @@ const playerState = {
   axeSkill: 1,
   distanceSkill: 1,
   shieldSkill: 1,
-  weight: 400,
+  carriedWeight: 0,
+  capacity: 400,
   speed: 1,
   direction: "down",
   walkFrame: 1,
   light: 900,
+  equipment: {
+    necklace: null,
+    helmet: null,
+    armor: null,
+    shield: null,
+    weapon: null,
+    legs: null,
+    ammo: null,
+    ring: null,
+    boots: null,
+    backpack: null,
+  },
   inventory: [
-    {
-      itemId: "sword",
-      quantity: 1,
-    },
     {
       itemId: "healthPotion",
       quantity: 1,
@@ -362,22 +423,22 @@ const playerDead = () => {
   updatePlayerExperience();
   hpRefresh();
 };
+//#endregion  -----  PLAYER  -----
 
-/* =====================================================
-   CAMERA
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  CAMERA  -----
+/* ==================================================== */
 /* ---------- CAMERA - POSITION ---------- */
 
 const updateCamera = () => {
   camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
   camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
 };
+//#endregion  -----  CAMERA  -----
 
-/* =====================================================
-   MAP
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  MAP  -----
+/* ==================================================== */
 /* ---------- MAP - DONNEES ---------- */
 
 const gameMap = [
@@ -571,11 +632,11 @@ const updateMapPosition = () => {
     tile.style.top = `${worldY - camera.y}px`;
   });
 };
+//#endregion  -----  MAP  -----
 
-/* =====================================================
-   CORE - OUTILS / HELPERS
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  CORE - OUTILS / HELPERS  -----
+/* ==================================================== */
 /* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
 const getRandomInt = (min, max) => {
@@ -592,6 +653,17 @@ const isNearPlayer = (target, range = 1) => {
     Math.abs(playerCol - targetCol) <= range &&
     Math.abs(playerRow - targetRow) <= range
   );
+};
+
+const isContainerItem = (item) => {
+  if (!item) {
+    return false;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return false;
+  }
+  return itemData.container === true;
 };
 
 /* ---------- OUTILS - MISE A JOUR DU MONDE ---------- */
@@ -630,11 +702,11 @@ const getAtlasPath = (atlasName) => {
   }
   console.error(`atlasName: ${atlasName} n'existe pas`);
 };
+//#endregion  -----  CORE - OUTILS / HELPERS  -----
 
-/* =====================================================
-   ITEMS
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  ITEMS  -----
+/* ==================================================== */
 /* ---------- ITEMS - ACCES BASE DE DONNEES ---------- */
 
 const getItemData = (itemId) => {
@@ -740,25 +812,39 @@ const areValidItemRenderParts = (parts) => {
     return isValidItemRenderPart(part);
   });
 };
+//#endregion  -----  ITEMS  -----
 
-/* =====================================================
-   ITEMS - MONDE ET RENDU DOM
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  ITEMS - MONDE ET RENDU DOM  -----
+/* ==================================================== */
 /* ---------- ITEMS - CREATION DONNEES ---------- */
+const createItemInstance = (itemId, quantity, content = []) => {
+  const itemData = getItemData(itemId);
+  if (!itemData) {
+    return;
+  }
+  const itemInstance = {
+    itemId,
+    quantity,
+    uid: nextItemInstanceId++,
+  };
+  if (itemData.container) {
+    itemInstance.content = content;
+  }
+  return itemInstance;
+};
 
-const createGroundItem = (itemId, quantity, x, y) => {
+const createGroundItem = (itemId, quantity, x, y, content = []) => {
   const itemData = getItemData(itemId);
   if (!itemData) {
     return null;
   }
-  const worldItem = {
-    itemId,
-    quantity,
-    x,
-    y,
-    uid: nextWorldItemId++,
-  };
+  const worldItem = createItemInstance(itemId, quantity, content);
+  if (!worldItem) {
+    return null;
+  }
+  worldItem.x = x;
+  worldItem.y = y;
   return worldItem;
 };
 
@@ -832,11 +918,11 @@ const isBlockingItemAtPosition = (x, y) => {
     }
   });
 };
+//#endregion  -----  ITEMS - MONDE ET RENDU DOM  -----
 
-/* =====================================================
-   ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
+/* ==================================================== */
 /* ---------- INVENTAIRE - AJOUT DONNEES ---------- */
 
 const addItemToInventory = (itemToAdd) => {
@@ -897,27 +983,199 @@ const updateItemPosition = () => {
     });
   });
 };
+//#endregion  -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
 
-/* =====================================================
-   UI
-===================================================== */
+/* ==================================================== */
+//#region     -----  UI  -----
+/* ==================================================== */
 
 /* ---------- UI - INVENTAIRE ---------- */
+const getEquipmentSlotItem = (slotName) => {
+  if (!playerState.equipment[slotName]) {
+    return null;
+  }
+  return playerState.equipment[slotName];
+};
+
+const renderItemIcon = (parentElement, item, slotSize) => {
+  parentElement.innerHTML = "";
+  if (!item) {
+    return;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return;
+  }
+  const atlasPath = getAtlasPath(itemData.render.atlas);
+  const scale = slotSize / SPRITE_SIZE;
+  const enrichedParts = getItemRenderData(item.itemId);
+  enrichedParts.forEach((enrichedPart) => {
+    const div = document.createElement("div");
+    div.classList.add("item-icon-part");
+    div.style.backgroundImage = `url("${atlasPath}")`;
+    div.style.backgroundPosition = `-${enrichedPart.sourceX}px -${enrichedPart.sourceY}px`;
+    div.style.left = `${enrichedPart.offsetX * scale}px`;
+    div.style.top = `${enrichedPart.offsetY * scale}px`;
+    div.style.width = `${enrichedPart.sourceWidth}px`;
+    div.style.height = `${enrichedPart.sourceHeight}px`;
+    div.style.transform = `scale(${scale})`;
+    div.style.transformOrigin = "top left";
+    parentElement.appendChild(div);
+  });
+};
+
+const renderEquipmentSlots = () => {
+  const equipmentsElement = document.querySelectorAll(".equipment-slot");
+  equipmentsElement.forEach((equipmentElement) => {
+    const slotName = equipmentElement.getAttribute("data-equipment-slot");
+    const item = getEquipmentSlotItem(slotName);
+    renderItemIcon(equipmentElement, item, 48);
+    if (isContainerItem(item)) {
+      equipmentElement.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const itemData = getItemData(item.itemId);
+        if (!itemData) {
+          return;
+        }
+        openContainer(item, itemData.name);
+      });
+    }
+  });
+};
 
 const updatePlayerInventory = () => {
   let html = `<div class="boite-boite">
-                <div class="boite-jeux-titre">Inventory</div>
-                <div class="separateur-panneau"></div>`;
-  playerState.inventory.forEach((item) => {
-    const itemData = getItemData(item.itemId);
-    if (itemData) {
-      html += `<div class="boite-row"><span class="item-name">${itemData.name}</span><span class="item-quantity">x${item.quantity}</span></div>`;
-    }
-  });
-  html += `</div>`;
+              <div class="equipment-panel">
+                <div class="boite-jeux-titre">Equipments</div>
+                <div class="separateur-panneau"></div>
+
+                <div id="equipment-area" class="equipment-area">
+                  <div class="equipment-grid">
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="necklace"></div>
+                      <div class="equipment-slot" data-equipment-slot="weapon"></div>
+                      <div class="equipment-slot" data-equipment-slot="ring"></div>
+                      <div class="equipment-small-slot" data-equipment-small-slot="status"></div>
+                    </div>
+
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="helmet"></div>
+                      <div class="equipment-slot" data-equipment-slot="armor"></div>
+                      <div class="equipment-slot" data-equipment-slot="legs"></div>
+                      <div class="equipment-slot" data-equipment-slot="boots"></div>
+                    </div>
+
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="backpack"></div>
+                      <div class="equipment-slot" data-equipment-slot="shield"></div>
+                      <div class="equipment-slot" data-equipment-slot="ammo"></div>
+                      <div class="equipment-small-slot equipment-cap-slot">Cap:<br />${playerState.capacity - playerState.carriedWeight}</div>
+                    </div>
+                  </div>
+
+                  <div class="equipment-right-bar">
+                    <div class="equipment-icon-grid">
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                    </div>
+
+                    <button class="equipment-ui-button">Options</button>
+                    <button class="equipment-ui-button">Hotkeys</button>
+                    <button class="equipment-ui-button">Friends</button>
+                    <button class="equipment-ui-button">Options</button>
+                    <button class="equipment-ui-button">Logout</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+
   playerInventory.innerHTML = html;
+  renderEquipmentSlots();
 };
 
+const renderContainerSlots = (containerBody, containerItem) => {
+  if (!containerItem || !containerBody) {
+    return;
+  }
+  containerBody.innerHTML = ``;
+  const dataItem = getItemData(containerItem.itemId);
+  if (!dataItem) {
+    return null;
+  }
+  const slotGrid = document.createElement("div");
+  slotGrid.classList.add("container-slot-grid");
+
+  for (let i = 0; i < dataItem.capacity; i++) {
+    const slotItem = containerItem.content[i];
+    const slot = document.createElement("div");
+    slot.classList.add("container-slot");
+    slot.setAttribute("data-container-slot-index", i);
+    slot.setAttribute("data-container-uid", containerItem.uid);
+    if (slotItem) {
+      renderItemIcon(slot, slotItem, 40);
+    }
+
+    slotGrid.appendChild(slot);
+  }
+
+  containerBody.appendChild(slotGrid);
+};
+
+const renderContainerDock = () => {
+  if (!playerContainers) {
+    return;
+  }
+  playerContainers.innerHTML = ``;
+  openedContainers.forEach((container) => {
+    const div = document.createElement("div");
+    div.classList.add("container-window");
+    const header = document.createElement("div");
+    header.classList.add("container-window-header");
+    const title = document.createElement("div");
+    title.classList.add("boite-jeux-titre");
+    title.textContent = container.title;
+    header.appendChild(title);
+    const separateur = document.createElement("div");
+    separateur.classList.add("separateur-panneau");
+    const body = document.createElement("div");
+    body.classList.add("container-window-body");
+    renderContainerSlots(body, container.item);
+    div.append(header, separateur, body);
+    playerContainers.append(div);
+  });
+};
+
+const openContainer = (containerItem, title) => {
+  if (!isContainerItem(containerItem)) {
+    return;
+  }
+
+  const alreadyOpen = openedContainers.some((openedContainer) => {
+    return containerItem.uid === openedContainer.item.uid;
+  });
+  if (alreadyOpen) {
+    return;
+  }
+  openedContainers.push({
+    item: containerItem,
+    title: title,
+  });
+  renderContainerDock();
+};
+
+const findOpenedContainerItemByUid = (containerUid) => {
+  const openedContainer = openedContainers.find((openedContainer) => {
+    return openedContainer.item.uid === containerUid;
+  });
+  if (!openedContainer) {
+    return null;
+  }
+  return openedContainer.item;
+};
 /* ---------- UI - STATS JOUEUR ---------- */
 
 const updatePlayerStats = () => {
@@ -964,10 +1222,11 @@ const updateGameScale = () => {
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
   boiteJeuxInner.style.top = `${gameTop}px`;
 };
+//#endregion  -----  UI  -----
 
-/* =====================================================
-   LIGHT - CANVAS
-===================================================== */
+/* ==================================================== */
+//#region     -----  LIGHT - CANVAS  -----
+/* ==================================================== */
 lightCanvas.width = GAME_WIDTH;
 lightCanvas.height = GAME_HEIGHT;
 const ctx = lightCanvas.getContext("2d");
@@ -1056,11 +1315,11 @@ const updateLight = (source) => {
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   }
 };
+//#endregion  -----  LIGHT - CANVAS  -----
 
-/* =====================================================
-   JOUEUR - MOUVEMENT
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  JOUEUR - MOUVEMENT  -----
+/* ==================================================== */
 const keysPressed = {
   right: false,
   left: false,
@@ -1142,11 +1401,11 @@ const updateMovement = () => {
   updateWorldPosition();
   nextPlayerMoveTime = now + getPlayerMoveCooldown();
 };
+//#endregion  -----  JOUEUR - MOUVEMENT  -----
 
-/* =====================================================
-   INPUTS - CLAVIER ET RESIZE
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  INPUTS - CLAVIER ET RESIZE  -----
+/* ==================================================== */
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
 document.addEventListener("keydown", (e) => {
@@ -1193,11 +1452,11 @@ document.addEventListener("keyup", (e) => {
 window.addEventListener("resize", () => {
   updateGameScale();
 });
+//#endregion  -----  INPUTS - CLAVIER ET RESIZE  -----
 
-/* =====================================================
-   MONSTRES
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  MONSTRES  -----
+/* ==================================================== */
 /* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
 
 const MonsterHpRefresh = (monster) => {
@@ -1534,11 +1793,11 @@ const updateMonsterMovement = () => {
   });
   updateMonsterPosition();
 };
+//#endregion  -----  MONSTRES  -----
 
-/* =====================================================
-   PLAYER - COMBAT
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  PLAYER - COMBAT  -----
+/* ==================================================== */
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
 const attackMonster = (monster) => {
@@ -1573,11 +1832,11 @@ const updateCombat = () => {
   attackMonster(monster);
   nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
 };
+//#endregion  -----  PLAYER - COMBAT  -----
 
-/* =====================================================
-   PATHFINDING A*
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  PATHFINDING A*  -----
+/* ==================================================== */
 /* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
 
 const getTilePosition = (source) => {
@@ -1744,21 +2003,21 @@ const findPath = (startTile, targetTile) => {
   }
   return [];
 };
+//#endregion  -----  PATHFINDING A*  -----
 
-/* =====================================================
-   EVENEMENTS DU JEU
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  EVENEMENTS DU JEU  -----
+/* ==================================================== */
 /* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
+//#endregion  -----  EVENEMENTS DU JEU  -----
 
-/* =====================================================
-   BOUCLE DE JEU
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  BOUCLE DE JEU  -----
+/* ==================================================== */
 /* ---------- BOUCLE DE JEU - UPDATE PRINCIPAL ---------- */
 
 const gameLoop = () => {
@@ -1769,11 +2028,11 @@ const gameLoop = () => {
 };
 
 setInterval(gameLoop, GAME_LOOP_MS);
+//#endregion  -----  BOUCLE DE JEU  -----
 
-/* =====================================================
-   INITIALISATION DU JEU
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  INITIALISATION DU JEU  -----
+/* ==================================================== */
 /* ---------- INITIALISATION - DEMARRAGE ---------- */
 
 updateGameScale();
@@ -1782,7 +2041,13 @@ updatePlayerSprite();
 
 renderMap(gameMap);
 
+playerState.equipment.weapon = createItemInstance("sword", 1);
+playerState.equipment.backpack = createItemInstance("bag", 1);
+playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
+playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
+
 updatePlayerInventory();
+renderContainerDock();
 updatePlayerStats();
 
 addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 23 * TILE_SIZE));
@@ -1793,15 +2058,17 @@ addGroundItem(createGroundItem("apple", 2, 20 * TILE_SIZE, 24 * TILE_SIZE));
 monsters.push(createMonster("rat", 30 * TILE_SIZE, 20 * TILE_SIZE));
 monsters.push(createMonster("rat", 33 * TILE_SIZE, 23 * TILE_SIZE));
 monsters.push(createMonster("spider", 34 * TILE_SIZE, 24 * TILE_SIZE));
+
 renderMonsters(monsters);
 updateWorldPosition();
 updateLight(playerState);
+//#endregion  -----  INITIALISATION DU JEU  -----
 
-/* =====================================================
-   DEBUG CONSOLE
-===================================================== */
-
+/* ==================================================== */
+//#region     -----  DEBUG CONSOLE  -----
+/* ==================================================== */
 /* ---------- DEBUG - LOGS TEMPORAIRES ---------- */
 
 console.log(gameMap);
 console.log(player);
+//#endregion  -----  DEBUG CONSOLE  -----
