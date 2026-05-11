@@ -43,7 +43,7 @@ const worldItems = [];
 const monsters = [];
 const openedContainers = [];
 
-const draggedItem = null;
+let draggedItem = null;
 
 const playerSpawnX = 13 * TILE_SIZE;
 const playerSpawnY = 8 * TILE_SIZE;
@@ -1115,6 +1115,14 @@ const renderContainerSlots = (containerBody, containerItem) => {
     slot.classList.add("container-slot");
     slot.setAttribute("data-container-slot-index", i);
     slot.setAttribute("data-container-uid", containerItem.uid);
+    slot.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      handleContainerSlotMouseDown(slot);
+    });
+    slot.addEventListener("mouseup", (e) => {
+      e.preventDefault();
+      handleContainerSlotMouseUp(slot);
+    });
     if (slotItem) {
       renderItemIcon(slot, slotItem, 40);
     }
@@ -1176,6 +1184,108 @@ const findOpenedContainerItemByUid = (containerUid) => {
   }
   return openedContainer.item;
 };
+
+const getContainerSlotInfo = (slotElement) => {
+  if (!slotElement) {
+    return null;
+  }
+  const containerUid = Number(slotElement.getAttribute("data-container-uid"));
+  const slotIndex = Number(
+    slotElement.getAttribute("data-container-slot-index"),
+  );
+  if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
+    return null;
+  }
+  const containerItem = findOpenedContainerItemByUid(containerUid);
+  if (!containerItem || !containerItem.content) {
+    return null;
+  }
+  const slotItem = containerItem.content[slotIndex];
+  return {
+    containerUid,
+    slotIndex,
+    containerItem,
+    slotItem,
+  };
+};
+
+const clearContainerDragVisual = () => {
+  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
+
+  draggingSlots.forEach((slot) => {
+    slot.classList.remove("container-slot-dragging");
+  });
+};
+
+const cancelContainerDrag = () => {
+  clearContainerDragVisual();
+  draggedItem = null;
+};
+
+const handleContainerSlotMouseDown = (slotElement) => {
+  const source = getContainerSlotInfo(slotElement);
+  if (!source || !source.slotItem) {
+    return;
+  }
+  draggedItem = {
+    sourceContainerUid: source.containerUid,
+    sourceSlotIndex: source.slotIndex,
+    item: source.slotItem,
+  };
+  if (draggedItem) {
+    slotElement.classList.add("container-slot-dragging");
+  }
+};
+
+const handleContainerSlotMouseUp = (slotElement) => {
+  if (!draggedItem) {
+    return;
+  }
+  const destination = getContainerSlotInfo(slotElement);
+  if (!destination) {
+    cancelContainerDrag();    
+    return;
+  }
+  const sourceContainer = findOpenedContainerItemByUid(
+    draggedItem.sourceContainerUid,
+  );
+  const sourceSlotIndex = draggedItem.sourceSlotIndex;
+
+  const targetContainer = destination.containerItem;
+  const targetIndex = destination.slotIndex;
+
+  if (
+    draggedItem.sourceContainerUid === destination.containerUid &&
+    draggedItem.sourceSlotIndex === destination.slotIndex
+  ) {
+    cancelContainerDrag(); 
+    return;
+  }
+
+  if (
+    !sourceContainer ||
+    !sourceContainer.content ||
+    sourceContainer.content[sourceSlotIndex] !== draggedItem.item
+  ) {
+    cancelContainerDrag();    
+    return;
+  }
+
+  if (targetContainer.content[targetIndex]) {
+    const targetItem = targetContainer.content[targetIndex];
+    const sourceItem = sourceContainer.content[sourceSlotIndex];
+    sourceContainer.content[sourceSlotIndex] = targetItem;
+    targetContainer.content[targetIndex] = sourceItem;
+  } else {
+    targetContainer.content[targetIndex] = draggedItem.item;
+    sourceContainer.content[sourceSlotIndex] = null;
+  }
+  renderContainerDock();
+  cancelContainerDrag(); 
+
+};
+
+
 /* ---------- UI - STATS JOUEUR ---------- */
 
 const updatePlayerStats = () => {
@@ -2012,6 +2122,27 @@ const findPath = (startTile, targetTile) => {
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
+});
+boiteJeux.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+});
+boiteJeux.addEventListener("mouseup", (e) => {
+  e.preventDefault();
+});
+boiteJeux.addEventListener("click", (e) => {
+  e.preventDefault();
+});
+
+document.addEventListener("mouseup", (e) => {
+  if (!draggedItem) {
+    return;
+  }
+
+  if (e.target.closest(".container-slot")) {
+    return;
+  }
+
+  cancelContainerDrag();
 });
 //#endregion  -----  EVENEMENTS DU JEU  -----
 

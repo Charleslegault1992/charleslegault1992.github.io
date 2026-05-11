@@ -1,3 +1,10 @@
+0.291 - Drag drop des containers
+    - Ajout drag item dans container
+    - Ajout swap entre slots
+    - Ajout annulation drag hors slot
+    - Ajout feedback visuel au drag
+    - Ajout infos slot avec uid container
+
 0.290 - Equipment UI and container base
     - Ajout du layout equipement
     - Ajout des slots equipement 48x48
