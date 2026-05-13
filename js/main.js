@@ -23,6 +23,7 @@ const lightCanvas = document.querySelector("#light-canvas");
 /* ==================================================== */
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
+let GAME_SCALE = 1;
 const TILE_SIZE = 64;
 const PLAYER_SIZE = TILE_SIZE;
 const MOVE_SPEED = TILE_SIZE;
@@ -43,7 +44,15 @@ const worldItems = [];
 const monsters = [];
 const openedContainers = [];
 
-let draggedItem = null;
+const dragState = {
+  isDragging: false,
+  item: null,
+  sourceType: null,
+  sourceSlotIndex: null,
+  sourceSlotName: null,
+  sourceContainerUid: null,
+  sourceWorldItemUid: null,
+};
 
 const playerSpawnX = 13 * TILE_SIZE;
 const playerSpawnY = 8 * TILE_SIZE;
@@ -54,6 +63,18 @@ const camera = {
 };
 
 const minChatHeight = 120;
+
+const mousePosition = {
+  screenX: null,
+  screenY: null,
+  gameX: null,
+  gameY: null,
+  worldX: null,
+  worldY: null,
+  row: null,
+  col: null,
+  isInsideMap: false,
+};
 //#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
 /* ==================================================== */
@@ -157,11 +178,11 @@ const itemsDatabase = {
     itemId: "sword",
     name: "Sword",
     desc: "An old rusty sword.",
-    type: "weapon",
+    type: "sword",
+    equipmentSlot: ["weapon"],
     weight: 20,
     stackable: false,
     blockMovement: false,
-    weaponType: "sword",
     render: {
       atlas: "items",
       parts: [
@@ -203,6 +224,7 @@ const itemsDatabase = {
     name: "Bag",
     desc: "A bag. (Slot: 8)",
     type: "bag",
+    equipmentSlot: ["backpack"],
     weight: 15,
     stackable: false,
     blockMovement: false,
@@ -670,6 +692,9 @@ const isContainerItem = (item) => {
 
 const updateWorldPosition = () => {
   updateCamera();
+  if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
+    updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
+  }
   updateMapPosition();
   updateItemPosition();
   updateMonsterPosition();
@@ -702,6 +727,49 @@ const getAtlasPath = (atlasName) => {
   }
   console.error(`atlasName: ${atlasName} n'existe pas`);
 };
+
+/* ---------- OUTILS - SOURIS ---------- */
+const isMouseInsideMap = (mousePosition) => {
+  if (
+    !mousePosition ||
+    !Number.isFinite(mousePosition.worldX) ||
+    !Number.isFinite(mousePosition.worldY)
+  ) {
+    return false;
+  }
+  return (
+    mousePosition.worldX >= 0 &&
+    mousePosition.worldX < mapWidth &&
+    mousePosition.worldY >= 0 &&
+    mousePosition.worldY < mapHeight
+  );
+};
+
+const updateMousePositionInfo = (screenX, screenY) => {
+  let gameScale = GAME_SCALE;
+  if (!Number.isFinite(GAME_SCALE) || GAME_SCALE <= 0) {
+    gameScale = 1;
+  }
+
+  const gameRect = game.getBoundingClientRect();
+  const gameX = (screenX - gameRect.left) / gameScale;
+  const gameY = (screenY - gameRect.top) / gameScale;
+  const worldX = camera.x + gameX;
+  const worldY = camera.y + gameY;
+  const col = Math.floor(worldX / TILE_SIZE);
+  const row = Math.floor(worldY / TILE_SIZE);
+
+  mousePosition.screenX = screenX;
+  mousePosition.screenY = screenY;
+  mousePosition.gameX = gameX;
+  mousePosition.gameY = gameY;
+  mousePosition.worldX = worldX;
+  mousePosition.worldY = worldY;
+  mousePosition.row = row;
+  mousePosition.col = col;
+  mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
+};
+
 //#endregion  -----  CORE - OUTILS / HELPERS  -----
 
 /* ==================================================== */
@@ -986,6 +1054,244 @@ const updateItemPosition = () => {
 //#endregion  -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
 
 /* ==================================================== */
+//#region     -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
+/* ==================================================== */
+
+/* ---------- DRAG - ETAT ---------- */
+
+const resetDragState = () => {
+  dragState.isDragging = false;
+  dragState.item = null;
+  dragState.sourceType = null;
+  dragState.sourceSlotIndex = null;
+  dragState.sourceSlotName = null;
+  dragState.sourceContainerUid = null;
+  dragState.sourceWorldItemUid = null;
+};
+
+const cancelItemDrag = () => {
+  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
+
+  draggingSlots.forEach((slot) => {
+    slot.classList.remove("container-slot-dragging");
+  });
+  resetDragState();
+};
+
+/* ---------- DRAG - DEPART SOURCE ---------- */
+
+const startItemDrag = (source) => {
+  if (!source) {
+    return;
+  }
+  const item = getDragSourceItem(source);
+  if (!item) {
+    return;
+  }
+  resetDragState();
+  dragState.isDragging = true;
+  dragState.item = item;
+
+  if (source.type === "container") {
+    dragState.sourceType = "container";
+    dragState.sourceContainerUid = source.containerUid;
+    dragState.sourceSlotIndex = source.slotIndex;
+  } else if (source.type === "equipment") {
+    dragState.sourceType = "equipment";
+    dragState.sourceSlotName = source.slotName;
+  } else if (source.type === "world") {
+    dragState.sourceType = "world";
+    dragState.sourceWorldItemUid = source.worldItemUid;
+  } else {
+    resetDragState();
+    return;
+  }
+};
+
+/* ---------- DRAG - LECTURE SOURCE ---------- */
+const getDragSourceFromState = () => {
+  if (!dragState.isDragging) {
+    return null;
+  }
+  if (dragState.sourceType === "container") {
+    return {
+      type: dragState.sourceType,
+      containerUid: dragState.sourceContainerUid,
+      slotIndex: dragState.sourceSlotIndex,
+    };
+  } else if (dragState.sourceType === "equipment") {
+    return {
+      type: dragState.sourceType,
+      slotName: dragState.sourceSlotName,
+    };
+  } else if (dragState.sourceType === "world") {
+    return {
+      type: dragState.sourceType,
+      worldItemUid: dragState.sourceWorldItemUid,
+    };
+  } else {
+    return null;
+  }
+};
+
+const getDragSourceItem = (source) => {
+  if (!source) {
+    return null;
+  }
+
+  if (source.type === "container") {
+    const container = findOpenedContainerItemByUid(source.containerUid);
+    if (!container || !container.content) {
+      return null;
+    }
+    return container.content[source.slotIndex];
+  } else if (source.type === "equipment") {
+    const item = getEquipmentSlotItem(source.slotName);
+    return item;
+  } else if (source.type === "world") {
+    const item = worldItems.find((item) => {
+      return item.uid === source.worldItemUid;
+    });
+    if (!item) {
+      return null;
+    }
+    return item;
+  } else {
+    return null;
+  }
+};
+
+/* ---------- DRAG - MODIFICATION SOURCE ---------- */
+
+const removeItemFromDragSource = (source) => {
+  if (!source) {
+    return null;
+  }
+  const item = getDragSourceItem(source);
+  if (!item) {
+    return null;
+  }
+  if (source.type === "container") {
+    const container = findOpenedContainerItemByUid(source.containerUid);
+    if (!container || !container.content) {
+      return null;
+    }
+    container.content[source.slotIndex] = null;
+    return item;
+  } else if (source.type === "equipment") {
+    const slotName = source.slotName;
+    playerState.equipment[slotName] = null;
+    return item;
+  } else if (source.type === "world") {
+    const itemIndex = worldItems.findIndex((worldItem) => {
+      return worldItem.uid === source.worldItemUid;
+    });
+
+    if (itemIndex === -1) {
+      return null;
+    }
+    worldItems.splice(itemIndex, 1);
+    removeGroundItemRender(item.uid);
+    return item;
+  } else {
+    return null;
+  }
+};
+
+/* ---------- DRAG - DESTINATION ---------- */
+
+const placeItemInDragDestination = (destination, item) => {
+  if (!destination || !item) {
+    return null;
+  }
+  if (destination.type === "container") {
+    const container = findOpenedContainerItemByUid(destination.containerUid);
+    if (!container || !container.content) {
+      return null;
+    }
+    if (!container.content[destination.slotIndex]) {
+      container.content[destination.slotIndex] = item;
+      return true;
+    } else {
+      const existingItem = container.content[destination.slotIndex];
+      container.content[destination.slotIndex] = item;
+      return existingItem;
+    }
+  } else if (destination.type === "equipment") {
+    if (
+      !destination.slotName ||
+      !(destination.slotName in playerState.equipment) ||
+      !canPlaceItemInEquipmentSlot(item, destination.slotName)
+    ) {
+      return null;
+    }
+
+    if (!playerState.equipment[destination.slotName]) {
+      playerState.equipment[destination.slotName] = item;
+      return true;
+    } else {
+      const existingItem = playerState.equipment[destination.slotName];
+      playerState.equipment[destination.slotName] = item;
+      return existingItem;
+    }
+  } else if (destination.type === "world") {
+    return null;
+  } else {
+    return null;
+  }
+};
+
+/* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
+const refreshItemUiAfterDrag = () => {
+  renderContainerDock();
+  updatePlayerInventory();
+  cancelItemDrag();
+};
+
+const completeItemDrag = (destination) => {
+  if (!dragState.isDragging || !destination) {
+    cancelItemDrag();
+    return;
+  }
+  const source = getDragSourceFromState();
+  const sourceItem = getDragSourceItem(source);
+  if (sourceItem !== dragState.item) {
+    cancelItemDrag();
+    return;
+  }
+  const removedItem = removeItemFromDragSource(source);
+  if (!removedItem) {
+    cancelItemDrag();
+    return;
+  }
+  const result = placeItemInDragDestination(destination, removedItem);
+  if (result === null) {
+    placeItemInDragDestination(source, removedItem);
+    refreshItemUiAfterDrag();
+    return;
+  } else if (result === true) {
+    refreshItemUiAfterDrag();
+    return;
+  } else {
+    placeItemInDragDestination(source, result);
+    refreshItemUiAfterDrag();
+    return;
+  }
+};
+
+const canPlaceItemInEquipmentSlot = (item, slotName) => {
+  if (!item || !slotName) {
+    return false;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData || !Array.isArray(itemData.equipmentSlot)) {
+    return false;
+  }
+  return itemData.equipmentSlot.includes(slotName);
+};
+//#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
+
+/* ==================================================== */
 //#region     -----  UI  -----
 /* ==================================================== */
 
@@ -1115,21 +1421,11 @@ const renderContainerSlots = (containerBody, containerItem) => {
     slot.classList.add("container-slot");
     slot.setAttribute("data-container-slot-index", i);
     slot.setAttribute("data-container-uid", containerItem.uid);
-    slot.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      handleContainerSlotMouseDown(slot);
-    });
-    slot.addEventListener("mouseup", (e) => {
-      e.preventDefault();
-      handleContainerSlotMouseUp(slot);
-    });
     if (slotItem) {
       renderItemIcon(slot, slotItem, 40);
     }
-
     slotGrid.appendChild(slot);
   }
-
   containerBody.appendChild(slotGrid);
 };
 
@@ -1143,18 +1439,45 @@ const renderContainerDock = () => {
     div.classList.add("container-window");
     const header = document.createElement("div");
     header.classList.add("container-window-header");
+    const button = document.createElement("button");
+    button.classList.add("container-minimize-button");
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleContainerMinimized(container.item);
+      e.stopPropagation();
+    });
     const title = document.createElement("div");
     title.classList.add("boite-jeux-titre");
     title.textContent = container.title;
     header.appendChild(title);
-    const separateur = document.createElement("div");
-    separateur.classList.add("separateur-panneau");
-    const body = document.createElement("div");
-    body.classList.add("container-window-body");
-    renderContainerSlots(body, container.item);
-    div.append(header, separateur, body);
+    header.append(button);
+
+    if (container.isMinimized === true) {
+      button.textContent = "+";
+      div.append(header);
+    } else {
+      const separateur = document.createElement("div");
+      separateur.classList.add("separateur-panneau");
+      button.textContent = "-";
+      const body = document.createElement("div");
+      body.classList.add("container-window-body");
+      renderContainerSlots(body, container.item);
+      div.append(header, separateur, body);
+    }
+
     playerContainers.append(div);
   });
+};
+
+const closeContainer = (containerItem) => {
+  const index = openedContainers.findIndex((openedContainer) => {
+    return containerItem.uid === openedContainer.item.uid;
+  });
+  if (index === -1) {
+    return;
+  }
+  openedContainers.splice(index, 1);
+  renderContainerDock();
 };
 
 const openContainer = (containerItem, title) => {
@@ -1166,11 +1489,13 @@ const openContainer = (containerItem, title) => {
     return containerItem.uid === openedContainer.item.uid;
   });
   if (alreadyOpen) {
+    closeContainer(containerItem);
     return;
   }
   openedContainers.push({
     item: containerItem,
     title: title,
+    isMinimized: false,
   });
   renderContainerDock();
 };
@@ -1185,106 +1510,16 @@ const findOpenedContainerItemByUid = (containerUid) => {
   return openedContainer.item;
 };
 
-const getContainerSlotInfo = (slotElement) => {
-  if (!slotElement) {
-    return null;
-  }
-  const containerUid = Number(slotElement.getAttribute("data-container-uid"));
-  const slotIndex = Number(
-    slotElement.getAttribute("data-container-slot-index"),
-  );
-  if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
-    return null;
-  }
-  const containerItem = findOpenedContainerItemByUid(containerUid);
-  if (!containerItem || !containerItem.content) {
-    return null;
-  }
-  const slotItem = containerItem.content[slotIndex];
-  return {
-    containerUid,
-    slotIndex,
-    containerItem,
-    slotItem,
-  };
-};
-
-const clearContainerDragVisual = () => {
-  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
-
-  draggingSlots.forEach((slot) => {
-    slot.classList.remove("container-slot-dragging");
+const toggleContainerMinimized = (containerItem) => {
+  const openedContainer = openedContainers.find((openedContainer) => {
+    return openedContainer.item.uid === containerItem.uid;
   });
-};
-
-const cancelContainerDrag = () => {
-  clearContainerDragVisual();
-  draggedItem = null;
-};
-
-const handleContainerSlotMouseDown = (slotElement) => {
-  const source = getContainerSlotInfo(slotElement);
-  if (!source || !source.slotItem) {
+  if (!openedContainer) {
     return;
   }
-  draggedItem = {
-    sourceContainerUid: source.containerUid,
-    sourceSlotIndex: source.slotIndex,
-    item: source.slotItem,
-  };
-  if (draggedItem) {
-    slotElement.classList.add("container-slot-dragging");
-  }
-};
-
-const handleContainerSlotMouseUp = (slotElement) => {
-  if (!draggedItem) {
-    return;
-  }
-  const destination = getContainerSlotInfo(slotElement);
-  if (!destination) {
-    cancelContainerDrag();    
-    return;
-  }
-  const sourceContainer = findOpenedContainerItemByUid(
-    draggedItem.sourceContainerUid,
-  );
-  const sourceSlotIndex = draggedItem.sourceSlotIndex;
-
-  const targetContainer = destination.containerItem;
-  const targetIndex = destination.slotIndex;
-
-  if (
-    draggedItem.sourceContainerUid === destination.containerUid &&
-    draggedItem.sourceSlotIndex === destination.slotIndex
-  ) {
-    cancelContainerDrag(); 
-    return;
-  }
-
-  if (
-    !sourceContainer ||
-    !sourceContainer.content ||
-    sourceContainer.content[sourceSlotIndex] !== draggedItem.item
-  ) {
-    cancelContainerDrag();    
-    return;
-  }
-
-  if (targetContainer.content[targetIndex]) {
-    const targetItem = targetContainer.content[targetIndex];
-    const sourceItem = sourceContainer.content[sourceSlotIndex];
-    sourceContainer.content[sourceSlotIndex] = targetItem;
-    targetContainer.content[targetIndex] = sourceItem;
-  } else {
-    targetContainer.content[targetIndex] = draggedItem.item;
-    sourceContainer.content[sourceSlotIndex] = null;
-  }
+  openedContainer.isMinimized = !openedContainer.isMinimized;
   renderContainerDock();
-  cancelContainerDrag(); 
-
 };
-
 
 /* ---------- UI - STATS JOUEUR ---------- */
 
@@ -1327,6 +1562,7 @@ const updateGameScale = () => {
   const scaleWidth = freeWidthSpace / logicWidthSpace;
   const scaleHeight = freeHeightSpace / logicHeightSpace;
   const scale = Math.min(scaleWidth, scaleHeight);
+  GAME_SCALE = scale;
   document.documentElement.style.setProperty("--game-scale", scale);
   const visualGameHeight = GAME_HEIGHT * scale;
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
@@ -1514,7 +1750,7 @@ const updateMovement = () => {
 //#endregion  -----  JOUEUR - MOUVEMENT  -----
 
 /* ==================================================== */
-//#region     -----  INPUTS - CLAVIER ET RESIZE  -----
+//#region     -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
 /* ==================================================== */
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
@@ -1562,7 +1798,106 @@ document.addEventListener("keyup", (e) => {
 window.addEventListener("resize", () => {
   updateGameScale();
 });
-//#endregion  -----  INPUTS - CLAVIER ET RESIZE  -----
+
+/* ---------- INPUTS - SOURIS ---------- */
+game.addEventListener("mousemove", (e) => {
+  updateMousePositionInfo(e.clientX, e.clientY);
+});
+
+game.addEventListener("click", (e) => {
+  console.log(
+    mousePosition.col,
+    mousePosition.row,
+    mousePosition.gameX,
+    mousePosition.gameY,
+    mousePosition.screenX,
+    mousePosition.screenY,
+    mousePosition.worldX,
+    mousePosition.worldY,
+    mousePosition.isInsideMap,
+  );
+});
+
+/* ---------- INPUTS - DRAG ITEM UI ---------- */
+
+const getContainerSourceFromSlotElement = (slotElement) => {
+  if (!slotElement) {
+    return null;
+  }
+  const containerUid = Number(slotElement.getAttribute("data-container-uid"));
+  const slotIndex = Number(
+    slotElement.getAttribute("data-container-slot-index"),
+  );
+  if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
+    return null;
+  }
+  return {
+    type: "container",
+    containerUid,
+    slotIndex,
+  };
+};
+
+const getEquipmentSourceFromSlotElement = (slotElement) => {
+  if (!slotElement) {
+    return null;
+  }
+  const slotName = slotElement.getAttribute("data-equipment-slot");
+  if (!slotName || !(slotName in playerState.equipment)) {
+    return null;
+  }
+  return {
+    type: "equipment",
+    slotName,
+  };
+};
+
+const getItemSlotInfoFromEvent = (e) => {
+  const containerSlotElement = e.target.closest(".container-slot");
+  if (containerSlotElement) {
+    const address = getContainerSourceFromSlotElement(containerSlotElement);
+    return {
+      slotElement: containerSlotElement,
+      address,
+    };
+  }
+  const equipmentSlotElement = e.target.closest(".equipment-slot");
+  if (equipmentSlotElement) {
+    const address = getEquipmentSourceFromSlotElement(equipmentSlotElement);
+    return {
+      slotElement: equipmentSlotElement,
+      address,
+    };
+  }
+  return null;
+};
+
+const handleItemUiMouseDown = (e) => {
+  const info = getItemSlotInfoFromEvent(e);
+  if (!info || !info.address || !info.slotElement) {
+    return;
+  }
+  e.preventDefault();
+  startItemDrag(info.address);
+  if (dragState.isDragging === true) {
+    info.slotElement.classList.add("container-slot-dragging");
+  }
+};
+
+const handleItemUiMouseUp = (e) => {
+  const info = getItemSlotInfoFromEvent(e);
+  if (!info || !info.address || !info.slotElement) {
+    cancelItemDrag();
+    return;
+  }
+  e.preventDefault();
+  completeItemDrag(info.address);
+};
+
+document.addEventListener("mousedown", handleItemUiMouseDown);
+document.addEventListener("mouseup", handleItemUiMouseUp);
+
+//#endregion  -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
 
 /* ==================================================== */
 //#region     -----  MONSTRES  -----
@@ -2134,15 +2469,18 @@ boiteJeux.addEventListener("click", (e) => {
 });
 
 document.addEventListener("mouseup", (e) => {
-  if (!draggedItem) {
+  if (!dragState.isDragging) {
     return;
   }
 
-  if (e.target.closest(".container-slot")) {
+  if (
+    e.target.closest(".container-slot") ||
+    e.target.closest(".equipment-slot")
+  ) {
     return;
   }
 
-  cancelContainerDrag();
+  cancelItemDrag();
 });
 //#endregion  -----  EVENEMENTS DU JEU  -----
 

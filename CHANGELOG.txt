@@ -1,3 +1,10 @@
+0.292 - Drag UI
+    - Ajout du vrai système drag/drop central avec dragState
+    - Validation equipment data-driven avec equipmentSlot
+    - Backpack clic droit open / close toggle
+    - Container minimize avec bouton + / -
+    - Deplacement entre item container et equipment fonctionnel
+
 0.291 - Drag drop des containers
     - Ajout drag item dans container
     - Ajout swap entre slots
