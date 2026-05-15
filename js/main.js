@@ -2887,7 +2887,6 @@ updatePlayerSprite();
 
 renderMap(gameMap);
 
-playerState.equipment.weapon = createItemInstance("sword", 1);
 playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
 playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
