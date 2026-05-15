@@ -169,7 +169,7 @@ const itemsDatabase = {
           atlasRow: 3,
           offsetX: 0,
           offsetY: 0,
-          zOffset: -1,
+          zOffset: 0,
         },
       ],
     },
@@ -214,7 +214,7 @@ const itemsDatabase = {
           atlasRow: 3,
           offsetX: 0,
           offsetY: 0,
-          zOffset: -1,
+          zOffset: 0,
         },
       ],
     },
@@ -286,6 +286,20 @@ const monstersDatabase = {
     animationFrames: 3,
     spriteSize: SPRITE_SIZE,
     corpseItemId: "ratCorpse",
+    loot: [
+      {
+        itemId: "goldCoin",
+        chance: 80,
+        minQuantity: 1,
+        maxQuantity: 5,
+      },
+      {
+        itemId: "apple",
+        chance: 30,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+    ],
   },
   spider: {
     monsterId: "spider",
@@ -306,6 +320,20 @@ const monstersDatabase = {
     animationFrames: 3,
     spriteSize: SPRITE_SIZE,
     corpseItemId: "spiderCorpse",
+    loot: [
+      {
+        itemId: "goldCoin",
+        chance: 80,
+        minQuantity: 1,
+        maxQuantity: 10,
+      },
+      {
+        itemId: "sword",
+        chance: 100,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+    ],
   },
 };
 //#endregion  -----  BASE DE DONNEES  -----
@@ -926,6 +954,13 @@ const createItemPartElement = (item, part, partIndex) => {
   div.style.backgroundImage = `url("${atlasPath}")`;
   div.setAttribute("data-item-uid", item.uid);
   div.setAttribute("data-part-index", partIndex);
+  div.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (!itemData) {
+      return;
+    }
+    openContainer(item, itemData.name);
+  });
   div.style.backgroundPosition = `-${part.sourceX}px -${part.sourceY}px`;
   div.style.backgroundRepeat = "no-repeat";
   return div;
@@ -1071,9 +1106,13 @@ const resetDragState = () => {
 
 const cancelItemDrag = () => {
   const draggingSlots = document.querySelectorAll(".container-slot-dragging");
+  const draggingWorld = document.querySelectorAll(".world-item-selected");
 
   draggingSlots.forEach((slot) => {
     slot.classList.remove("container-slot-dragging");
+  });
+  draggingWorld.forEach((worldItem) => {
+    worldItem.classList.remove("world-item-selected");
   });
   resetDragState();
 };
@@ -1205,7 +1244,12 @@ const placeItemInDragDestination = (destination, item) => {
     return null;
   }
   if (destination.type === "container") {
-    const container = findOpenedContainerItemByUid(destination.containerUid);
+    let container = null;
+    if (destination.containerItem) {
+      container = destination.containerItem;
+    } else {
+      container = findOpenedContainerItemByUid(destination.containerUid);
+    }
     if (!container || !container.content) {
       return null;
     }
@@ -1235,10 +1279,49 @@ const placeItemInDragDestination = (destination, item) => {
       return existingItem;
     }
   } else if (destination.type === "world") {
-    return null;
+    const tilePosition = getTilePosition(destination);
+    if (
+      !Number.isInteger(destination.x) ||
+      !Number.isInteger(destination.y) ||
+      !isInsideMap(destination.x, destination.y) ||
+      gameMap[tilePosition.row][tilePosition.col] !== FLOOR
+    ) {
+      return null;
+    }
+
+    item.x = destination.x;
+    item.y = destination.y;
+    addGroundItem(item);
+    return true;
   } else {
     return null;
   }
+};
+
+const isItemInsideContainer = (containerItem, searchedItemUid) => {
+  if (!containerItem || !containerItem.content) {
+    return false;
+  }
+  const itemData = getItemData(containerItem.itemId);
+  if (!itemData || !itemData.capacity) {
+    return false;
+  }
+  for (let index = 0; index < itemData.capacity; index++) {
+    const item = containerItem.content[index];
+
+    if (!item) {
+      continue;
+    }
+    if (item.uid === searchedItemUid) {
+      return true;
+    }
+    if (isContainerItem(item)) {
+      if (isItemInsideContainer(item, searchedItemUid)) {
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
@@ -1259,24 +1342,182 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     return;
   }
-  const removedItem = removeItemFromDragSource(source);
-  if (!removedItem) {
+
+  if (destination.type === "world") {
+    const oldSource = {
+      type: "world",
+      x: sourceItem.x,
+      y: sourceItem.y,
+    };
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return;
+    }
+
+    const result = placeItemInDragDestination(destination, removedItem);
+    if (result) {
+      refreshItemUiAfterDrag();
+      return;
+    } else {
+      if (source.type === "world") {
+        placeItemInDragDestination(oldSource, removedItem);
+        refreshItemUiAfterDrag();
+        return;
+      } else {
+        placeItemInDragDestination(source, removedItem);
+        refreshItemUiAfterDrag();
+        return;
+      }
+    }
+  }
+
+  const destinationItem = getDragSourceItem(destination);
+  if (
+    (source.type === "container" &&
+      destination.type === "container" &&
+      source.containerUid === destination.containerUid &&
+      source.slotIndex === destination.slotIndex) ||
+    (source.type === "equipment" &&
+      destination.type === "equipment" &&
+      source.slotName === destination.slotName)
+  ) {
     cancelItemDrag();
     return;
   }
-  const result = placeItemInDragDestination(destination, removedItem);
-  if (result === null) {
-    placeItemInDragDestination(source, removedItem);
-    refreshItemUiAfterDrag();
-    return;
-  } else if (result === true) {
-    refreshItemUiAfterDrag();
-    return;
-  } else {
-    placeItemInDragDestination(source, result);
+
+  let destinationContainer = null;
+  if (destination.type === "container") {
+    destinationContainer = findOpenedContainerItemByUid(
+      destination.containerUid,
+    );
+  }
+  if (isContainerItem(sourceItem) && destinationContainer) {
+    if (
+      destinationContainer.uid === sourceItem.uid ||
+      isItemInsideContainer(sourceItem, destinationContainer.uid)
+    ) {
+      cancelItemDrag();
+      return;
+    }
+  }
+  if (
+    isContainerItem(sourceItem) &&
+    destinationItem &&
+    isContainerItem(destinationItem)
+  ) {
+    if (destinationItem.uid === sourceItem.uid) {
+      cancelItemDrag();
+      return;
+    }
+    if (isItemInsideContainer(sourceItem, destinationItem.uid)) {
+      cancelItemDrag();
+      return;
+    }
+  }
+
+  if (destinationItem && isContainerItem(destinationItem)) {
+    if (destinationItem === sourceItem) {
+      cancelItemDrag();
+      return;
+    }
+
+    const emptySlot = findFirstEmptyContainerSlot(destinationItem);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerItem: destinationItem,
+      slotIndex: emptySlot,
+    };
+
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
     refreshItemUiAfterDrag();
     return;
   }
+
+  if (
+    !destinationItem &&
+    (destination.type === "container" ||
+      (destination.type === "equipment" &&
+        canPlaceItemInEquipmentSlot(sourceItem, destination.slotName)))
+  ) {
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return;
+    }
+    placeItemInDragDestination(destination, removedItem);
+    refreshItemUiAfterDrag();
+    return;
+  }
+
+  if (
+    source.type === "equipment" &&
+    destination.type === "container" &&
+    destinationItem &&
+    !canPlaceItemInEquipmentSlot(destinationItem, source.slotName)
+  ) {
+    const destinationContainer = findOpenedContainerItemByUid(
+      destination.containerUid,
+    );
+    if (!destinationContainer) {
+      cancelItemDrag();
+      return;
+    }
+    const emptySlot = findFirstEmptyContainerSlot(destinationContainer);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerUid: destination.containerUid,
+      slotIndex: emptySlot,
+    };
+
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
+    refreshItemUiAfterDrag();
+    return;
+  }
+  if (
+    (destination.type === "container" ||
+      (destination.type === "equipment" &&
+        canPlaceItemInEquipmentSlot(sourceItem, destination.slotName))) &&
+    (source.type === "container" ||
+      (source.type === "equipment" &&
+        canPlaceItemInEquipmentSlot(destinationItem, source.slotName)))
+  ) {
+    const removedSource = removeItemFromDragSource(source);
+    if (!removedSource) {
+      cancelItemDrag();
+      return;
+    }
+    const removedDestination = removeItemFromDragSource(destination);
+    if (!removedDestination) {
+      cancelItemDrag();
+      return;
+    }
+    placeItemInDragDestination(destination, removedSource);
+    placeItemInDragDestination(source, removedDestination);
+    refreshItemUiAfterDrag();
+    return;
+  }
+  cancelItemDrag();
 };
 
 const canPlaceItemInEquipmentSlot = (item, slotName) => {
@@ -1288,6 +1529,22 @@ const canPlaceItemInEquipmentSlot = (item, slotName) => {
     return false;
   }
   return itemData.equipmentSlot.includes(slotName);
+};
+
+const findFirstEmptyContainerSlot = (containerItem) => {
+  if (!containerItem || !containerItem.content) {
+    return null;
+  }
+  const itemData = getItemData(containerItem.itemId);
+  if (!itemData || !itemData.capacity) {
+    return null;
+  }
+  for (let index = 0; index < itemData.capacity; index++) {
+    if (!containerItem.content[index]) {
+      return index;
+    }
+  }
+  return null;
 };
 //#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
 
@@ -1423,6 +1680,15 @@ const renderContainerSlots = (containerBody, containerItem) => {
     slot.setAttribute("data-container-uid", containerItem.uid);
     if (slotItem) {
       renderItemIcon(slot, slotItem, 40);
+      if (isContainerItem(slotItem)) {
+        slot.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const itemData = getItemData(slotItem.itemId);
+          if (itemData) {
+            openContainer(slotItem, itemData.name);
+          }
+        });
+      }
     }
     slotGrid.appendChild(slot);
   }
@@ -1441,6 +1707,14 @@ const renderContainerDock = () => {
     header.classList.add("container-window-header");
     const button = document.createElement("button");
     button.classList.add("container-minimize-button");
+    const closeButton = document.createElement("button");
+    closeButton.classList.add("container-minimize-button");
+    closeButton.innerText = "X";
+    closeButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeContainer(container.item);
+      e.stopPropagation();
+    });
     button.addEventListener("click", (e) => {
       e.preventDefault();
       toggleContainerMinimized(container.item);
@@ -1450,7 +1724,7 @@ const renderContainerDock = () => {
     title.classList.add("boite-jeux-titre");
     title.textContent = container.title;
     header.appendChild(title);
-    header.append(button);
+    header.append(button, closeButton);
 
     if (container.isMinimized === true) {
       button.textContent = "+";
@@ -1852,6 +2126,33 @@ const getEquipmentSourceFromSlotElement = (slotElement) => {
   };
 };
 
+const getWorldSourceFromItemElement = (itemElement) => {
+  if (!itemElement) {
+    return null;
+  }
+  const itemUid = Number(itemElement.getAttribute("data-item-uid"));
+  if (!Number.isInteger(itemUid)) {
+    return null;
+  }
+  return {
+    type: "world",
+    worldItemUid: itemUid,
+  };
+};
+
+const getWorldDestinationFromMousePosition = () => {
+  if (!isMouseInsideMap(mousePosition)) {
+    return null;
+  }
+  const x = mousePosition.col * TILE_SIZE;
+  const y = mousePosition.row * TILE_SIZE;
+  return {
+    type: "world",
+    x,
+    y,
+  };
+};
+
 const getItemSlotInfoFromEvent = (e) => {
   const containerSlotElement = e.target.closest(".container-slot");
   if (containerSlotElement) {
@@ -1869,6 +2170,14 @@ const getItemSlotInfoFromEvent = (e) => {
       address,
     };
   }
+  const worldSlotElement = e.target.closest(".world-item-part");
+  if (worldSlotElement) {
+    const address = getWorldSourceFromItemElement(worldSlotElement);
+    return {
+      slotElement: worldSlotElement,
+      address,
+    };
+  }
   return null;
 };
 
@@ -1880,20 +2189,62 @@ const handleItemUiMouseDown = (e) => {
   e.preventDefault();
   startItemDrag(info.address);
   if (dragState.isDragging === true) {
-    info.slotElement.classList.add("container-slot-dragging");
+    if (info.address.type === "world") {
+      const worldItemUid = info.address.worldItemUid;
+      const parts = document.querySelectorAll(
+        `.world-item-part[data-item-uid="${worldItemUid}"]`,
+      );
+      parts.forEach((part) => {
+        part.classList.add("world-item-selected");
+      });
+    } else {
+      info.slotElement.classList.add("container-slot-dragging");
+    }
   }
 };
 
 const handleItemUiMouseUp = (e) => {
+  if (!dragState.isDragging) {
+    return;
+  }
+
   const info = getItemSlotInfoFromEvent(e);
-  if (!info || !info.address || !info.slotElement) {
+  if (
+    !info &&
+    e.target.closest(
+      ".jeux-gauche, .jeux-droite, .navbar, .entete-jeux, #boite-chat",
+    )
+  ) {
     cancelItemDrag();
     return;
   }
-  e.preventDefault();
-  completeItemDrag(info.address);
-};
 
+  if (info && info.address && info.slotElement) {
+    if (["container", "equipment"].includes(info.address.type)) {
+      e.preventDefault();
+      completeItemDrag(info.address);
+      return;
+    }
+
+    if (info.address.type === "world") {
+      const worldDestination = getWorldDestinationFromMousePosition();
+      if (worldDestination) {
+        e.preventDefault();
+        completeItemDrag(worldDestination);
+        return;
+      }
+    }
+  }
+
+  const worldDestination = getWorldDestinationFromMousePosition();
+  if (worldDestination) {
+    e.preventDefault();
+    completeItemDrag(worldDestination);
+    return;
+  }
+
+  cancelItemDrag();
+};
 document.addEventListener("mousedown", handleItemUiMouseDown);
 document.addEventListener("mouseup", handleItemUiMouseUp);
 
@@ -2086,8 +2437,15 @@ const clearMonsterSelection = () => {
 
 const deadMonster = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
+  const lootContent = generateMonsterLoot(monsterData);
   addGroundItem(
-    createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y),
+    createGroundItem(
+      monsterData.corpseItemId,
+      1,
+      monster.x,
+      monster.y,
+      lootContent,
+    ),
   );
   removeMonster(monster.uid);
   selectedMonsterId = null;
@@ -2121,6 +2479,24 @@ const findMonsterElement = (monsterId) => {
     `.monster[data-monster-uid="${monsterId}"]`,
   );
   return monsterElement;
+};
+
+const generateMonsterLoot = (monsterData) => {
+  const lootContent = [];
+  if (!monsterData.loot || !Array.isArray(monsterData.loot)) {
+    return lootContent;
+  }
+  monsterData.loot.forEach((loot) => {
+    const random = getRandomInt(1, 100);
+    if (random <= loot.chance) {
+      const quantity = getRandomInt(loot.minQuantity, loot.maxQuantity);
+      const item = createItemInstance(loot.itemId, quantity);
+      if (item) {
+        lootContent.push(item);
+      }
+    }
+  });
+  return lootContent;
 };
 
 /* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
@@ -2475,7 +2851,8 @@ document.addEventListener("mouseup", (e) => {
 
   if (
     e.target.closest(".container-slot") ||
-    e.target.closest(".equipment-slot")
+    e.target.closest(".equipment-slot") ||
+    e.target.closest(".world-item-part")
   ) {
     return;
   }
@@ -2520,10 +2897,19 @@ renderContainerDock();
 updatePlayerStats();
 
 addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 23 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 22 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 19 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 18 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 17 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 16 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 15 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 14 * TILE_SIZE, 21 * TILE_SIZE));
+addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 24 * TILE_SIZE));
+
 addGroundItem(
-  createGroundItem("healthPotion", 1, 30 * TILE_SIZE, 21 * TILE_SIZE),
+  createGroundItem("healthPotion", 1, 14 * TILE_SIZE, 24 * TILE_SIZE),
 );
-addGroundItem(createGroundItem("apple", 2, 20 * TILE_SIZE, 24 * TILE_SIZE));
 monsters.push(createMonster("rat", 30 * TILE_SIZE, 20 * TILE_SIZE));
 monsters.push(createMonster("rat", 33 * TILE_SIZE, 23 * TILE_SIZE));
 monsters.push(createMonster("spider", 34 * TILE_SIZE, 24 * TILE_SIZE));
