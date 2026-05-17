@@ -1048,23 +1048,6 @@ const addItemToInventory = (itemToAdd) => {
   }
 };
 
-/* ---------- INVENTAIRE - INTERACTION JOUEUR ---------- */
-
-const handleInteraction = () => {
-  const nearItemIndex = worldItems.findIndex((item) => {
-    return isNearPlayer(item);
-  });
-
-  if (nearItemIndex === -1) {
-    console.log("Aucun item proche");
-  } else {
-    const nearItem = worldItems[nearItemIndex];
-    worldItems.splice(nearItemIndex, 1);
-    addItemToInventory(nearItem);
-    removeGroundItemRender(nearItem.uid);
-  }
-};
-
 /* ---------- INVENTAIRE - MISE A JOUR ITEMS ---------- */
 
 const updateItemPosition = () => {
@@ -1342,8 +1325,16 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     return;
   }
+  if (source.type === "world" && !isNearPlayer(sourceItem, 1)) {
+    cancelItemDrag();
+    return;
+  }
 
   if (destination.type === "world") {
+    if (!isNearPlayer(destination, 9)) {
+      cancelItemDrag();
+      return;
+    }
     const oldSource = {
       type: "world",
       x: sourceItem.x,
@@ -1401,6 +1392,30 @@ const completeItemDrag = (destination) => {
       return;
     }
   }
+
+  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
+    const itemData = getItemData(sourceItem.itemId);
+    if (itemData && itemData.stackable) {
+      const freeStackSpace = 100 - destinationItem.quantity;
+      if (freeStackSpace <= 0) {
+        cancelItemDrag();
+        return;
+      }
+      if (sourceItem.quantity <= freeStackSpace) {
+        destinationItem.quantity += sourceItem.quantity;
+        removeItemFromDragSource(source);
+        refreshItemUiAfterDrag();
+        return;
+      }
+      if (sourceItem.quantity > freeStackSpace) {
+        destinationItem.quantity += freeStackSpace;
+        sourceItem.quantity -= freeStackSpace;
+        refreshItemUiAfterDrag();
+        return;
+      }
+    }
+  }
+
   if (
     isContainerItem(sourceItem) &&
     destinationItem &&
@@ -1583,8 +1598,15 @@ const renderItemIcon = (parentElement, item, slotSize) => {
     div.style.height = `${enrichedPart.sourceHeight}px`;
     div.style.transform = `scale(${scale})`;
     div.style.transformOrigin = "top left";
+
     parentElement.appendChild(div);
   });
+  if (itemData.stackable && item.quantity > 1) {
+    const quantity = document.createElement("p");
+    quantity.innerHTML = `${item.quantity}`;
+    quantity.classList.add("item-quantity");
+    parentElement.appendChild(quantity);
+  }
 };
 
 const renderEquipmentSlots = () => {
@@ -2033,10 +2055,6 @@ document.addEventListener("keydown", (e) => {
   if (e.repeat) {
     return;
   }
-  if (e.key === "e") {
-    handleInteraction();
-    return;
-  }
   if (e.key === "ArrowRight" || e.key === "d") {
     keysPressed.right = true;
   } else if (e.key === "ArrowLeft" || e.key === "a") {
@@ -2190,6 +2208,10 @@ const handleItemUiMouseDown = (e) => {
   startItemDrag(info.address);
   if (dragState.isDragging === true) {
     if (info.address.type === "world") {
+      if (!isNearPlayer(dragState.item, 1)) {
+        resetDragState();
+        return;
+      }
       const worldItemUid = info.address.worldItemUid;
       const parts = document.querySelectorAll(
         `.world-item-part[data-item-uid="${worldItemUid}"]`,
