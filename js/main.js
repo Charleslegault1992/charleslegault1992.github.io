@@ -291,7 +291,7 @@ const monstersDatabase = {
         itemId: "goldCoin",
         chance: 80,
         minQuantity: 1,
-        maxQuantity: 5,
+        maxQuantity: 4,
       },
       {
         itemId: "apple",
@@ -325,7 +325,7 @@ const monstersDatabase = {
         itemId: "goldCoin",
         chance: 80,
         minQuantity: 1,
-        maxQuantity: 10,
+        maxQuantity: 7,
       },
       {
         itemId: "sword",
@@ -375,7 +375,7 @@ const playerState = {
   level: 0,
   experience: 0,
   gold: 0,
-  damage: 9,
+  damage: 30,
   magicSkill: 0,
   swordSkill: 1,
   maceSkill: 1,
@@ -954,16 +954,31 @@ const createItemPartElement = (item, part, partIndex) => {
   div.style.backgroundImage = `url("${atlasPath}")`;
   div.setAttribute("data-item-uid", item.uid);
   div.setAttribute("data-part-index", partIndex);
-  div.addEventListener("contextmenu", (e) => {
+
+  div.style.backgroundPosition = `-${part.sourceX}px -${part.sourceY}px`;
+  div.style.backgroundRepeat = "no-repeat";
+  return div;
+};
+
+const createWorldItemHitbox = (item) => {
+  const itemData = getItemData(item.itemId);
+  const hitbox = document.createElement("div");
+  hitbox.setAttribute("data-item-uid", item.uid);
+  hitbox.classList.add("hitbox");
+  hitbox.style.width = `${TILE_SIZE}px`;
+  hitbox.style.height = `${TILE_SIZE}px`;
+  hitbox.style.left = `${item.x - camera.x}px`;
+  hitbox.style.top = `${item.y - camera.y}px`;
+  hitbox.style.zIndex = `${item.y}`;
+
+  hitbox.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     if (!itemData) {
       return;
     }
     openContainer(item, itemData.name);
   });
-  div.style.backgroundPosition = `-${part.sourceX}px -${part.sourceY}px`;
-  div.style.backgroundRepeat = "no-repeat";
-  return div;
+  return hitbox;
 };
 
 const renderGroundItemParts = (item) => {
@@ -980,6 +995,7 @@ const renderGroundItemParts = (item) => {
     applyItemRenderPartPosition(div, position);
     game.appendChild(div);
   });
+  game.appendChild(createWorldItemHitbox(item));
 };
 
 /* ---------- ITEMS - AFFICHAGE DOM ---------- */
@@ -1005,6 +1021,12 @@ const removeGroundItemRender = (itemUid) => {
     `.world-item-part[data-item-uid="${itemUid}"]`,
   );
   itemElements.forEach((itemElement) => {
+    itemElement.remove();
+  });
+  const itemHitboxElements = document.querySelectorAll(
+    `.hitbox[data-item-uid="${itemUid}"]`,
+  );
+  itemHitboxElements.forEach((itemElement) => {
     itemElement.remove();
   });
 };
@@ -1059,6 +1081,9 @@ const updateItemPosition = () => {
     const itemElements = document.querySelectorAll(
       `.world-item-part[data-item-uid="${item.uid}"]`,
     );
+    const itemHitboxElements = document.querySelectorAll(
+      `.hitbox[data-item-uid="${item.uid}"]`,
+    );
     itemElements.forEach((element) => {
       const partIndex = Number(element.getAttribute("data-part-index"));
       const position = positions[partIndex];
@@ -1066,6 +1091,16 @@ const updateItemPosition = () => {
         return;
       }
       applyItemRenderPartPosition(element, position);
+    });
+    itemHitboxElements.forEach((element) => {
+      const positionHitbox = {
+        left: item.x - camera.x,
+        top: item.y - camera.y,
+        zIndex: item.y,
+        width: SPRITE_SIZE,
+        height: SPRITE_SIZE,
+      };
+      applyItemRenderPartPosition(element, positionHitbox);
     });
   });
 };
@@ -1585,15 +1620,48 @@ const renderItemIcon = (parentElement, item, slotSize) => {
     return;
   }
   const atlasPath = getAtlasPath(itemData.render.atlas);
-  const scale = slotSize / SPRITE_SIZE;
   const enrichedParts = getItemRenderData(item.itemId);
+  let totalWidth = 0;
+  let totalHeight = 0;
+  let minX = null;
+  let maxX = null;
+  let minY = null;
+  let maxY = null;
+  enrichedParts.forEach((enrichedPart) => {
+    if (minX === null || minX > enrichedPart.offsetX) {
+      minX = enrichedPart.offsetX;
+    }
+    if (
+      maxX === null ||
+      maxX < enrichedPart.offsetX + enrichedPart.sourceWidth
+    ) {
+      maxX = enrichedPart.offsetX + enrichedPart.sourceWidth;
+    }
+    if (minY === null || minY > enrichedPart.offsetY) {
+      minY = enrichedPart.offsetY;
+    }
+    if (
+      maxY === null ||
+      maxY < enrichedPart.offsetY + enrichedPart.sourceHeight
+    ) {
+      maxY = enrichedPart.offsetY + enrichedPart.sourceHeight;
+    }
+    totalWidth = maxX - minX;
+    totalHeight = maxY - minY;
+  });
+  const biggestDimension = Math.max(totalWidth, totalHeight);
+  const scale = slotSize / biggestDimension;
+  const renderWidth = totalWidth * scale;
+  const renderHeight = totalHeight * scale;
+  const paddingLeft = (slotSize - renderWidth) / 2;
+  const paddingTop = (slotSize - renderHeight) / 2;
   enrichedParts.forEach((enrichedPart) => {
     const div = document.createElement("div");
     div.classList.add("item-icon-part");
     div.style.backgroundImage = `url("${atlasPath}")`;
     div.style.backgroundPosition = `-${enrichedPart.sourceX}px -${enrichedPart.sourceY}px`;
-    div.style.left = `${enrichedPart.offsetX * scale}px`;
-    div.style.top = `${enrichedPart.offsetY * scale}px`;
+    div.style.left = `${paddingLeft + (enrichedPart.offsetX - minX) * scale}px`;
+    div.style.top = `${paddingTop + (enrichedPart.offsetY - minY) * scale}px`;
     div.style.width = `${enrichedPart.sourceWidth}px`;
     div.style.height = `${enrichedPart.sourceHeight}px`;
     div.style.transform = `scale(${scale})`;
@@ -2188,7 +2256,7 @@ const getItemSlotInfoFromEvent = (e) => {
       address,
     };
   }
-  const worldSlotElement = e.target.closest(".world-item-part");
+  const worldSlotElement = e.target.closest(".hitbox");
   if (worldSlotElement) {
     const address = getWorldSourceFromItemElement(worldSlotElement);
     return {
@@ -2874,7 +2942,7 @@ document.addEventListener("mouseup", (e) => {
   if (
     e.target.closest(".container-slot") ||
     e.target.closest(".equipment-slot") ||
-    e.target.closest(".world-item-part")
+    e.target.closest(".hitbox")
   ) {
     return;
   }

@@ -347,10 +347,10 @@ main {
 }
 .item-quantity {
   font-size: 11px;
-  font-weight:400;
+  font-weight: 400;
   position: absolute;
-  bottom:-18px;
-  right:1px;
+  bottom: -18px;
+  right: 1px;
   pointer-events: none;
   text-shadow: 0 0 2px rgb(0, 0, 0);
 }
@@ -514,8 +514,12 @@ main {
   position: absolute;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+  pointer-events: none
 }
-
+.hitbox {
+  position: absolute;
+  background: transparent;
+}
 .monster {
   position: absolute;
   overflow: visible;
