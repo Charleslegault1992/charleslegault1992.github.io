@@ -5,7 +5,10 @@
     - Validation equipment data-driven avec equipmentSlot
     - Backpack clic droit open / close toggle
     - Container minimize avec bouton + / -
-    - Deplacement entre item container et equipment fonctionnel
+    - Deplacement entre item container, equipment et world fonctionnel
+    - Swap item
+    - Correction affichage object dans l'inventaire.
+    - Changement couleur et fond du UI
 
 0.291 - Drag drop des containers
     - Ajout drag item dans container

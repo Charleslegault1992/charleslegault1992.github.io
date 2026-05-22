@@ -976,7 +976,7 @@ const createWorldItemHitbox = (item) => {
     if (!itemData) {
       return;
     }
-    openContainer(item, itemData.name);
+    openContainer(item, itemData.name, "world", null);
   });
   return hitbox;
 };
@@ -1383,7 +1383,13 @@ const completeItemDrag = (destination) => {
 
     const result = placeItemInDragDestination(destination, removedItem);
     if (result) {
+      if (isContainerItem(removedItem)) {
+        updateOpenedContainerSourceType(removedItem, "world");
+        closeFarOpenedContainers();
+      }
+
       refreshItemUiAfterDrag();
+
       return;
     } else {
       if (source.type === "world") {
@@ -1490,6 +1496,8 @@ const completeItemDrag = (destination) => {
       return;
     }
     placeItemInDragDestination(destinationSlotContainer, removedItem);
+    updateOpenedContainerSourceType(removedItem, "container");
+
     refreshItemUiAfterDrag();
     return;
   }
@@ -1506,6 +1514,13 @@ const completeItemDrag = (destination) => {
       return;
     }
     placeItemInDragDestination(destination, removedItem);
+    if (isContainerItem(removedItem)) {
+      if (destination.type === "container") {
+        updateOpenedContainerSourceType(removedItem, "container");
+      } else if (destination.type === "equipment") {
+        updateOpenedContainerSourceType(removedItem, "equipment");
+      }
+    }
     refreshItemUiAfterDrag();
     return;
   }
@@ -1541,6 +1556,9 @@ const completeItemDrag = (destination) => {
       return;
     }
     placeItemInDragDestination(destinationSlotContainer, removedItem);
+    if (isContainerItem(removedItem)) {
+      updateOpenedContainerSourceType(removedItem, "container");
+    }
     refreshItemUiAfterDrag();
     return;
   }
@@ -1563,7 +1581,13 @@ const completeItemDrag = (destination) => {
       return;
     }
     placeItemInDragDestination(destination, removedSource);
+    if (isContainerItem(removedSource)) {
+      updateOpenedContainerSourceType(removedSource, destination.type);
+    }
     placeItemInDragDestination(source, removedDestination);
+    if (isContainerItem(removedDestination)) {
+      updateOpenedContainerSourceType(removedDestination, source.type);
+    }
     refreshItemUiAfterDrag();
     return;
   }
@@ -1595,6 +1619,22 @@ const findFirstEmptyContainerSlot = (containerItem) => {
     }
   }
   return null;
+};
+
+const closeFarOpenedContainers = () => {
+  openedContainers.forEach((container) => {
+    if (container.sourceType === "world" && !isNearPlayer(container.item, 1)) {
+      closeContainer(container.item);
+    }
+  });
+};
+
+const updateOpenedContainerSourceType = (item, sourceType) => {
+  openedContainers.forEach((container) => {
+    if (container.item.uid === item.uid) {
+      container.sourceType = sourceType;
+    }
+  });
 };
 //#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
 
@@ -1690,7 +1730,7 @@ const renderEquipmentSlots = () => {
         if (!itemData) {
           return;
         }
-        openContainer(item, itemData.name);
+        openContainer(item, itemData.name, "equipment", null);
       });
     }
   });
@@ -1771,11 +1811,35 @@ const renderContainerSlots = (containerBody, containerItem) => {
     if (slotItem) {
       renderItemIcon(slot, slotItem, 40);
       if (isContainerItem(slotItem)) {
+        let parentWrapper = null;
+
+        openedContainers.forEach((container) => {
+          if (container.item.uid === containerItem.uid) {
+            parentWrapper = container;
+          }
+        });
         slot.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           const itemData = getItemData(slotItem.itemId);
-          if (itemData) {
-            openContainer(slotItem, itemData.name);
+
+          if (itemData && parentWrapper) {
+            let alreadyOpen = false;
+            openedContainers.forEach((container) => {
+              if (container.item.uid === slotItem.uid) {
+                alreadyOpen = true;
+              }
+            });
+            if (alreadyOpen) {
+              openContainer(
+                slotItem,
+                itemData.name,
+                "container",
+                parentWrapper,
+              );
+              return;
+            }
+            closeContainer(parentWrapper.item);
+            openContainer(slotItem, itemData.name, "container", parentWrapper);
           }
         });
       }
@@ -1791,6 +1855,7 @@ const renderContainerDock = () => {
   }
   playerContainers.innerHTML = ``;
   openedContainers.forEach((container) => {
+    let backButton = null;
     const div = document.createElement("div");
     div.classList.add("container-window");
     const header = document.createElement("div");
@@ -1800,6 +1865,37 @@ const renderContainerDock = () => {
     const closeButton = document.createElement("button");
     closeButton.classList.add("container-minimize-button");
     closeButton.innerText = "X";
+    const title = document.createElement("div");
+    title.classList.add("boite-jeux-titre");
+    title.textContent = container.title;
+    header.appendChild(title);
+    if (container.parent !== null) {
+      backButton = document.createElement("button");
+      backButton.classList.add("container-back-button");
+      backButton.innerText = `‹`;
+      backButton.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const parentWrapper = container.parent;
+        closeContainer(container.item);
+        const parentAlreadyOpen = openedContainers.find((container) => {
+          return container.item.uid === parentWrapper.item.uid;
+        });
+        if (parentAlreadyOpen) {
+          parentAlreadyOpen.isMinimized = false;
+          renderContainerDock();
+          return;
+        }
+        openContainer(
+          parentWrapper.item,
+          parentWrapper.title,
+          parentWrapper.sourceType,
+          parentWrapper.parent,
+        );
+      });
+      header.append(backButton);
+    }
     closeButton.addEventListener("click", (e) => {
       e.preventDefault();
       closeContainer(container.item);
@@ -1810,10 +1906,7 @@ const renderContainerDock = () => {
       toggleContainerMinimized(container.item);
       e.stopPropagation();
     });
-    const title = document.createElement("div");
-    title.classList.add("boite-jeux-titre");
-    title.textContent = container.title;
-    header.appendChild(title);
+
     header.append(button, closeButton);
 
     if (container.isMinimized === true) {
@@ -1844,8 +1937,11 @@ const closeContainer = (containerItem) => {
   renderContainerDock();
 };
 
-const openContainer = (containerItem, title) => {
-  if (!isContainerItem(containerItem)) {
+const openContainer = (containerItem, title, source, parent) => {
+  if (
+    !isContainerItem(containerItem) ||
+    (source === "world" && !isNearPlayer(containerItem, 1))
+  ) {
     return;
   }
 
@@ -1860,6 +1956,8 @@ const openContainer = (containerItem, title) => {
     item: containerItem,
     title: title,
     isMinimized: false,
+    sourceType: source,
+    parent: parent,
   });
   renderContainerDock();
 };
@@ -2110,6 +2208,7 @@ const updateMovement = () => {
   updatePlayerSprite();
   updateWorldPosition();
   nextPlayerMoveTime = now + getPlayerMoveCooldown();
+  closeFarOpenedContainers();
 };
 //#endregion  -----  JOUEUR - MOUVEMENT  -----
 
