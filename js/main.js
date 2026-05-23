@@ -973,9 +973,17 @@ const createWorldItemHitbox = (item) => {
 
   hitbox.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+
+    const monster = findMonsterAtPosition(item.x, item.y);
+    if (monster) {
+      selectMonster(monster);
+      return;
+    }
+
     if (!itemData) {
       return;
     }
+
     openContainer(item, itemData.name, "world", null);
   });
   return hitbox;
@@ -1776,8 +1784,8 @@ const updatePlayerInventory = () => {
                       <div class="equipment-icon-button"></div>
                     </div>
 
-                    <button class="equipment-ui-button">Options</button>
-                    <button class="equipment-ui-button">Hotkeys</button>
+                    <button class="equipment-ui-button">Follow</button>
+                    <button class="equipment-ui-button">PVP</button>
                     <button class="equipment-ui-button">Friends</button>
                     <button class="equipment-ui-button">Options</button>
                     <button class="equipment-ui-button">Logout</button>
@@ -2504,14 +2512,10 @@ const renderMonsters = (monstersList) => {
     monsterSprite.style.backgroundImage = `url("${atlasPath}")`;
     monsterSprite.style.width = `${monsterData.drawWidth}px`;
     monsterSprite.style.height = `${monsterData.drawHeight}px`;
-    div.addEventListener("contextmenu", () => {
-      clearMonsterSelection();
-      if (monster.uid === selectedMonsterId) {
-        selectedMonsterId = null;
-        return;
-      }
-      selectedMonsterId = monster.uid;
-      selectMonsterElement(selectedMonsterId);
+    div.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectMonster(monster);
     });
     div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
     div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
@@ -2552,6 +2556,24 @@ const isMonsterAtPosition = (x, y) => {
   return monsters.some((monster) => {
     return monster.x === x && monster.y === y;
   });
+};
+const findMonsterAtPosition = (x, y) => {
+  return monsters.find((monster) => {
+    return monster.x === x && monster.y === y;
+  });
+};
+
+const selectMonster = (monster) => {
+  if (!monster) {
+    return;
+  }
+  clearMonsterSelection();
+  if (monster.uid === selectedMonsterId) {
+    selectedMonsterId = null;
+    return;
+  }
+  selectedMonsterId = monster.uid;
+  selectMonsterElement(selectedMonsterId);
 };
 
 const isPlayerAtPosition = (x, y) => {
