@@ -375,7 +375,7 @@ const playerState = {
   level: 0,
   experience: 0,
   gold: 0,
-  damage: 30,
+  damage: 10,
   magicSkill: 0,
   swordSkill: 1,
   maceSkill: 1,
@@ -454,10 +454,7 @@ const hpRefresh = () => {
   const playerHp = document.querySelector(".php-red");
   if (playerHp) {
     playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
-    playerHp.style.setProperty(
-      "--hp-color",
-      getHpColor(playerState.hp, playerState.maxHp),
-    );
+    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
   }
 };
 
@@ -493,128 +490,128 @@ const updateCamera = () => {
 
 const gameMap = [
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
   [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1,
   ],
 ];
 
@@ -653,12 +650,7 @@ const renderMap = (map) => {
 /* ---------- MAP - COLLISIONS ET LIMITES ---------- */
 
 const isInsideMap = (testX, testY) => {
-  return (
-    testX >= 0 &&
-    testX <= mapWidth - PLAYER_SIZE &&
-    testY >= 0 &&
-    testY <= mapHeight - PLAYER_SIZE
-  );
+  return testX >= 0 && testX <= mapWidth - PLAYER_SIZE && testY >= 0 && testY <= mapHeight - PLAYER_SIZE;
 };
 
 const canMoveTo = (testX, testY) => {
@@ -699,10 +691,7 @@ const isNearPlayer = (target, range = 1) => {
   const targetCol = target.x / TILE_SIZE;
   const targetRow = target.y / TILE_SIZE;
 
-  return (
-    Math.abs(playerCol - targetCol) <= range &&
-    Math.abs(playerRow - targetRow) <= range
-  );
+  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
 };
 
 const isContainerItem = (item) => {
@@ -758,11 +747,7 @@ const getAtlasPath = (atlasName) => {
 
 /* ---------- OUTILS - SOURIS ---------- */
 const isMouseInsideMap = (mousePosition) => {
-  if (
-    !mousePosition ||
-    !Number.isFinite(mousePosition.worldX) ||
-    !Number.isFinite(mousePosition.worldY)
-  ) {
+  if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
     return false;
   }
   return (
@@ -1025,15 +1010,11 @@ const addGroundItem = (worldItem) => {
 };
 
 const removeGroundItemRender = (itemUid) => {
-  const itemElements = document.querySelectorAll(
-    `.world-item-part[data-item-uid="${itemUid}"]`,
-  );
+  const itemElements = document.querySelectorAll(`.world-item-part[data-item-uid="${itemUid}"]`);
   itemElements.forEach((itemElement) => {
     itemElement.remove();
   });
-  const itemHitboxElements = document.querySelectorAll(
-    `.hitbox[data-item-uid="${itemUid}"]`,
-  );
+  const itemHitboxElements = document.querySelectorAll(`.hitbox[data-item-uid="${itemUid}"]`);
   itemHitboxElements.forEach((itemElement) => {
     itemElement.remove();
   });
@@ -1086,12 +1067,8 @@ const updateItemPosition = () => {
     if (!positions || positions.length <= 0) {
       return;
     }
-    const itemElements = document.querySelectorAll(
-      `.world-item-part[data-item-uid="${item.uid}"]`,
-    );
-    const itemHitboxElements = document.querySelectorAll(
-      `.hitbox[data-item-uid="${item.uid}"]`,
-    );
+    const itemElements = document.querySelectorAll(`.world-item-part[data-item-uid="${item.uid}"]`);
+    const itemHitboxElements = document.querySelectorAll(`.hitbox[data-item-uid="${item.uid}"]`);
     itemElements.forEach((element) => {
       const partIndex = Number(element.getAttribute("data-part-index"));
       const position = positions[partIndex];
@@ -1357,251 +1334,6 @@ const refreshItemUiAfterDrag = () => {
   cancelItemDrag();
 };
 
-const completeItemDrag = (destination) => {
-  if (!dragState.isDragging || !destination) {
-    cancelItemDrag();
-    return;
-  }
-  const source = getDragSourceFromState();
-  const sourceItem = getDragSourceItem(source);
-  if (sourceItem !== dragState.item) {
-    cancelItemDrag();
-    return;
-  }
-  if (source.type === "world" && !isNearPlayer(sourceItem, 1)) {
-    cancelItemDrag();
-    return;
-  }
-
-  if (destination.type === "world") {
-    if (!isNearPlayer(destination, 9)) {
-      cancelItemDrag();
-      return;
-    }
-    const oldSource = {
-      type: "world",
-      x: sourceItem.x,
-      y: sourceItem.y,
-    };
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return;
-    }
-
-    const result = placeItemInDragDestination(destination, removedItem);
-    if (result) {
-      if (isContainerItem(removedItem)) {
-        updateOpenedContainerSourceType(removedItem, "world");
-        closeFarOpenedContainers();
-      }
-
-      refreshItemUiAfterDrag();
-
-      return;
-    } else {
-      if (source.type === "world") {
-        placeItemInDragDestination(oldSource, removedItem);
-        refreshItemUiAfterDrag();
-        return;
-      } else {
-        placeItemInDragDestination(source, removedItem);
-        refreshItemUiAfterDrag();
-        return;
-      }
-    }
-  }
-
-  const destinationItem = getDragSourceItem(destination);
-  if (
-    (source.type === "container" &&
-      destination.type === "container" &&
-      source.containerUid === destination.containerUid &&
-      source.slotIndex === destination.slotIndex) ||
-    (source.type === "equipment" &&
-      destination.type === "equipment" &&
-      source.slotName === destination.slotName)
-  ) {
-    cancelItemDrag();
-    return;
-  }
-
-  let destinationContainer = null;
-  if (destination.type === "container") {
-    destinationContainer = findOpenedContainerItemByUid(
-      destination.containerUid,
-    );
-  }
-  if (isContainerItem(sourceItem) && destinationContainer) {
-    if (
-      destinationContainer.uid === sourceItem.uid ||
-      isItemInsideContainer(sourceItem, destinationContainer.uid)
-    ) {
-      cancelItemDrag();
-      return;
-    }
-  }
-
-  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
-    const itemData = getItemData(sourceItem.itemId);
-    if (itemData && itemData.stackable) {
-      const freeStackSpace = 100 - destinationItem.quantity;
-      if (freeStackSpace <= 0) {
-        cancelItemDrag();
-        return;
-      }
-      if (sourceItem.quantity <= freeStackSpace) {
-        destinationItem.quantity += sourceItem.quantity;
-        removeItemFromDragSource(source);
-        refreshItemUiAfterDrag();
-        return;
-      }
-      if (sourceItem.quantity > freeStackSpace) {
-        destinationItem.quantity += freeStackSpace;
-        sourceItem.quantity -= freeStackSpace;
-        refreshItemUiAfterDrag();
-        return;
-      }
-    }
-  }
-
-  if (
-    isContainerItem(sourceItem) &&
-    destinationItem &&
-    isContainerItem(destinationItem)
-  ) {
-    if (destinationItem.uid === sourceItem.uid) {
-      cancelItemDrag();
-      return;
-    }
-    if (isItemInsideContainer(sourceItem, destinationItem.uid)) {
-      cancelItemDrag();
-      return;
-    }
-  }
-
-  if (destinationItem && isContainerItem(destinationItem)) {
-    if (destinationItem === sourceItem) {
-      cancelItemDrag();
-      return;
-    }
-
-    const emptySlot = findFirstEmptyContainerSlot(destinationItem);
-    if (emptySlot === null) {
-      cancelItemDrag();
-      return;
-    }
-
-    const destinationSlotContainer = {
-      type: "container",
-      containerItem: destinationItem,
-      slotIndex: emptySlot,
-    };
-
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return;
-    }
-    placeItemInDragDestination(destinationSlotContainer, removedItem);
-    updateOpenedContainerSourceType(removedItem, "container");
-
-    refreshItemUiAfterDrag();
-    return;
-  }
-
-  if (
-    !destinationItem &&
-    (destination.type === "container" ||
-      (destination.type === "equipment" &&
-        canPlaceItemInEquipmentSlot(sourceItem, destination.slotName)))
-  ) {
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return;
-    }
-    placeItemInDragDestination(destination, removedItem);
-    if (isContainerItem(removedItem)) {
-      if (destination.type === "container") {
-        updateOpenedContainerSourceType(removedItem, "container");
-      } else if (destination.type === "equipment") {
-        updateOpenedContainerSourceType(removedItem, "equipment");
-      }
-    }
-    refreshItemUiAfterDrag();
-    return;
-  }
-
-  if (
-    source.type === "equipment" &&
-    destination.type === "container" &&
-    destinationItem &&
-    !canPlaceItemInEquipmentSlot(destinationItem, source.slotName)
-  ) {
-    const destinationContainer = findOpenedContainerItemByUid(
-      destination.containerUid,
-    );
-    if (!destinationContainer) {
-      cancelItemDrag();
-      return;
-    }
-    const emptySlot = findFirstEmptyContainerSlot(destinationContainer);
-    if (emptySlot === null) {
-      cancelItemDrag();
-      return;
-    }
-
-    const destinationSlotContainer = {
-      type: "container",
-      containerUid: destination.containerUid,
-      slotIndex: emptySlot,
-    };
-
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return;
-    }
-    placeItemInDragDestination(destinationSlotContainer, removedItem);
-    if (isContainerItem(removedItem)) {
-      updateOpenedContainerSourceType(removedItem, "container");
-    }
-    refreshItemUiAfterDrag();
-    return;
-  }
-  if (
-    (destination.type === "container" ||
-      (destination.type === "equipment" &&
-        canPlaceItemInEquipmentSlot(sourceItem, destination.slotName))) &&
-    (source.type === "container" ||
-      (source.type === "equipment" &&
-        canPlaceItemInEquipmentSlot(destinationItem, source.slotName)))
-  ) {
-    const removedSource = removeItemFromDragSource(source);
-    if (!removedSource) {
-      cancelItemDrag();
-      return;
-    }
-    const removedDestination = removeItemFromDragSource(destination);
-    if (!removedDestination) {
-      cancelItemDrag();
-      return;
-    }
-    placeItemInDragDestination(destination, removedSource);
-    if (isContainerItem(removedSource)) {
-      updateOpenedContainerSourceType(removedSource, destination.type);
-    }
-    placeItemInDragDestination(source, removedDestination);
-    if (isContainerItem(removedDestination)) {
-      updateOpenedContainerSourceType(removedDestination, source.type);
-    }
-    refreshItemUiAfterDrag();
-    return;
-  }
-  cancelItemDrag();
-};
-
 const canPlaceItemInEquipmentSlot = (item, slotName) => {
   if (!item || !slotName) {
     return false;
@@ -1644,6 +1376,305 @@ const updateOpenedContainerSourceType = (item, sourceType) => {
     }
   });
 };
+
+const tryStackItemsDuringDrag = (source, sourceItem, destinationItem) => {
+  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
+    const itemData = getItemData(sourceItem.itemId);
+    if (itemData && itemData.stackable) {
+      const freeStackSpace = 100 - destinationItem.quantity;
+
+      if (freeStackSpace <= 0) {
+        return false;
+      }
+
+      if (sourceItem.quantity <= freeStackSpace) {
+        destinationItem.quantity += sourceItem.quantity;
+        removeItemFromDragSource(source);
+        refreshItemUiAfterDrag();
+        return true;
+      }
+
+      if (sourceItem.quantity > freeStackSpace) {
+        destinationItem.quantity += freeStackSpace;
+        sourceItem.quantity -= freeStackSpace;
+        refreshItemUiAfterDrag();
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationItem) => {
+  if (destinationItem && isContainerItem(destinationItem)) {
+    if (destinationItem === sourceItem) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const emptySlot = findFirstEmptyContainerSlot(destinationItem);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerItem: destinationItem,
+      slotIndex: emptySlot,
+    };
+
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
+    updateOpenedContainerSourceType(removedItem, "container");
+
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const tryMoveItemToEmptySlotDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (
+    !destinationItem &&
+    (destination.type === "container" ||
+      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName)))
+  ) {
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destination, removedItem);
+    if (isContainerItem(removedItem)) {
+      if (destination.type === "container") {
+        updateOpenedContainerSourceType(removedItem, "container");
+      } else if (destination.type === "equipment") {
+        updateOpenedContainerSourceType(removedItem, "equipment");
+      }
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag = (source, destination, destinationItem) => {
+  if (
+    source.type === "equipment" &&
+    destination.type === "container" &&
+    destinationItem &&
+    !canPlaceItemInEquipmentSlot(destinationItem, source.slotName)
+  ) {
+    const destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
+    if (!destinationContainer) {
+      cancelItemDrag();
+      return true;
+    }
+    const emptySlot = findFirstEmptyContainerSlot(destinationContainer);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerUid: destination.containerUid,
+      slotIndex: emptySlot,
+    };
+
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
+    if (isContainerItem(removedItem)) {
+      updateOpenedContainerSourceType(removedItem, "container");
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const trySwapItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (
+    (destination.type === "container" ||
+      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName))) &&
+    (source.type === "container" ||
+      (source.type === "equipment" && canPlaceItemInEquipmentSlot(destinationItem, source.slotName)))
+  ) {
+    const removedSource = removeItemFromDragSource(source);
+    if (!removedSource) {
+      cancelItemDrag();
+      return true;
+    }
+    const removedDestination = removeItemFromDragSource(destination);
+    if (!removedDestination) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destination, removedSource);
+    if (isContainerItem(removedSource)) {
+      updateOpenedContainerSourceType(removedSource, destination.type);
+    }
+    placeItemInDragDestination(source, removedDestination);
+    if (isContainerItem(removedDestination)) {
+      updateOpenedContainerSourceType(removedDestination, source.type);
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
+  if (destination.type === "world") {
+    if (!isNearPlayer(destination, 9)) {
+      cancelItemDrag();
+      return true;
+    }
+    const oldSource = {
+      type: "world",
+      x: sourceItem.x,
+      y: sourceItem.y,
+    };
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const result = placeItemInDragDestination(destination, removedItem);
+    if (result) {
+      if (isContainerItem(removedItem)) {
+        updateOpenedContainerSourceType(removedItem, "world");
+        closeFarOpenedContainers();
+      }
+
+      refreshItemUiAfterDrag();
+
+      return true;
+    } else {
+      if (source.type === "world") {
+        placeItemInDragDestination(oldSource, removedItem);
+        refreshItemUiAfterDrag();
+        return true;
+      } else {
+        placeItemInDragDestination(source, removedItem);
+        refreshItemUiAfterDrag();
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const isSameDragSourceAndDestination = (source, destination) => {
+  if (
+    source.type === "container" &&
+    destination.type === "container" &&
+    source.containerUid === destination.containerUid &&
+    source.slotIndex === destination.slotIndex
+  ) {
+    return true;
+  }
+  if (source.type === "equipment" && destination.type === "equipment" && source.slotName === destination.slotName) {
+    return true;
+  }
+  return false;
+};
+
+const isContainerMoveIntoContainerItemItself = (sourceItem, destinationItem) => {
+  if (isContainerItem(sourceItem) && destinationItem && isContainerItem(destinationItem)) {
+    if (destinationItem.uid === sourceItem.uid) {
+      return true;
+    }
+    if (isItemInsideContainer(sourceItem, destinationItem.uid)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isContainerMoveIntoItself = (sourceItem, destinationContainer) => {
+  if (isContainerItem(sourceItem) && destinationContainer) {
+    if (destinationContainer.uid === sourceItem.uid || isItemInsideContainer(sourceItem, destinationContainer.uid)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const completeItemDrag = (destination) => {
+  if (!dragState.isDragging || !destination) {
+    cancelItemDrag();
+    return;
+  }
+  const source = getDragSourceFromState();
+  const sourceItem = getDragSourceItem(source);
+  if (sourceItem !== dragState.item) {
+    cancelItemDrag();
+    return;
+  }
+  if (source.type === "world" && !isNearPlayer(sourceItem, 1)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
+    return;
+  }
+
+  const destinationItem = getDragSourceItem(destination);
+
+  if (isSameDragSourceAndDestination(source, destination)) {
+    cancelItemDrag();
+    return;
+  }
+
+  let destinationContainer = null;
+  if (destination.type === "container") {
+    destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
+  }
+
+  if (isContainerMoveIntoItself(sourceItem, destinationContainer)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryStackItemsDuringDrag(source, sourceItem, destinationItem)) {
+    return;
+  }
+
+  if (isContainerMoveIntoContainerItemItself(sourceItem, destinationItem)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
+    return;
+  }
+
+  if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
+    return;
+  }
+
+  if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
+    return;
+  }
+
+  if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
+    return;
+  }
+  cancelItemDrag();
+};
 //#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
 
 /* ==================================================== */
@@ -1679,19 +1710,13 @@ const renderItemIcon = (parentElement, item, slotSize) => {
     if (minX === null || minX > enrichedPart.offsetX) {
       minX = enrichedPart.offsetX;
     }
-    if (
-      maxX === null ||
-      maxX < enrichedPart.offsetX + enrichedPart.sourceWidth
-    ) {
+    if (maxX === null || maxX < enrichedPart.offsetX + enrichedPart.sourceWidth) {
       maxX = enrichedPart.offsetX + enrichedPart.sourceWidth;
     }
     if (minY === null || minY > enrichedPart.offsetY) {
       minY = enrichedPart.offsetY;
     }
-    if (
-      maxY === null ||
-      maxY < enrichedPart.offsetY + enrichedPart.sourceHeight
-    ) {
+    if (maxY === null || maxY < enrichedPart.offsetY + enrichedPart.sourceHeight) {
       maxY = enrichedPart.offsetY + enrichedPart.sourceHeight;
     }
     totalWidth = maxX - minX;
@@ -1838,12 +1863,7 @@ const renderContainerSlots = (containerBody, containerItem) => {
               }
             });
             if (alreadyOpen) {
-              openContainer(
-                slotItem,
-                itemData.name,
-                "container",
-                parentWrapper,
-              );
+              openContainer(slotItem, itemData.name, "container", parentWrapper);
               return;
             }
             closeContainer(parentWrapper.item);
@@ -1895,12 +1915,7 @@ const renderContainerDock = () => {
           renderContainerDock();
           return;
         }
-        openContainer(
-          parentWrapper.item,
-          parentWrapper.title,
-          parentWrapper.sourceType,
-          parentWrapper.parent,
-        );
+        openContainer(parentWrapper.item, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
       });
       header.append(backButton);
     }
@@ -1946,10 +1961,7 @@ const closeContainer = (containerItem) => {
 };
 
 const openContainer = (containerItem, title, source, parent) => {
-  if (
-    !isContainerItem(containerItem) ||
-    (source === "world" && !isNearPlayer(containerItem, 1))
-  ) {
+  if (!isContainerItem(containerItem) || (source === "world" && !isNearPlayer(containerItem, 1))) {
     return;
   }
 
@@ -1967,7 +1979,13 @@ const openContainer = (containerItem, title, source, parent) => {
     sourceType: source,
     parent: parent,
   });
+
   renderContainerDock();
+
+  while (openedContainers.length > 1 && playerContainers.scrollHeight > playerContainers.clientHeight) {
+    openedContainers.splice(openedContainers.length - 2, 1);
+    renderContainerDock();
+  }
 };
 
 const findOpenedContainerItemByUid = (containerUid) => {
@@ -2022,10 +2040,7 @@ const updatePlayerExperience = () => {
 
 const updateGameScale = () => {
   boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
-  const freeWidthSpace =
-    boiteJeux.clientWidth -
-    panneauGauche.clientWidth -
-    panneauDroite.clientWidth;
+  const freeWidthSpace = boiteJeux.clientWidth - panneauGauche.clientWidth - panneauDroite.clientWidth;
   const freeHeightSpace = boitePrincipale.clientHeight - minChatHeight;
   const logicWidthSpace = GAME_WIDTH;
   const logicHeightSpace = GAME_HEIGHT;
@@ -2064,53 +2079,22 @@ const updateLight = (source) => {
     ctx.globalCompositeOperation = "destination-out";
     if (source.light <= 0) {
       lightRadius = 70;
-      const gradient = ctx.createRadialGradient(
-        screenX,
-        screenY,
-        20,
-        screenX,
-        screenY,
-        lightRadius,
-      );
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, lightRadius);
       gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
       gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.04)");
       gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = gradient;
 
-      ctx.fillRect(
-        screenX - lightRadius,
-        screenY - lightRadius,
-        lightRadius * 2,
-        lightRadius * 2,
-      );
+      ctx.fillRect(screenX - lightRadius, screenY - lightRadius, lightRadius * 2, lightRadius * 2);
     } else {
-      const gradient = ctx.createRadialGradient(
-        screenX,
-        screenY,
-        20,
-        screenX,
-        screenY,
-        source.light,
-      );
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light);
       gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
       gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
       gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = gradient;
 
-      ctx.fillRect(
-        screenX - source.light,
-        screenY - source.light,
-        source.light * 2,
-        source.light * 2,
-      );
-      const bright = ctx.createRadialGradient(
-        screenX,
-        screenY,
-        20,
-        screenX,
-        screenY,
-        source.light * 0.85,
-      );
+      ctx.fillRect(screenX - source.light, screenY - source.light, source.light * 2, source.light * 2);
+      const bright = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light * 0.85);
       ctx.globalCompositeOperation = "source-over";
       bright.addColorStop(0, "rgba(251, 255, 137, 0)");
       bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
@@ -2149,12 +2133,7 @@ const getPlayerMoveCooldown = () => {
   if (playerState.level < 100) {
     return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
   } else {
-    return (
-      PLAYER_MOVE_COOLDOWN_MS -
-      100 -
-      (playerState.level - 100) / 2 -
-      playerState.speed
-    );
+    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
   }
 };
 
@@ -2200,11 +2179,7 @@ const updateMovement = () => {
     return;
   }
 
-  if (
-    canMoveTo(nextX, nextY) &&
-    !isMonsterAtPosition(nextX, nextY) &&
-    !isBlockingItemAtPosition(nextX, nextY)
-  ) {
+  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
     playerState.x = nextX;
     playerState.y = nextY;
     playerState.direction = direction;
@@ -2292,9 +2267,7 @@ const getContainerSourceFromSlotElement = (slotElement) => {
     return null;
   }
   const containerUid = Number(slotElement.getAttribute("data-container-uid"));
-  const slotIndex = Number(
-    slotElement.getAttribute("data-container-slot-index"),
-  );
+  const slotIndex = Number(slotElement.getAttribute("data-container-slot-index"));
   if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
     return null;
   }
@@ -2388,9 +2361,7 @@ const handleItemUiMouseDown = (e) => {
         return;
       }
       const worldItemUid = info.address.worldItemUid;
-      const parts = document.querySelectorAll(
-        `.world-item-part[data-item-uid="${worldItemUid}"]`,
-      );
+      const parts = document.querySelectorAll(`.world-item-part[data-item-uid="${worldItemUid}"]`);
       parts.forEach((part) => {
         part.classList.add("world-item-selected");
       });
@@ -2406,12 +2377,7 @@ const handleItemUiMouseUp = (e) => {
   }
 
   const info = getItemSlotInfoFromEvent(e);
-  if (
-    !info &&
-    e.target.closest(
-      ".jeux-gauche, .jeux-droite, .navbar, .entete-jeux, #boite-chat",
-    )
-  ) {
+  if (!info && e.target.closest(".jeux-gauche, .jeux-droite, .navbar, .entete-jeux, #boite-chat")) {
     cancelItemDrag();
     return;
   }
@@ -2453,16 +2419,11 @@ document.addEventListener("mouseup", handleItemUiMouseUp);
 /* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
 
 const MonsterHpRefresh = (monster) => {
-  const monsterHp = document.querySelector(
-    `.hp-red[data-monster-uid="${monster.uid}"]`,
-  );
+  const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
   if (monsterHp) {
     const monsterData = getMonsterData(monster.monsterId);
     monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
-    monsterHp.style.setProperty(
-      "--hp-color",
-      getHpColor(monster.hp, monsterData.maxHp),
-    );
+    monsterHp.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
   }
 };
 
@@ -2601,9 +2562,7 @@ const updateMonsterDirectionToPlayer = (monster) => {
 };
 
 const removeMonster = (monsterId) => {
-  const monsterElement = document.querySelector(
-    `.monster[data-monster-uid="${monsterId}"]`,
-  );
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
   if (monsterElement) {
     monsterElement.remove();
   }
@@ -2649,15 +2608,7 @@ const clearMonsterSelection = () => {
 const deadMonster = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
   const lootContent = generateMonsterLoot(monsterData);
-  addGroundItem(
-    createGroundItem(
-      monsterData.corpseItemId,
-      1,
-      monster.x,
-      monster.y,
-      lootContent,
-    ),
-  );
+  addGroundItem(createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, lootContent));
   removeMonster(monster.uid);
   selectedMonsterId = null;
 };
@@ -2677,18 +2628,14 @@ const findMonsterById = (monsterId) => {
 };
 
 const selectMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(
-    `.monster[data-monster-uid="${monsterId}"]`,
-  );
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
   if (monsterElement) {
     monsterElement.classList.add("monster-selected");
   }
 };
 
 const findMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(
-    `.monster[data-monster-uid="${monsterId}"]`,
-  );
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
   return monsterElement;
 };
 
@@ -2738,9 +2685,7 @@ const updateMonsterCombat = () => {
 const updateMonsterPosition = () => {
   monsters.forEach((monster) => {
     const monsterData = getMonsterData(monster.monsterId);
-    const monsterElement = document.querySelector(
-      `.monster[data-monster-uid="${monster.uid}"]`,
-    );
+    const monsterElement = document.querySelector(`.monster[data-monster-uid="${monster.uid}"]`);
     if (monsterElement) {
       monsterElement.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
       monsterElement.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
@@ -2764,10 +2709,7 @@ const updateMonsterMovement = () => {
     const monsterData = getMonsterData(monster.monsterId);
     monster.nextMoveTime = date + monsterData.moveCooldown;
     const monsterPosition = getTilePosition(monster);
-    const destination = pathDestination(
-      monsterPosition,
-      getTilePosition(playerState),
-    );
+    const destination = pathDestination(monsterPosition, getTilePosition(playerState));
     if (destination !== null) {
       if (monster.path.length <= 0) {
         monster.path = findPath(monsterPosition, destination);
@@ -2779,17 +2721,12 @@ const updateMonsterMovement = () => {
           const newPath = findPath(monsterPosition, destination);
           if (newPath.length > 0) {
             monster.path = newPath;
-            monster.nextPathRefreshTime =
-              date + monsterData.pathRefreshCooldown;
+            monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
           }
         } else if (date >= monster.nextPathRefreshTime) {
           const newPath = findPath(monsterPosition, destination);
           monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
-          if (
-            getDistance(oldPathEnd, destination) > 1 &&
-            newPath &&
-            newPath.length > 0
-          ) {
+          if (getDistance(oldPathEnd, destination) > 1 && newPath && newPath.length > 0) {
             monster.path = newPath;
           }
         }
@@ -3019,10 +2956,7 @@ const findPath = (startTile, targetTile) => {
       openList.splice(index, 1);
     }
     closedList.push(currentNode);
-    if (
-      currentNode.row === targetTile.row &&
-      currentNode.col === targetTile.col
-    ) {
+    if (currentNode.row === targetTile.row && currentNode.col === targetTile.col) {
       return buildPath(currentNode);
     } else {
       const neighborsNodes = getNeighborNodes(currentNode, targetTile);
@@ -3060,11 +2994,7 @@ document.addEventListener("mouseup", (e) => {
     return;
   }
 
-  if (
-    e.target.closest(".container-slot") ||
-    e.target.closest(".equipment-slot") ||
-    e.target.closest(".hitbox")
-  ) {
+  if (e.target.closest(".container-slot") || e.target.closest(".equipment-slot") || e.target.closest(".hitbox")) {
     return;
   }
 
@@ -3117,9 +3047,7 @@ addGroundItem(createGroundItem("box", 1, 15 * TILE_SIZE, 21 * TILE_SIZE));
 addGroundItem(createGroundItem("box", 1, 14 * TILE_SIZE, 21 * TILE_SIZE));
 addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 24 * TILE_SIZE));
 
-addGroundItem(
-  createGroundItem("healthPotion", 1, 14 * TILE_SIZE, 24 * TILE_SIZE),
-);
+addGroundItem(createGroundItem("healthPotion", 1, 14 * TILE_SIZE, 24 * TILE_SIZE));
 monsters.push(createMonster("rat", 30 * TILE_SIZE, 20 * TILE_SIZE));
 monsters.push(createMonster("rat", 33 * TILE_SIZE, 23 * TILE_SIZE));
 monsters.push(createMonster("spider", 34 * TILE_SIZE, 24 * TILE_SIZE));
