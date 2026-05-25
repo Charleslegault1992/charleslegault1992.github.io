@@ -11,6 +11,7 @@
     - Changement couleur et fond du UI
     - Bouton back sur les bag pour revenir au parent
     - Nettoyage de la fonction completeItemDrag pour la separer en plusieur petites fonctions
+    - Ajout et rendre la capacite fonctionnel
 
 0.291 - Drag drop des containers
     - Ajout drag item dans container

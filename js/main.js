@@ -107,7 +107,7 @@ const itemsDatabase = {
     name: "Box",
     desc: "A big old box.",
     type: "container",
-    weight: 50,
+    weight: 80,
     stackable: false,
     blockMovement: true,
     render: {
@@ -135,7 +135,7 @@ const itemsDatabase = {
     name: "Health Potion",
     desc: "Drinking it might give you some benefit.",
     type: "consumable",
-    weight: 10,
+    weight: 25,
     stackable: true,
     blockMovement: false,
     render: {
@@ -156,7 +156,7 @@ const itemsDatabase = {
     name: "Rat Corpse",
     desc: "A dead rat.",
     type: "corpse",
-    weight: 20,
+    weight: 75,
     stackable: false,
     blockMovement: false,
     container: true,
@@ -180,7 +180,7 @@ const itemsDatabase = {
     desc: "An old rusty sword.",
     type: "sword",
     equipmentSlot: ["weapon"],
-    weight: 20,
+    weight: 30,
     stackable: false,
     blockMovement: false,
     render: {
@@ -201,7 +201,7 @@ const itemsDatabase = {
     name: "Spider Corpse",
     desc: "A dead spider.",
     type: "corpse",
-    weight: 30,
+    weight: 100,
     stackable: false,
     blockMovement: false,
     container: true,
@@ -370,8 +370,8 @@ const playerState = {
   x: playerSpawnX,
   y: playerSpawnY,
   name: "Charles",
-  hp: 25,
-  maxHp: 25,
+  hp: 30,
+  maxHp: 30,
   level: 0,
   experience: 0,
   gold: 0,
@@ -383,7 +383,7 @@ const playerState = {
   distanceSkill: 1,
   shieldSkill: 1,
   carriedWeight: 0,
-  capacity: 400,
+  capacity: 350,
   speed: 1,
   direction: "down",
   walkFrame: 1,
@@ -400,16 +400,6 @@ const playerState = {
     boots: null,
     backpack: null,
   },
-  inventory: [
-    {
-      itemId: "healthPotion",
-      quantity: 1,
-    },
-    {
-      itemId: "apple",
-      quantity: 1,
-    },
-  ],
 };
 
 /* ---------- JOUEUR - AFFICHAGE ---------- */
@@ -1037,26 +1027,45 @@ const isBlockingItemAtPosition = (x, y) => {
 /* ==================================================== */
 //#region     -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
 /* ==================================================== */
-/* ---------- INVENTAIRE - AJOUT DONNEES ---------- */
+/* ---------- INVENTAIRE - CALCULE DONNEES ---------- */
 
-const addItemToInventory = (itemToAdd) => {
-  const itemData = getItemData(itemToAdd.itemId);
-  if (itemData) {
-    const inventoryItem = {
-      itemId: itemToAdd.itemId,
-      quantity: itemToAdd.quantity,
-    };
-    const existingItem = playerState.inventory.find((item) => {
-      return item.itemId === inventoryItem.itemId;
-    });
-
-    if (existingItem && itemData.stackable) {
-      existingItem.quantity += inventoryItem.quantity;
-    } else {
-      playerState.inventory.push(inventoryItem);
-    }
-    updatePlayerInventory();
+const getItemTotalWeight = (item) => {
+  if (!item) {
+    return 0;
   }
+
+  let totalWeight = 0;
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return 0;
+  }
+  const weight = itemData.weight * item.quantity;
+  totalWeight += weight;
+  if (isContainerItem(item) && item.content && item.content.length > 0) {
+    item.content.forEach((itemInBag) => {
+      totalWeight += getItemTotalWeight(itemInBag);
+    });
+  }
+  return totalWeight;
+};
+
+const calculatePlayerCarriedWeight = () => {
+  let totalWeight = 0;
+  Object.values(playerState.equipment).forEach((equipment) => {
+    if (equipment) {
+      totalWeight += getItemTotalWeight(equipment);
+    }
+  });
+  return totalWeight;
+};
+
+const getPlayerRemainingCapacity = () => {
+  const remainingCapacity = playerState.capacity - playerState.carriedWeight;
+  return Number(remainingCapacity.toFixed(1));
+};
+
+const updatePlayerCarriedWeight = () => {
+  playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
 };
 
 /* ---------- INVENTAIRE - MISE A JOUR ITEMS ---------- */
@@ -1330,6 +1339,7 @@ const isItemInsideContainer = (containerItem, searchedItemUid) => {
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshItemUiAfterDrag = () => {
   renderContainerDock();
+  updatePlayerCarriedWeight();
   updatePlayerInventory();
   cancelItemDrag();
 };
@@ -1431,7 +1441,9 @@ const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationIte
       return true;
     }
     placeItemInDragDestination(destinationSlotContainer, removedItem);
-    updateOpenedContainerSourceType(removedItem, "container");
+    if (isContainerItem(removedItem)) {
+      updateOpenedContainerSourceType(removedItem, "container");
+    }
 
     refreshItemUiAfterDrag();
     return true;
@@ -1576,6 +1588,51 @@ const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
   return false;
 };
 
+const isDragAddressCarriedByPlayer = (adress) => {
+  if (adress.type === "equipment") {
+    return true;
+  }
+  if (adress.type === "world") {
+    return false;
+  }
+  if (adress.type === "container") {
+    const container = openedContainers.find((container) => {
+      return adress.containerUid === container.item.uid;
+    });
+    return isOpenedContainerCarriedByPlayer(container);
+  }
+  return false;
+};
+const isOpenedContainerCarriedByPlayer = (openedContainer) => {
+  if (!openedContainer) {
+    return false;
+  }
+
+  if (openedContainer.sourceType === "equipment") {
+    return true;
+  }
+  if (openedContainer.sourceType === "world") {
+    return false;
+  }
+  if (openedContainer.sourceType === "container") {
+    if (openedContainer.parent !== null) {
+      return isOpenedContainerCarriedByPlayer(openedContainer.parent);
+    }
+  }
+  return false;
+};
+
+const isExceedCapacity = (source, destination, item) => {
+  const sourceCarried = isDragAddressCarriedByPlayer(source);
+  const destinationCarried = isDragAddressCarriedByPlayer(destination);
+  if (!sourceCarried && destinationCarried) {
+    if (playerState.capacity - playerState.carriedWeight < getItemTotalWeight(item)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const isSameDragSourceAndDestination = (source, destination) => {
   if (
     source.type === "container" &&
@@ -1629,6 +1686,11 @@ const completeItemDrag = (destination) => {
   }
 
   if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
+    return;
+  }
+
+  if (isExceedCapacity(source, destination, sourceItem)) {
+    cancelItemDrag();
     return;
   }
 
@@ -1795,7 +1857,7 @@ const updatePlayerInventory = () => {
                       <div class="equipment-slot" data-equipment-slot="backpack"></div>
                       <div class="equipment-slot" data-equipment-slot="shield"></div>
                       <div class="equipment-slot" data-equipment-slot="ammo"></div>
-                      <div class="equipment-small-slot equipment-cap-slot">Cap:<br />${playerState.capacity - playerState.carriedWeight}</div>
+                      <div class="equipment-small-slot equipment-cap-slot">Cap:<br />${getPlayerRemainingCapacity()}</div>
                     </div>
                   </div>
 
@@ -2026,6 +2088,7 @@ const updatePlayerStats = () => {
                               <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
                               <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
                               <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
+                              
                             </div>`;
 };
 
@@ -3032,6 +3095,7 @@ playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
 playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
 
+updatePlayerCarriedWeight();
 updatePlayerInventory();
 renderContainerDock();
 updatePlayerStats();
