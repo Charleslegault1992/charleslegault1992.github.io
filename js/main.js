@@ -1,35 +1,5 @@
 /* ==================================================== */
-//#region     -----  PLAN DU FICHIER  -----
-/* ==================================================== */
-/*
-  01. BASE
-      - Éléments HTML
-      - Constantes et variables
-      - Données du jeu
-  02. CORE
-      - Timing
-      - Outils et helpers
-  03. MONDE
-      - Map
-      - Pathfinding A*
-      - Caméra
-      - Lumière
-  04. JOUEUR
-      - Données, affichage, mouvement, combat
-  05. OBJETS ET INVENTAIRE
-      - Items, rendu, poids, UI
-  06. DRAG AND DROP
-      - Sources, destinations, capacity, validations
-  07. MONSTRES
-      - Affichage, déplacement, combat, loot
-  08. ENTRÉES ET ÉVÉNEMENTS
-      - Clavier, souris, resize, événements globaux
-  09. BOUCLE, INITIALISATION ET DEBUG
-*/
-//#endregion  -----  PLAN DU FICHIER  -----
-
-/* ==================================================== */
-//#region     -----  BASE - ÉLÉMENTS HTML  -----
+//#region     -----  BASE - ELEMENTS HTML  -----
 /* ==================================================== */
 const panneauGauche = document.querySelector(".jeux-gauche");
 const panneauDroite = document.querySelector(".jeux-droite");
@@ -46,7 +16,7 @@ const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
-//#endregion  -----  BASE - ÉLÉMENTS HTML  -----
+//#endregion  -----  BASE - ELEMENTS HTML  -----
 
 /* ==================================================== */
 //#region     -----  BASE - CONSTANTES ET VARIABLES  -----
@@ -108,7 +78,7 @@ const mousePosition = {
 //#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
 /* ==================================================== */
-//#region     -----  BASE - DONNÉES DU JEU  -----
+//#region     -----  BASE DE DONNEES  -----
 /* ==================================================== */
 const itemsDatabase = {
   apple: {
@@ -366,7 +336,7 @@ const monstersDatabase = {
     ],
   },
 };
-//#endregion  -----  BASE - DONNÉES DU JEU  -----
+//#endregion  -----  BASE DE DONNEES  -----
 
 /* ==================================================== */
 //#region     -----  CORE - TIMING  -----
@@ -384,117 +354,129 @@ const MONSTER_ATTACK_COOLDOWN_MS = 1500;
 //#endregion  -----  CORE - TIMING  -----
 
 /* ==================================================== */
-//#region     -----  CORE - OUTILS ET HELPERS  -----
+//#region     -----  PLAYER - CONSTANTES SPRITE  -----
 /* ==================================================== */
-/* ---------- OUTILS - MATH ET DISTANCE ---------- */
-
-const getRandomInt = (min, max) => {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-};
-
-const isNearPlayer = (target, range = 1) => {
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
-  const targetCol = target.x / TILE_SIZE;
-  const targetRow = target.y / TILE_SIZE;
-
-  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
-};
-
-const isContainerItem = (item) => {
-  if (!item) {
-    return false;
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return false;
-  }
-  return itemData.container === true;
-};
-
-/* ---------- OUTILS - MISE À JOUR DU MONDE ---------- */
-
-const updateWorldPosition = () => {
-  updateCamera();
-  if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
-    updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
-  }
-  updateMapPosition();
-  updateItemPosition();
-  updateMonsterPosition();
-  updatePlayerPosition();
-  updateLight(playerState);
-};
-const getAtlasSource = (col, row, spriteSize) => {
-  return {
-    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceWidth: spriteSize,
-    sourceHeight: spriteSize,
-  };
-};
-
-const getHpColor = (hp, maxHp) => {
-  const percent = hp / maxHp;
-
-  const hue = percent * 120;
-
-  return `hsl(${hue}, 100%, 45%)`;
-};
-
-const getAtlasPath = (atlasName) => {
-  if (atlasName === "items") {
-    return "./images/items/items-sheet.png";
-  }
-  if (atlasName === "monsters") {
-    return "./images/monstres/monsters-sheet.png";
-  }
-  console.error(`atlasName: ${atlasName} n'existe pas`);
-};
-
-/* ---------- OUTILS - SOURIS ---------- */
-const isMouseInsideMap = (mousePosition) => {
-  if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
-    return false;
-  }
-  return (
-    mousePosition.worldX >= 0 &&
-    mousePosition.worldX < mapWidth &&
-    mousePosition.worldY >= 0 &&
-    mousePosition.worldY < mapHeight
-  );
-};
-
-const updateMousePositionInfo = (screenX, screenY) => {
-  let gameScale = GAME_SCALE;
-  if (!Number.isFinite(GAME_SCALE) || GAME_SCALE <= 0) {
-    gameScale = 1;
-  }
-
-  const gameRect = game.getBoundingClientRect();
-  const gameX = (screenX - gameRect.left) / gameScale;
-  const gameY = (screenY - gameRect.top) / gameScale;
-  const worldX = camera.x + gameX;
-  const worldY = camera.y + gameY;
-  const col = Math.floor(worldX / TILE_SIZE);
-  const row = Math.floor(worldY / TILE_SIZE);
-
-  mousePosition.screenX = screenX;
-  mousePosition.screenY = screenY;
-  mousePosition.gameX = gameX;
-  mousePosition.gameY = gameY;
-  mousePosition.worldX = worldX;
-  mousePosition.worldY = worldY;
-  mousePosition.row = row;
-  mousePosition.col = col;
-  mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
-};
-//#endregion  -----  CORE - OUTILS ET HELPERS  -----
+const PLAYER_FRAME_WIDTH = TILE_SIZE;
+const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
+const PLAYER_ANIMATION_FRAMES = 3;
+//#endregion  -----  PLAYER - CONSTANTES SPRITE  -----
 
 /* ==================================================== */
-//#region     -----  MAP - DONNÉES, AFFICHAGE ET COLLISIONS  -----
+//#region     -----  PLAYER  -----
 /* ==================================================== */
-/* ---------- MAP - DONNÉES ---------- */
+/* ---------- JOUEUR - DONNEES ---------- */
+
+const playerState = {
+  x: playerSpawnX,
+  y: playerSpawnY,
+  name: "Charles",
+  hp: 30,
+  maxHp: 30,
+  level: 0,
+  experience: 0,
+  gold: 0,
+  damage: 10,
+  magicSkill: 0,
+  swordSkill: 1,
+  maceSkill: 1,
+  axeSkill: 1,
+  distanceSkill: 1,
+  shieldSkill: 1,
+  carriedWeight: 0,
+  capacity: 350,
+  speed: 1,
+  direction: "down",
+  walkFrame: 1,
+  light: 900,
+  equipment: {
+    necklace: null,
+    helmet: null,
+    armor: null,
+    shield: null,
+    weapon: null,
+    legs: null,
+    ammo: null,
+    ring: null,
+    boots: null,
+    backpack: null,
+  },
+};
+
+/* ---------- JOUEUR - AFFICHAGE ---------- */
+
+const showPlayerName = (name) => {
+  const playerName = document.createElement("div");
+  playerName.classList.add("name");
+  playerName.textContent = `${name}`;
+  player.appendChild(playerName);
+};
+
+const getDirectionRow = (playerDirection) => {
+  if (playerDirection === "down") {
+    return 0;
+  } else if (playerDirection === "left") {
+    return 1;
+  } else if (playerDirection === "right") {
+    return 2;
+  } else if (playerDirection === "up") {
+    return 3;
+  }
+  return 0;
+};
+
+const updatePlayerSprite = () => {
+  const colonne = playerState.walkFrame;
+  const ligne = getDirectionRow(playerState.direction);
+  const x = -colonne * PLAYER_FRAME_WIDTH;
+  const y = -ligne * PLAYER_FRAME_HEIGHT;
+  player.style.backgroundPosition = `${x}px ${y}px`;
+};
+
+const updatePlayerPosition = () => {
+  player.style.left = `${playerState.x - camera.x}px`;
+  player.style.top = `${playerState.y - camera.y - TILE_SIZE}px`;
+  player.style.zIndex = playerState.y;
+};
+
+/* ---------- JOUEUR - VIE ET MORT ---------- */
+
+const hpRefresh = () => {
+  const playerHp = document.querySelector(".php-red");
+  if (playerHp) {
+    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
+    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
+  }
+};
+
+const playerDead = () => {
+  playerState.experience = Math.floor(playerState.experience * 0.9);
+  if (playerState.experience < 0) {
+    playerState.experience = 0;
+  }
+  playerState.hp = playerState.maxHp;
+  playerState.x = playerSpawnX;
+  playerState.y = playerSpawnY;
+  updateWorldPosition();
+  updatePlayerExperience();
+  hpRefresh();
+};
+//#endregion  -----  PLAYER  -----
+
+/* ==================================================== */
+//#region     -----  CAMERA  -----
+/* ==================================================== */
+/* ---------- CAMERA - POSITION ---------- */
+
+const updateCamera = () => {
+  camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
+  camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
+};
+//#endregion  -----  CAMERA  -----
+
+/* ==================================================== */
+//#region     -----  MAP  -----
+/* ==================================================== */
+/* ---------- MAP - DONNEES ---------- */
 
 const gameMap = [
   [
@@ -682,479 +664,121 @@ const updateMapPosition = () => {
     tile.style.top = `${worldY - camera.y}px`;
   });
 };
-//#endregion  -----  MAP - DONNÉES, AFFICHAGE ET COLLISIONS  -----
+//#endregion  -----  MAP  -----
 
 /* ==================================================== */
-//#region     -----  PATHFINDING A*  -----
+//#region     -----  CORE - OUTILS / HELPERS  -----
 /* ==================================================== */
-/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
+/* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
-const getTilePosition = (source) => {
-  const col = source.x / TILE_SIZE;
-  const row = source.y / TILE_SIZE;
-  return { col, row };
+const getRandomInt = (min, max) => {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
-const getWorldPosition = (tile) => {
-  const tileX = tile.col * TILE_SIZE;
-  const tileY = tile.row * TILE_SIZE;
-  return { tileX, tileY };
+const isNearPlayer = (target, range = 1) => {
+  const playerCol = playerState.x / TILE_SIZE;
+  const playerRow = playerState.y / TILE_SIZE;
+  const targetCol = target.x / TILE_SIZE;
+  const targetRow = target.y / TILE_SIZE;
+
+  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
 };
 
-const getNeighbors = (tile) => {
-  return [
-    { row: tile.row, col: tile.col - 1 },
-    { row: tile.row, col: tile.col + 1 },
-    { row: tile.row - 1, col: tile.col },
-    { row: tile.row + 1, col: tile.col },
-  ];
-};
-
-const isWalkableTile = (row, col) => {
-  const tileX = col * TILE_SIZE;
-  const tileY = row * TILE_SIZE;
-  if (!isInsideMap(tileX, tileY)) {
+const isContainerItem = (item) => {
+  if (!item) {
     return false;
   }
-  const nextTile = gameMap[row][col];
-
-  if (
-    nextTile === FLOOR &&
-    !isMonsterAtPosition(tileX, tileY) &&
-    !isBlockingItemAtPosition(tileX, tileY) &&
-    !isPlayerAtPosition(tileX, tileY)
-  ) {
-    return true;
-  } else {
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
     return false;
   }
+  return itemData.container === true;
 };
 
-const getDistance = (a, b) => {
-  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
-};
+/* ---------- OUTILS - MISE A JOUR DU MONDE ---------- */
 
-const getNeighborNodes = (tile, targetTile) => {
-  const neighborsTile = getNeighbors(tile);
-  const neighborsNodes = [];
-  neighborsTile.forEach((neighbors) => {
-    if (isWalkableTile(neighbors.row, neighbors.col)) {
-      const g = tile.g + 1;
-      const h = getDistance(neighbors, targetTile);
-      const node = {
-        row: neighbors.row,
-        col: neighbors.col,
-        g: g,
-        h: h,
-        f: g + h,
-        parent: tile,
-      };
-      neighborsNodes.push(node);
-    }
-  });
-  return neighborsNodes;
-};
-
-/* ---------- PATHFINDING - NODES ET LISTES ---------- */
-
-const getSmallerF = (nodesList) => {
-  if (nodesList.length > 0) {
-    let smallF = nodesList[0];
-    nodesList.forEach((node) => {
-      if (node.f < smallF.f) {
-        smallF = node;
-      } else if (node.f === smallF.f) {
-        if (node.h < smallF.h) {
-          smallF = node;
-        }
-      }
-    });
-    return smallF;
+const updateWorldPosition = () => {
+  updateCamera();
+  if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
+    updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
   }
+  updateMapPosition();
+  updateItemPosition();
+  updateMonsterPosition();
+  updatePlayerPosition();
+  updateLight(playerState);
 };
-
-const isNodeInList = (node, list) => {
-  let nodeInList = false;
-  list.forEach((nodeList) => {
-    if (nodeList.row === node.row && nodeList.col === node.col) {
-      nodeInList = true;
-    }
-  });
-  return nodeInList;
-};
-
-const buildPath = (currentNode) => {
-  let path = [];
-  while (currentNode.parent) {
-    path.push(currentNode);
-    currentNode = currentNode.parent;
-  }
-  return path.reverse();
-};
-
-/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
-
-const pathDestination = (selfTile, destinationTile) => {
-  const neighbors = getNeighbors(destinationTile);
-  const possibleNeighbors = [];
-  let bestDistance = null;
-  let bestNeighbor = null;
-  neighbors.forEach((neighbor) => {
-    if (isWalkableTile(neighbor.row, neighbor.col)) {
-      possibleNeighbors.push(neighbor);
-    }
-  });
-  possibleNeighbors.forEach((possibleNeighbor) => {
-    const distance = getDistance(selfTile, possibleNeighbor);
-    if (bestDistance === null || distance < bestDistance) {
-      bestDistance = distance;
-      bestNeighbor = possibleNeighbor;
-    }
-  });
-
-  return bestNeighbor;
-};
-
-const findPath = (startTile, targetTile) => {
-  const openList = [];
-  const closedList = [];
-  const g = 0;
-  const h = getDistance(startTile, targetTile);
-  const startNode = {
-    row: startTile.row,
-    col: startTile.col,
-    g: g,
-    h: h,
-    f: g + h,
-    parent: null,
+const getAtlasSource = (col, row, spriteSize) => {
+  return {
+    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceWidth: spriteSize,
+    sourceHeight: spriteSize,
   };
-  openList.push(startNode);
-
-  while (openList.length > 0) {
-    let currentNode = getSmallerF(openList);
-    const index = openList.indexOf(currentNode);
-    if (index > -1) {
-      openList.splice(index, 1);
-    }
-    closedList.push(currentNode);
-    if (currentNode.row === targetTile.row && currentNode.col === targetTile.col) {
-      return buildPath(currentNode);
-    } else {
-      const neighborsNodes = getNeighborNodes(currentNode, targetTile);
-      neighborsNodes.forEach((node) => {
-        if (!isNodeInList(node, closedList) && !isNodeInList(node, openList)) {
-          openList.push(node);
-        }
-      });
-    }
-  }
-  return [];
 };
-//#endregion  -----  PATHFINDING A*  -----
+
+const getHpColor = (hp, maxHp) => {
+  const percent = hp / maxHp;
+
+  const hue = percent * 120;
+
+  return `hsl(${hue}, 100%, 45%)`;
+};
+
+const getAtlasPath = (atlasName) => {
+  if (atlasName === "items") {
+    return "./images/items/items-sheet.png";
+  }
+  if (atlasName === "monsters") {
+    return "./images/monstres/monsters-sheet.png";
+  }
+  console.error(`atlasName: ${atlasName} n'existe pas`);
+};
+
+/* ---------- OUTILS - SOURIS ---------- */
+const isMouseInsideMap = (mousePosition) => {
+  if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
+    return false;
+  }
+  return (
+    mousePosition.worldX >= 0 &&
+    mousePosition.worldX < mapWidth &&
+    mousePosition.worldY >= 0 &&
+    mousePosition.worldY < mapHeight
+  );
+};
+
+const updateMousePositionInfo = (screenX, screenY) => {
+  let gameScale = GAME_SCALE;
+  if (!Number.isFinite(GAME_SCALE) || GAME_SCALE <= 0) {
+    gameScale = 1;
+  }
+
+  const gameRect = game.getBoundingClientRect();
+  const gameX = (screenX - gameRect.left) / gameScale;
+  const gameY = (screenY - gameRect.top) / gameScale;
+  const worldX = camera.x + gameX;
+  const worldY = camera.y + gameY;
+  const col = Math.floor(worldX / TILE_SIZE);
+  const row = Math.floor(worldY / TILE_SIZE);
+
+  mousePosition.screenX = screenX;
+  mousePosition.screenY = screenY;
+  mousePosition.gameX = gameX;
+  mousePosition.gameY = gameY;
+  mousePosition.worldX = worldX;
+  mousePosition.worldY = worldY;
+  mousePosition.row = row;
+  mousePosition.col = col;
+  mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
+};
+
+//#endregion  -----  CORE - OUTILS / HELPERS  -----
 
 /* ==================================================== */
-//#region     -----  CAMÉRA  -----
+//#region     -----  ITEMS  -----
 /* ==================================================== */
-/* ---------- CAMÉRA - POSITION ---------- */
-
-const updateCamera = () => {
-  camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
-  camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
-};
-//#endregion  -----  CAMÉRA  -----
-
-/* ==================================================== */
-//#region     -----  LUMIÈRE - CANVAS  -----
-/* ==================================================== */
-lightCanvas.width = GAME_WIDTH;
-lightCanvas.height = GAME_HEIGHT;
-const ctx = lightCanvas.getContext("2d");
-
-/* ---------- LUMIÈRE - AFFICHAGE ---------- */
-
-const updateLight = (source) => {
-  if (currentMap.dark) {
-    let lightRadius = 0;
-    const screenX = source.x - camera.x + TILE_SIZE / 2;
-    const screenY = source.y - camera.y + TILE_SIZE / 2;
-    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    if (source.light <= 0) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
-    } else {
-      ctx.fillStyle = "rgb(0, 0, 0)";
-    }
-    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    ctx.globalCompositeOperation = "destination-out";
-    if (source.light <= 0) {
-      lightRadius = 70;
-      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, lightRadius);
-      gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
-      gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.04)");
-      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(screenX - lightRadius, screenY - lightRadius, lightRadius * 2, lightRadius * 2);
-    } else {
-      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light);
-      gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
-      gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
-      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(screenX - source.light, screenY - source.light, source.light * 2, source.light * 2);
-      const bright = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light * 0.85);
-      ctx.globalCompositeOperation = "source-over";
-      bright.addColorStop(0, "rgba(251, 255, 137, 0)");
-      bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
-      bright.addColorStop(0.7, "rgba(249, 97, 2, 0.07)");
-      bright.addColorStop(0.8, "rgba(249, 2, 2, 0.07)");
-      bright.addColorStop(1, "rgba(255, 0, 0, 0)");
-      ctx.fillStyle = bright;
-
-      ctx.fillRect(
-        screenX - source.light * 0.85,
-        screenY - source.light * 0.85,
-        source.light * 2 * 0.85,
-        source.light * 2 * 0.85,
-      );
-    }
-    ctx.globalCompositeOperation = "source-over";
-  } else {
-    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  }
-};
-//#endregion  -----  LUMIÈRE - CANVAS  -----
-
-/* ==================================================== */
-//#region     -----  JOUEUR - DONNÉES ET AFFICHAGE  -----
-/* ==================================================== */
-/* ---------- JOUEUR - DONNÉES ---------- */
-
-const playerState = {
-  x: playerSpawnX,
-  y: playerSpawnY,
-  name: "Charles",
-  hp: 30,
-  maxHp: 30,
-  level: 0,
-  experience: 0,
-  gold: 0,
-  damage: 10,
-  magicSkill: 0,
-  swordSkill: 1,
-  maceSkill: 1,
-  axeSkill: 1,
-  distanceSkill: 1,
-  shieldSkill: 1,
-  carriedWeight: 0,
-  capacity: 350,
-  speed: 1,
-  direction: "down",
-  walkFrame: 1,
-  light: 900,
-  equipment: {
-    necklace: null,
-    helmet: null,
-    armor: null,
-    shield: null,
-    weapon: null,
-    legs: null,
-    ammo: null,
-    ring: null,
-    boots: null,
-    backpack: null,
-  },
-};
-
-/* ---------- JOUEUR - AFFICHAGE ---------- */
-
-const showPlayerName = (name) => {
-  const playerName = document.createElement("div");
-  playerName.classList.add("name");
-  playerName.textContent = `${name}`;
-  player.appendChild(playerName);
-};
-
-const getDirectionRow = (playerDirection) => {
-  if (playerDirection === "down") {
-    return 0;
-  } else if (playerDirection === "left") {
-    return 1;
-  } else if (playerDirection === "right") {
-    return 2;
-  } else if (playerDirection === "up") {
-    return 3;
-  }
-  return 0;
-};
-
-const updatePlayerSprite = () => {
-  const colonne = playerState.walkFrame;
-  const ligne = getDirectionRow(playerState.direction);
-  const x = -colonne * PLAYER_FRAME_WIDTH;
-  const y = -ligne * PLAYER_FRAME_HEIGHT;
-  player.style.backgroundPosition = `${x}px ${y}px`;
-};
-
-const updatePlayerPosition = () => {
-  player.style.left = `${playerState.x - camera.x}px`;
-  player.style.top = `${playerState.y - camera.y - TILE_SIZE}px`;
-  player.style.zIndex = playerState.y;
-};
-
-/* ---------- JOUEUR - VIE ET MORT ---------- */
-
-const hpRefresh = () => {
-  const playerHp = document.querySelector(".php-red");
-  if (playerHp) {
-    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
-    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
-  }
-};
-
-const playerDead = () => {
-  playerState.experience = Math.floor(playerState.experience * 0.9);
-  if (playerState.experience < 0) {
-    playerState.experience = 0;
-  }
-  playerState.hp = playerState.maxHp;
-  playerState.x = playerSpawnX;
-  playerState.y = playerSpawnY;
-  updateWorldPosition();
-  updatePlayerExperience();
-  hpRefresh();
-};
-//#endregion  -----  JOUEUR - DONNÉES ET AFFICHAGE  -----
-
-/* ==================================================== */
-//#region     -----  JOUEUR - CONSTANTES SPRITE  -----
-/* ==================================================== */
-const PLAYER_FRAME_WIDTH = TILE_SIZE;
-const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
-const PLAYER_ANIMATION_FRAMES = 3;
-//#endregion  -----  JOUEUR - CONSTANTES SPRITE  -----
-
-/* ==================================================== */
-//#region     -----  JOUEUR - MOUVEMENT  -----
-/* ==================================================== */
-const keysPressed = {
-  right: false,
-  left: false,
-  up: false,
-  down: false,
-};
-
-/* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
-
-const getPlayerMoveCooldown = () => {
-  if (playerState.level < 100) {
-    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
-  } else {
-    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
-  }
-};
-
-const getWantedDirection = () => {
-  if (keysPressed.right) {
-    return "right";
-  } else if (keysPressed.left) {
-    return "left";
-  } else if (keysPressed.up) {
-    return "up";
-  } else if (keysPressed.down) {
-    return "down";
-  } else {
-    return;
-  }
-};
-
-/* ---------- JOUEUR - MISE À JOUR DU MOUVEMENT ---------- */
-
-const updateMovement = () => {
-  const direction = getWantedDirection();
-  if (!direction) {
-    playerState.walkFrame = 1;
-    updatePlayerSprite();
-    return;
-  }
-
-  const now = Date.now();
-  if (now < nextPlayerMoveTime) {
-    return;
-  }
-  let nextX = playerState.x;
-  let nextY = playerState.y;
-  if (direction === "right") {
-    nextX += MOVE_SPEED;
-  } else if (direction === "left") {
-    nextX -= MOVE_SPEED;
-  } else if (direction === "up") {
-    nextY -= MOVE_SPEED;
-  } else if (direction === "down") {
-    nextY += MOVE_SPEED;
-  } else {
-    return;
-  }
-
-  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
-    playerState.x = nextX;
-    playerState.y = nextY;
-    playerState.direction = direction;
-    playerState.walkFrame += 1;
-    if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
-      playerState.walkFrame = 0;
-    }
-  }
-  updatePlayerSprite();
-  updateWorldPosition();
-  nextPlayerMoveTime = now + getPlayerMoveCooldown();
-  closeFarOpenedContainers();
-};
-//#endregion  -----  JOUEUR - MOUVEMENT  -----
-
-/* ==================================================== */
-//#region     -----  JOUEUR - COMBAT  -----
-/* ==================================================== */
-/* ---------- COMBAT JOUEUR - ATTAQUE ET MISE À JOUR ---------- */
-
-const attackMonster = (monster) => {
-  const monsterData = getMonsterData(monster.monsterId);
-  monster.hp -= getRandomInt(1, playerState.damage);
-  if (monster.hp <= 0) {
-    monster.hp = 0;
-    MonsterHpRefresh(monster);
-    deadMonster(monster);
-    playerState.experience += monsterData.experience;
-    updatePlayerExperience();
-    return;
-  }
-  MonsterHpRefresh(monster);
-};
-
-const updateCombat = () => {
-  if (selectedMonsterId === null) {
-    return;
-  }
-  const monster = findMonsterById(selectedMonsterId);
-  if (!monster) {
-    return;
-  }
-  if (!isNearPlayer(monster)) {
-    return;
-  }
-  const now = Date.now();
-  if (now < nextPlayerAttackTime) {
-    return;
-  }
-  attackMonster(monster);
-  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
-};
-//#endregion  -----  JOUEUR - COMBAT  -----
-
-/* ==================================================== */
-//#region     -----  OBJETS - DONNÉES ET RENDU  -----
-/* ==================================================== */
-/* ---------- OBJETS - ACCÈS BASE DE DONNÉES ---------- */
+/* ---------- ITEMS - ACCES BASE DE DONNEES ---------- */
 
 const getItemData = (itemId) => {
   if (itemsDatabase[itemId]) {
@@ -1165,7 +789,7 @@ const getItemData = (itemId) => {
   }
 };
 
-/* ---------- OBJETS - VALIDATION GAMEPLAY ---------- */
+/* ---------- ITEMS - VALIDATION GAMEPLAY ---------- */
 
 const isValidWorldItem = (item) => {
   if (!item) {
@@ -1185,7 +809,7 @@ const isValidWorldItem = (item) => {
   return true;
 };
 
-/* ---------- OBJETS - DONNÉES ATLAS ---------- */
+/* ---------- ITEMS - DONNEES ATLAS ---------- */
 
 const getItemRenderParts = (itemId) => {
   const itemData = getItemData(itemId);
@@ -1260,7 +884,7 @@ const applyItemRenderPartPosition = (element, position) => {
   element.style.zIndex = position.zIndex;
 };
 
-/* ---------- OBJETS - VALIDATION ATLAS FUTUR ---------- */
+/* ---------- ITEMS - VALIDATION ATLAS FUTUR ---------- */
 
 const isValidItemRenderPart = (part) => {
   if (
@@ -1284,12 +908,12 @@ const areValidItemRenderParts = (parts) => {
     return isValidItemRenderPart(part);
   });
 };
-//#endregion  -----  OBJETS - DONNÉES ET RENDU  -----
+//#endregion  -----  ITEMS  -----
 
 /* ==================================================== */
-//#region     -----  OBJETS - MONDE ET RENDU DOM  -----
+//#region     -----  ITEMS - MONDE ET RENDU DOM  -----
 /* ==================================================== */
-/* ---------- OBJETS - CRÉATION DES DONNÉES ---------- */
+/* ---------- ITEMS - CREATION DONNEES ---------- */
 const createItemInstance = (itemId, quantity, content = []) => {
   const itemData = getItemData(itemId);
   if (!itemData) {
@@ -1320,7 +944,7 @@ const createGroundItem = (itemId, quantity, x, y, content = []) => {
   return worldItem;
 };
 
-/* ---------- OBJETS - CRÉATION DOM ---------- */
+/* ---------- ITEMS - CREATION DOM ---------- */
 
 const createItemPartElement = (item, part, partIndex) => {
   const itemData = getItemData(item.itemId);
@@ -1382,7 +1006,7 @@ const renderGroundItemParts = (item) => {
   game.appendChild(createWorldItemHitbox(item));
 };
 
-/* ---------- OBJETS - AFFICHAGE DOM ---------- */
+/* ---------- ITEMS - AFFICHAGE DOM ---------- */
 
 const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
@@ -1391,7 +1015,7 @@ const renderGroundItems = (items) => {
   }
 };
 
-/* ---------- OBJETS - AJOUT ET RETRAIT DU MONDE ---------- */
+/* ---------- ITEMS - AJOUT ET RETRAIT MONDE ---------- */
 
 const addGroundItem = (worldItem) => {
   if (isValidWorldItem(worldItem)) {
@@ -1411,7 +1035,7 @@ const removeGroundItemRender = (itemUid) => {
   });
 };
 
-/* ---------- OBJETS - COLLISION ---------- */
+/* ---------- ITEMS - COLLISION ---------- */
 
 const isBlockingItemAtPosition = (x, y) => {
   return worldItems.some((item) => {
@@ -1423,12 +1047,12 @@ const isBlockingItemAtPosition = (x, y) => {
     }
   });
 };
-//#endregion  -----  OBJETS - MONDE ET RENDU DOM  -----
+//#endregion  -----  ITEMS - MONDE ET RENDU DOM  -----
 
 /* ==================================================== */
-//#region     -----  INVENTAIRE - POIDS ET MISE À JOUR  -----
+//#region     -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
 /* ==================================================== */
-/* ---------- INVENTAIRE - CALCUL DES DONNÉES ---------- */
+/* ---------- INVENTAIRE - CALCULE DONNEES ---------- */
 
 const getItemTotalWeight = (item) => {
   if (!item) {
@@ -1469,7 +1093,7 @@ const updatePlayerCarriedWeight = () => {
   playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
 };
 
-/* ---------- INVENTAIRE - MISE À JOUR DES OBJETS ---------- */
+/* ---------- INVENTAIRE - MISE A JOUR ITEMS ---------- */
 
 const updateItemPosition = () => {
   worldItems.forEach((item) => {
@@ -1499,398 +1123,13 @@ const updateItemPosition = () => {
     });
   });
 };
-//#endregion  -----  INVENTAIRE - POIDS ET MISE À JOUR  -----
+//#endregion  -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
 
 /* ==================================================== */
-//#region     -----  UI - INVENTAIRE, STATS ET SCALE  -----
+//#region     -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
 /* ==================================================== */
-/* ---------- UI - INVENTAIRE ---------- */
-const getEquipmentSlotItem = (slotName) => {
-  if (!playerState.equipment[slotName]) {
-    return null;
-  }
-  return playerState.equipment[slotName];
-};
 
-const renderItemIcon = (parentElement, item, slotSize) => {
-  parentElement.innerHTML = "";
-  if (!item) {
-    return;
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return;
-  }
-  const atlasPath = getAtlasPath(itemData.render.atlas);
-  const enrichedParts = getItemRenderData(item);
-  let totalWidth = 0;
-  let totalHeight = 0;
-  let minX = null;
-  let maxX = null;
-  let minY = null;
-  let maxY = null;
-  enrichedParts.forEach((enrichedPart) => {
-    if (minX === null || minX > enrichedPart.offsetX) {
-      minX = enrichedPart.offsetX;
-    }
-    if (maxX === null || maxX < enrichedPart.offsetX + enrichedPart.sourceWidth) {
-      maxX = enrichedPart.offsetX + enrichedPart.sourceWidth;
-    }
-    if (minY === null || minY > enrichedPart.offsetY) {
-      minY = enrichedPart.offsetY;
-    }
-    if (maxY === null || maxY < enrichedPart.offsetY + enrichedPart.sourceHeight) {
-      maxY = enrichedPart.offsetY + enrichedPart.sourceHeight;
-    }
-    totalWidth = maxX - minX;
-    totalHeight = maxY - minY;
-  });
-  const biggestDimension = Math.max(totalWidth, totalHeight);
-  const scale = slotSize / biggestDimension;
-  const renderWidth = totalWidth * scale;
-  const renderHeight = totalHeight * scale;
-  const paddingLeft = (slotSize - renderWidth) / 2;
-  const paddingTop = (slotSize - renderHeight) / 2;
-  enrichedParts.forEach((enrichedPart) => {
-    const div = document.createElement("div");
-    div.classList.add("item-icon-part");
-    div.style.backgroundImage = `url("${atlasPath}")`;
-    div.style.backgroundPosition = `-${enrichedPart.sourceX}px -${enrichedPart.sourceY}px`;
-    div.style.left = `${paddingLeft + (enrichedPart.offsetX - minX) * scale}px`;
-    div.style.top = `${paddingTop + (enrichedPart.offsetY - minY) * scale}px`;
-    div.style.width = `${enrichedPart.sourceWidth}px`;
-    div.style.height = `${enrichedPart.sourceHeight}px`;
-    div.style.transform = `scale(${scale})`;
-    div.style.transformOrigin = "top left";
-
-    parentElement.appendChild(div);
-  });
-  if (itemData.stackable && item.quantity > 1) {
-    const quantity = document.createElement("p");
-    quantity.innerHTML = `${item.quantity}`;
-    quantity.classList.add("item-quantity");
-    parentElement.appendChild(quantity);
-  }
-};
-
-const renderEquipmentSlots = () => {
-  const equipmentsElement = document.querySelectorAll(".equipment-slot");
-  equipmentsElement.forEach((equipmentElement) => {
-    const slotName = equipmentElement.getAttribute("data-equipment-slot");
-    const item = getEquipmentSlotItem(slotName);
-    renderItemIcon(equipmentElement, item, 48);
-    if (item) {
-      equipmentElement.classList.add("equipment-slot-filled");
-      equipmentElement.classList.remove("equipment-slot-empty");
-    }
-    if (!item) {
-      equipmentElement.classList.remove("equipment-slot-filled");
-      equipmentElement.classList.add("equipment-slot-empty");
-    }
-    if (isContainerItem(item)) {
-      equipmentElement.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        const itemData = getItemData(item.itemId);
-        if (!itemData) {
-          return;
-        }
-        openContainer(item, itemData.name, "equipment", null);
-      });
-    }
-  });
-};
-
-const updatePlayerInventory = () => {
-  let html = `<div class="boite-boite">
-              <div class="equipment-panel">
-                <div class="boite-jeux-titre">Equipments</div>
-                <div class="separateur-panneau"></div>
-
-                <div id="equipment-area" class="equipment-area">
-                  <div class="equipment-grid">
-                    <div class="equipment-column">
-                      <div class="equipment-slot" data-equipment-slot="necklace"></div>
-                      <div class="equipment-slot" data-equipment-slot="weapon"></div>
-                      <div class="equipment-slot" data-equipment-slot="ring"></div>
-                      <div class="equipment-small-slot" data-equipment-small-slot="status"></div>
-                    </div>
-
-                    <div class="equipment-column">
-                      <div class="equipment-slot" data-equipment-slot="helmet"></div>
-                      <div class="equipment-slot" data-equipment-slot="armor"></div>
-                      <div class="equipment-slot" data-equipment-slot="legs"></div>
-                      <div class="equipment-slot" data-equipment-slot="boots"></div>
-                    </div>
-
-                    <div class="equipment-column">
-                      <div class="equipment-slot" data-equipment-slot="backpack"></div>
-                      <div class="equipment-slot" data-equipment-slot="shield"></div>
-                      <div class="equipment-slot" data-equipment-slot="ammo"></div>
-                      <div class="equipment-small-slot equipment-cap-slot">Cap:<br />${getPlayerRemainingCapacity()}</div>
-                    </div>
-                  </div>
-
-                  <div class="equipment-right-bar">
-                    <div class="equipment-icon-grid">
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                    </div>
-
-                    <button class="equipment-ui-button">Follow</button>
-                    <button class="equipment-ui-button">PVP</button>
-                    <button class="equipment-ui-button">Friends</button>
-                    <button class="equipment-ui-button">Options</button>
-                    <button class="equipment-ui-button">Logout</button>
-                  </div>
-                </div>
-              </div>
-            </div>`;
-
-  playerInventory.innerHTML = html;
-  renderEquipmentSlots();
-};
-
-const renderContainerSlots = (containerBody, containerItem) => {
-  if (!containerItem || !containerBody) {
-    return;
-  }
-  containerBody.innerHTML = ``;
-  const dataItem = getItemData(containerItem.itemId);
-  if (!dataItem) {
-    return null;
-  }
-  const slotGrid = document.createElement("div");
-  slotGrid.classList.add("container-slot-grid");
-
-  for (let i = 0; i < dataItem.capacity; i++) {
-    const slotItem = containerItem.content[i];
-    const slot = document.createElement("div");
-    slot.classList.add("container-slot");
-    slot.setAttribute("data-container-slot-index", i);
-    slot.setAttribute("data-container-uid", containerItem.uid);
-    if (slotItem) {
-      renderItemIcon(slot, slotItem, 40);
-      if (isContainerItem(slotItem)) {
-        let parentWrapper = null;
-
-        openedContainers.forEach((container) => {
-          if (container.item.uid === containerItem.uid) {
-            parentWrapper = container;
-          }
-        });
-        slot.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          const itemData = getItemData(slotItem.itemId);
-
-          if (itemData && parentWrapper) {
-            let alreadyOpen = false;
-            openedContainers.forEach((container) => {
-              if (container.item.uid === slotItem.uid) {
-                alreadyOpen = true;
-              }
-            });
-            if (alreadyOpen) {
-              openContainer(slotItem, itemData.name, "container", parentWrapper);
-              return;
-            }
-            closeContainer(parentWrapper.item);
-            openContainer(slotItem, itemData.name, "container", parentWrapper);
-          }
-        });
-      }
-    }
-    slotGrid.appendChild(slot);
-  }
-  containerBody.appendChild(slotGrid);
-};
-
-const renderContainerDock = () => {
-  if (!playerContainers) {
-    return;
-  }
-  playerContainers.innerHTML = ``;
-  openedContainers.forEach((container) => {
-    let backButton = null;
-    const div = document.createElement("div");
-    div.classList.add("container-window");
-    const header = document.createElement("div");
-    header.classList.add("container-window-header");
-    const button = document.createElement("button");
-    button.classList.add("container-minimize-button");
-    const closeButton = document.createElement("button");
-    closeButton.classList.add("container-minimize-button");
-    closeButton.innerText = "X";
-    const title = document.createElement("div");
-    title.classList.add("boite-jeux-titre");
-    title.textContent = container.title;
-    header.appendChild(title);
-    if (container.parent !== null) {
-      backButton = document.createElement("button");
-      backButton.classList.add("container-back-button");
-      backButton.innerText = `‹`;
-      backButton.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const parentWrapper = container.parent;
-        closeContainer(container.item);
-        const parentAlreadyOpen = openedContainers.find((container) => {
-          return container.item.uid === parentWrapper.item.uid;
-        });
-        if (parentAlreadyOpen) {
-          parentAlreadyOpen.isMinimized = false;
-          renderContainerDock();
-          return;
-        }
-        openContainer(parentWrapper.item, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
-      });
-      header.append(backButton);
-    }
-    closeButton.addEventListener("click", (e) => {
-      e.preventDefault();
-      closeContainer(container.item);
-      e.stopPropagation();
-    });
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      toggleContainerMinimized(container.item);
-      e.stopPropagation();
-    });
-
-    header.append(button, closeButton);
-
-    if (container.isMinimized === true) {
-      button.textContent = "+";
-      div.append(header);
-    } else {
-      const separateur = document.createElement("div");
-      separateur.classList.add("separateur-panneau");
-      button.textContent = "-";
-      const body = document.createElement("div");
-      body.classList.add("container-window-body");
-      renderContainerSlots(body, container.item);
-      div.append(header, separateur, body);
-    }
-
-    playerContainers.append(div);
-  });
-};
-
-const closeContainer = (containerItem) => {
-  const index = openedContainers.findIndex((openedContainer) => {
-    return containerItem.uid === openedContainer.item.uid;
-  });
-  if (index === -1) {
-    return;
-  }
-  openedContainers.splice(index, 1);
-  renderContainerDock();
-};
-
-const openContainer = (containerItem, title, source, parent) => {
-  if (!isContainerItem(containerItem) || (source === "world" && !isNearPlayer(containerItem, 1))) {
-    return;
-  }
-
-  const alreadyOpen = openedContainers.some((openedContainer) => {
-    return containerItem.uid === openedContainer.item.uid;
-  });
-  if (alreadyOpen) {
-    closeContainer(containerItem);
-    return;
-  }
-  openedContainers.push({
-    item: containerItem,
-    title: title,
-    isMinimized: false,
-    sourceType: source,
-    parent: parent,
-  });
-
-  renderContainerDock();
-
-  while (openedContainers.length > 1 && playerContainers.scrollHeight > playerContainers.clientHeight) {
-    openedContainers.splice(openedContainers.length - 2, 1);
-    renderContainerDock();
-  }
-};
-
-const findOpenedContainerItemByUid = (containerUid) => {
-  const openedContainer = openedContainers.find((openedContainer) => {
-    return openedContainer.item.uid === containerUid;
-  });
-  if (!openedContainer) {
-    return null;
-  }
-  return openedContainer.item;
-};
-
-const toggleContainerMinimized = (containerItem) => {
-  const openedContainer = openedContainers.find((openedContainer) => {
-    return openedContainer.item.uid === containerItem.uid;
-  });
-  if (!openedContainer) {
-    return;
-  }
-  openedContainer.isMinimized = !openedContainer.isMinimized;
-  renderContainerDock();
-};
-
-/* ---------- UI - STATS JOUEUR ---------- */
-
-const updatePlayerStats = () => {
-  playerStats.innerHTML = `<div class="boite-boite">
-                              <div class="boite-jeux-titre">Stats</div>
-                              <div class="separateur-panneau"></div>
-                              <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
-                              <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
-                              <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
-                              <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
-                              <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
-                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
-                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
-                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
-                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
-                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
-                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
-                              
-                            </div>`;
-};
-
-const updatePlayerExperience = () => {
-  const EXP_PER_LEVEL = 100;
-  playerState.level = Math.floor(playerState.experience / EXP_PER_LEVEL);
-  const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
-  updatePlayerStats();
-};
-
-/* ---------- UI - SCALE DU JEU ---------- */
-
-const updateGameScale = () => {
-  boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
-  const freeWidthSpace = boiteJeux.clientWidth - panneauGauche.clientWidth - panneauDroite.clientWidth;
-  const freeHeightSpace = boitePrincipale.clientHeight - minChatHeight;
-  const logicWidthSpace = GAME_WIDTH;
-  const logicHeightSpace = GAME_HEIGHT;
-  const scaleWidth = freeWidthSpace / logicWidthSpace;
-  const scaleHeight = freeHeightSpace / logicHeightSpace;
-  const scale = Math.min(scaleWidth, scaleHeight);
-  GAME_SCALE = scale;
-  document.documentElement.style.setProperty("--game-scale", scale);
-  const visualGameHeight = GAME_HEIGHT * scale;
-  const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
-  boiteJeuxInner.style.top = `${gameTop}px`;
-};
-//#endregion  -----  UI - INVENTAIRE, STATS ET SCALE  -----
-
-/* ==================================================== */
-//#region     -----  DRAG AND DROP - OBJETS  -----
-/* ==================================================== */
-/* ---------- DRAG AND DROP - ÉTAT ---------- */
+/* ---------- DRAG - ETAT ---------- */
 
 const resetDragState = () => {
   dragState.isDragging = false;
@@ -1915,7 +1154,7 @@ const cancelItemDrag = () => {
   resetDragState();
 };
 
-/* ---------- DRAG AND DROP - DÉPART SOURCE ---------- */
+/* ---------- DRAG - DEPART SOURCE ---------- */
 
 const startItemDrag = (source) => {
   if (!source) {
@@ -1945,7 +1184,7 @@ const startItemDrag = (source) => {
   }
 };
 
-/* ---------- DRAG AND DROP - LECTURE SOURCE ---------- */
+/* ---------- DRAG - LECTURE SOURCE ---------- */
 const getDragSourceFromState = () => {
   if (!dragState.isDragging) {
     return null;
@@ -1998,7 +1237,7 @@ const getDragSourceItem = (source) => {
   }
 };
 
-/* ---------- DRAG AND DROP - MODIFICATION SOURCE ---------- */
+/* ---------- DRAG - MODIFICATION SOURCE ---------- */
 
 const removeItemFromDragSource = (source) => {
   if (!source) {
@@ -2035,7 +1274,7 @@ const removeItemFromDragSource = (source) => {
   }
 };
 
-/* ---------- DRAG AND DROP - DESTINATION ---------- */
+/* ---------- DRAG - DESTINATION ---------- */
 
 const placeItemInDragDestination = (destination, item) => {
   if (!destination || !item) {
@@ -2122,7 +1361,7 @@ const isItemInsideContainer = (containerItem, searchedItemUid) => {
   return false;
 };
 
-/* ---------- DRAG AND DROP - VALIDATION DE L’ACTION ---------- */
+/* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshItemUiAfterDrag = () => {
   renderContainerDock();
   updatePlayerCarriedWeight();
@@ -2594,12 +1833,794 @@ const completeItemDrag = (destination) => {
   }
   cancelItemDrag();
 };
-//#endregion  -----  DRAG AND DROP - OBJETS  -----
+//#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
+
+/* ==================================================== */
+//#region     -----  UI  -----
+/* ==================================================== */
+
+/* ---------- UI - INVENTAIRE ---------- */
+const getEquipmentSlotItem = (slotName) => {
+  if (!playerState.equipment[slotName]) {
+    return null;
+  }
+  return playerState.equipment[slotName];
+};
+
+const renderItemIcon = (parentElement, item, slotSize) => {
+  parentElement.innerHTML = "";
+  if (!item) {
+    return;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return;
+  }
+  const atlasPath = getAtlasPath(itemData.render.atlas);
+  const enrichedParts = getItemRenderData(item);
+  let totalWidth = 0;
+  let totalHeight = 0;
+  let minX = null;
+  let maxX = null;
+  let minY = null;
+  let maxY = null;
+  enrichedParts.forEach((enrichedPart) => {
+    if (minX === null || minX > enrichedPart.offsetX) {
+      minX = enrichedPart.offsetX;
+    }
+    if (maxX === null || maxX < enrichedPart.offsetX + enrichedPart.sourceWidth) {
+      maxX = enrichedPart.offsetX + enrichedPart.sourceWidth;
+    }
+    if (minY === null || minY > enrichedPart.offsetY) {
+      minY = enrichedPart.offsetY;
+    }
+    if (maxY === null || maxY < enrichedPart.offsetY + enrichedPart.sourceHeight) {
+      maxY = enrichedPart.offsetY + enrichedPart.sourceHeight;
+    }
+    totalWidth = maxX - minX;
+    totalHeight = maxY - minY;
+  });
+  const biggestDimension = Math.max(totalWidth, totalHeight);
+  const scale = slotSize / biggestDimension;
+  const renderWidth = totalWidth * scale;
+  const renderHeight = totalHeight * scale;
+  const paddingLeft = (slotSize - renderWidth) / 2;
+  const paddingTop = (slotSize - renderHeight) / 2;
+  enrichedParts.forEach((enrichedPart) => {
+    const div = document.createElement("div");
+    div.classList.add("item-icon-part");
+    div.style.backgroundImage = `url("${atlasPath}")`;
+    div.style.backgroundPosition = `-${enrichedPart.sourceX}px -${enrichedPart.sourceY}px`;
+    div.style.left = `${paddingLeft + (enrichedPart.offsetX - minX) * scale}px`;
+    div.style.top = `${paddingTop + (enrichedPart.offsetY - minY) * scale}px`;
+    div.style.width = `${enrichedPart.sourceWidth}px`;
+    div.style.height = `${enrichedPart.sourceHeight}px`;
+    div.style.transform = `scale(${scale})`;
+    div.style.transformOrigin = "top left";
+
+    parentElement.appendChild(div);
+  });
+  if (itemData.stackable && item.quantity > 1) {
+    const quantity = document.createElement("p");
+    quantity.innerHTML = `${item.quantity}`;
+    quantity.classList.add("item-quantity");
+    parentElement.appendChild(quantity);
+  }
+};
+
+const renderEquipmentSlots = () => {
+  const equipmentsElement = document.querySelectorAll(".equipment-slot");
+  equipmentsElement.forEach((equipmentElement) => {
+    const slotName = equipmentElement.getAttribute("data-equipment-slot");
+    const item = getEquipmentSlotItem(slotName);
+    renderItemIcon(equipmentElement, item, 48);
+    if (item) {
+      equipmentElement.classList.add("equipment-slot-filled");
+      equipmentElement.classList.remove("equipment-slot-empty");
+    }
+    if (!item) {
+      equipmentElement.classList.remove("equipment-slot-filled");
+      equipmentElement.classList.add("equipment-slot-empty");
+    }
+    if (isContainerItem(item)) {
+      equipmentElement.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const itemData = getItemData(item.itemId);
+        if (!itemData) {
+          return;
+        }
+        openContainer(item, itemData.name, "equipment", null);
+      });
+    }
+  });
+};
+
+const updatePlayerInventory = () => {
+  let html = `<div class="boite-boite">
+              <div class="equipment-panel">
+                <div class="boite-jeux-titre">Equipments</div>
+                <div class="separateur-panneau"></div>
+
+                <div id="equipment-area" class="equipment-area">
+                  <div class="equipment-grid">
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="necklace"></div>
+                      <div class="equipment-slot" data-equipment-slot="weapon"></div>
+                      <div class="equipment-slot" data-equipment-slot="ring"></div>
+                      <div class="equipment-small-slot" data-equipment-small-slot="status"></div>
+                    </div>
+
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="helmet"></div>
+                      <div class="equipment-slot" data-equipment-slot="armor"></div>
+                      <div class="equipment-slot" data-equipment-slot="legs"></div>
+                      <div class="equipment-slot" data-equipment-slot="boots"></div>
+                    </div>
+
+                    <div class="equipment-column">
+                      <div class="equipment-slot" data-equipment-slot="backpack"></div>
+                      <div class="equipment-slot" data-equipment-slot="shield"></div>
+                      <div class="equipment-slot" data-equipment-slot="ammo"></div>
+                      <div class="equipment-small-slot equipment-cap-slot">Cap:<br />${getPlayerRemainingCapacity()}</div>
+                    </div>
+                  </div>
+
+                  <div class="equipment-right-bar">
+                    <div class="equipment-icon-grid">
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                      <div class="equipment-icon-button"></div>
+                    </div>
+
+                    <button class="equipment-ui-button">Follow</button>
+                    <button class="equipment-ui-button">PVP</button>
+                    <button class="equipment-ui-button">Friends</button>
+                    <button class="equipment-ui-button">Options</button>
+                    <button class="equipment-ui-button">Logout</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+
+  playerInventory.innerHTML = html;
+  renderEquipmentSlots();
+};
+
+const renderContainerSlots = (containerBody, containerItem) => {
+  if (!containerItem || !containerBody) {
+    return;
+  }
+  containerBody.innerHTML = ``;
+  const dataItem = getItemData(containerItem.itemId);
+  if (!dataItem) {
+    return null;
+  }
+  const slotGrid = document.createElement("div");
+  slotGrid.classList.add("container-slot-grid");
+
+  for (let i = 0; i < dataItem.capacity; i++) {
+    const slotItem = containerItem.content[i];
+    const slot = document.createElement("div");
+    slot.classList.add("container-slot");
+    slot.setAttribute("data-container-slot-index", i);
+    slot.setAttribute("data-container-uid", containerItem.uid);
+    if (slotItem) {
+      renderItemIcon(slot, slotItem, 40);
+      if (isContainerItem(slotItem)) {
+        let parentWrapper = null;
+
+        openedContainers.forEach((container) => {
+          if (container.item.uid === containerItem.uid) {
+            parentWrapper = container;
+          }
+        });
+        slot.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const itemData = getItemData(slotItem.itemId);
+
+          if (itemData && parentWrapper) {
+            let alreadyOpen = false;
+            openedContainers.forEach((container) => {
+              if (container.item.uid === slotItem.uid) {
+                alreadyOpen = true;
+              }
+            });
+            if (alreadyOpen) {
+              openContainer(slotItem, itemData.name, "container", parentWrapper);
+              return;
+            }
+            closeContainer(parentWrapper.item);
+            openContainer(slotItem, itemData.name, "container", parentWrapper);
+          }
+        });
+      }
+    }
+    slotGrid.appendChild(slot);
+  }
+  containerBody.appendChild(slotGrid);
+};
+
+const renderContainerDock = () => {
+  if (!playerContainers) {
+    return;
+  }
+  playerContainers.innerHTML = ``;
+  openedContainers.forEach((container) => {
+    let backButton = null;
+    const div = document.createElement("div");
+    div.classList.add("container-window");
+    const header = document.createElement("div");
+    header.classList.add("container-window-header");
+    const button = document.createElement("button");
+    button.classList.add("container-minimize-button");
+    const closeButton = document.createElement("button");
+    closeButton.classList.add("container-minimize-button");
+    closeButton.innerText = "X";
+    const title = document.createElement("div");
+    title.classList.add("boite-jeux-titre");
+    title.textContent = container.title;
+    header.appendChild(title);
+    if (container.parent !== null) {
+      backButton = document.createElement("button");
+      backButton.classList.add("container-back-button");
+      backButton.innerText = `‹`;
+      backButton.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const parentWrapper = container.parent;
+        closeContainer(container.item);
+        const parentAlreadyOpen = openedContainers.find((container) => {
+          return container.item.uid === parentWrapper.item.uid;
+        });
+        if (parentAlreadyOpen) {
+          parentAlreadyOpen.isMinimized = false;
+          renderContainerDock();
+          return;
+        }
+        openContainer(parentWrapper.item, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
+      });
+      header.append(backButton);
+    }
+    closeButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeContainer(container.item);
+      e.stopPropagation();
+    });
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleContainerMinimized(container.item);
+      e.stopPropagation();
+    });
+
+    header.append(button, closeButton);
+
+    if (container.isMinimized === true) {
+      button.textContent = "+";
+      div.append(header);
+    } else {
+      const separateur = document.createElement("div");
+      separateur.classList.add("separateur-panneau");
+      button.textContent = "-";
+      const body = document.createElement("div");
+      body.classList.add("container-window-body");
+      renderContainerSlots(body, container.item);
+      div.append(header, separateur, body);
+    }
+
+    playerContainers.append(div);
+  });
+};
+
+const closeContainer = (containerItem) => {
+  const index = openedContainers.findIndex((openedContainer) => {
+    return containerItem.uid === openedContainer.item.uid;
+  });
+  if (index === -1) {
+    return;
+  }
+  openedContainers.splice(index, 1);
+  renderContainerDock();
+};
+
+const openContainer = (containerItem, title, source, parent) => {
+  if (!isContainerItem(containerItem) || (source === "world" && !isNearPlayer(containerItem, 1))) {
+    return;
+  }
+
+  const alreadyOpen = openedContainers.some((openedContainer) => {
+    return containerItem.uid === openedContainer.item.uid;
+  });
+  if (alreadyOpen) {
+    closeContainer(containerItem);
+    return;
+  }
+  openedContainers.push({
+    item: containerItem,
+    title: title,
+    isMinimized: false,
+    sourceType: source,
+    parent: parent,
+  });
+
+  renderContainerDock();
+
+  while (openedContainers.length > 1 && playerContainers.scrollHeight > playerContainers.clientHeight) {
+    openedContainers.splice(openedContainers.length - 2, 1);
+    renderContainerDock();
+  }
+};
+
+const findOpenedContainerItemByUid = (containerUid) => {
+  const openedContainer = openedContainers.find((openedContainer) => {
+    return openedContainer.item.uid === containerUid;
+  });
+  if (!openedContainer) {
+    return null;
+  }
+  return openedContainer.item;
+};
+
+const toggleContainerMinimized = (containerItem) => {
+  const openedContainer = openedContainers.find((openedContainer) => {
+    return openedContainer.item.uid === containerItem.uid;
+  });
+  if (!openedContainer) {
+    return;
+  }
+  openedContainer.isMinimized = !openedContainer.isMinimized;
+  renderContainerDock();
+};
+
+/* ---------- UI - STATS JOUEUR ---------- */
+
+const updatePlayerStats = () => {
+  playerStats.innerHTML = `<div class="boite-boite">
+                              <div class="boite-jeux-titre">Stats</div>
+                              <div class="separateur-panneau"></div>
+                              <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
+                              <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
+                              <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
+                              <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
+                              <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
+                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
+                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
+                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
+                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
+                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
+                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
+                              
+                            </div>`;
+};
+
+const updatePlayerExperience = () => {
+  const EXP_PER_LEVEL = 100;
+  playerState.level = Math.floor(playerState.experience / EXP_PER_LEVEL);
+  const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
+  updatePlayerStats();
+};
+
+/* ---------- UI - SCALE DU JEU ---------- */
+
+const updateGameScale = () => {
+  boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
+  const freeWidthSpace = boiteJeux.clientWidth - panneauGauche.clientWidth - panneauDroite.clientWidth;
+  const freeHeightSpace = boitePrincipale.clientHeight - minChatHeight;
+  const logicWidthSpace = GAME_WIDTH;
+  const logicHeightSpace = GAME_HEIGHT;
+  const scaleWidth = freeWidthSpace / logicWidthSpace;
+  const scaleHeight = freeHeightSpace / logicHeightSpace;
+  const scale = Math.min(scaleWidth, scaleHeight);
+  GAME_SCALE = scale;
+  document.documentElement.style.setProperty("--game-scale", scale);
+  const visualGameHeight = GAME_HEIGHT * scale;
+  const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
+  boiteJeuxInner.style.top = `${gameTop}px`;
+};
+//#endregion  -----  UI  -----
+
+/* ==================================================== */
+//#region     -----  LIGHT - CANVAS  -----
+/* ==================================================== */
+lightCanvas.width = GAME_WIDTH;
+lightCanvas.height = GAME_HEIGHT;
+const ctx = lightCanvas.getContext("2d");
+
+/* ---------- LUMIERE - AFFICHAGE ---------- */
+
+const updateLight = (source) => {
+  if (currentMap.dark) {
+    let lightRadius = 0;
+    const screenX = source.x - camera.x + TILE_SIZE / 2;
+    const screenY = source.y - camera.y + TILE_SIZE / 2;
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    if (source.light <= 0) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
+    } else {
+      ctx.fillStyle = "rgb(0, 0, 0)";
+    }
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.globalCompositeOperation = "destination-out";
+    if (source.light <= 0) {
+      lightRadius = 70;
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, lightRadius);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
+      gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.04)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(screenX - lightRadius, screenY - lightRadius, lightRadius * 2, lightRadius * 2);
+    } else {
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
+      gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(screenX - source.light, screenY - source.light, source.light * 2, source.light * 2);
+      const bright = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light * 0.85);
+      ctx.globalCompositeOperation = "source-over";
+      bright.addColorStop(0, "rgba(251, 255, 137, 0)");
+      bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
+      bright.addColorStop(0.7, "rgba(249, 97, 2, 0.07)");
+      bright.addColorStop(0.8, "rgba(249, 2, 2, 0.07)");
+      bright.addColorStop(1, "rgba(255, 0, 0, 0)");
+      ctx.fillStyle = bright;
+
+      ctx.fillRect(
+        screenX - source.light * 0.85,
+        screenY - source.light * 0.85,
+        source.light * 2 * 0.85,
+        source.light * 2 * 0.85,
+      );
+    }
+    ctx.globalCompositeOperation = "source-over";
+  } else {
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  }
+};
+//#endregion  -----  LIGHT - CANVAS  -----
+
+/* ==================================================== */
+//#region     -----  JOUEUR - MOUVEMENT  -----
+/* ==================================================== */
+const keysPressed = {
+  right: false,
+  left: false,
+  up: false,
+  down: false,
+};
+
+/* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
+
+const getPlayerMoveCooldown = () => {
+  if (playerState.level < 100) {
+    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
+  } else {
+    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
+  }
+};
+
+const getWantedDirection = () => {
+  if (keysPressed.right) {
+    return "right";
+  } else if (keysPressed.left) {
+    return "left";
+  } else if (keysPressed.up) {
+    return "up";
+  } else if (keysPressed.down) {
+    return "down";
+  } else {
+    return;
+  }
+};
+
+/* ---------- JOUEUR - MISE A JOUR MOUVEMENT ---------- */
+
+const updateMovement = () => {
+  const direction = getWantedDirection();
+  if (!direction) {
+    playerState.walkFrame = 1;
+    updatePlayerSprite();
+    return;
+  }
+
+  const now = Date.now();
+  if (now < nextPlayerMoveTime) {
+    return;
+  }
+  let nextX = playerState.x;
+  let nextY = playerState.y;
+  if (direction === "right") {
+    nextX += MOVE_SPEED;
+  } else if (direction === "left") {
+    nextX -= MOVE_SPEED;
+  } else if (direction === "up") {
+    nextY -= MOVE_SPEED;
+  } else if (direction === "down") {
+    nextY += MOVE_SPEED;
+  } else {
+    return;
+  }
+
+  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
+    playerState.x = nextX;
+    playerState.y = nextY;
+    playerState.direction = direction;
+    playerState.walkFrame += 1;
+    if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
+      playerState.walkFrame = 0;
+    }
+  }
+  updatePlayerSprite();
+  updateWorldPosition();
+  nextPlayerMoveTime = now + getPlayerMoveCooldown();
+  closeFarOpenedContainers();
+};
+//#endregion  -----  JOUEUR - MOUVEMENT  -----
+
+/* ==================================================== */
+//#region     -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
+/* ==================================================== */
+/* ---------- INPUTS - TOUCHE APPUYEE ---------- */
+
+document.addEventListener("keydown", (e) => {
+  e.preventDefault();
+  if (e.repeat) {
+    return;
+  }
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = true;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = true;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = true;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = true;
+  } else {
+    return;
+  }
+});
+
+/* ---------- INPUTS - TOUCHE RELACHEE ---------- */
+
+document.addEventListener("keyup", (e) => {
+  e.preventDefault();
+  if (e.key === "ArrowRight" || e.key === "d") {
+    keysPressed.right = false;
+  } else if (e.key === "ArrowLeft" || e.key === "a") {
+    keysPressed.left = false;
+  } else if (e.key === "ArrowUp" || e.key === "w") {
+    keysPressed.up = false;
+  } else if (e.key === "ArrowDown" || e.key === "s") {
+    keysPressed.down = false;
+  } else {
+    return;
+  }
+});
+
+/* ---------- INPUTS - RESIZE FENETRE ---------- */
+
+window.addEventListener("resize", () => {
+  updateGameScale();
+});
+
+/* ---------- INPUTS - SOURIS ---------- */
+game.addEventListener("mousemove", (e) => {
+  updateMousePositionInfo(e.clientX, e.clientY);
+});
+
+game.addEventListener("click", (e) => {
+  console.log(
+    mousePosition.col,
+    mousePosition.row,
+    mousePosition.gameX,
+    mousePosition.gameY,
+    mousePosition.screenX,
+    mousePosition.screenY,
+    mousePosition.worldX,
+    mousePosition.worldY,
+    mousePosition.isInsideMap,
+  );
+});
+
+/* ---------- INPUTS - DRAG ITEM UI ---------- */
+
+const getContainerSourceFromSlotElement = (slotElement) => {
+  if (!slotElement) {
+    return null;
+  }
+  const containerUid = Number(slotElement.getAttribute("data-container-uid"));
+  const slotIndex = Number(slotElement.getAttribute("data-container-slot-index"));
+  if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
+    return null;
+  }
+  return {
+    type: "container",
+    containerUid,
+    slotIndex,
+  };
+};
+
+const getEquipmentSourceFromSlotElement = (slotElement) => {
+  if (!slotElement) {
+    return null;
+  }
+  const slotName = slotElement.getAttribute("data-equipment-slot");
+  if (!slotName || !(slotName in playerState.equipment)) {
+    return null;
+  }
+  return {
+    type: "equipment",
+    slotName,
+  };
+};
+
+const getWorldSourceFromItemElement = (itemElement) => {
+  if (!itemElement) {
+    return null;
+  }
+  const itemUid = Number(itemElement.getAttribute("data-item-uid"));
+  if (!Number.isInteger(itemUid)) {
+    return null;
+  }
+  return {
+    type: "world",
+    worldItemUid: itemUid,
+  };
+};
+
+const getWorldDestinationFromMousePosition = () => {
+  if (!isMouseInsideMap(mousePosition)) {
+    return null;
+  }
+  const x = mousePosition.col * TILE_SIZE;
+  const y = mousePosition.row * TILE_SIZE;
+  return {
+    type: "world",
+    x,
+    y,
+  };
+};
+
+const getItemSlotInfoFromEvent = (e) => {
+  const containerSlotElement = e.target.closest(".container-slot");
+  if (containerSlotElement) {
+    const address = getContainerSourceFromSlotElement(containerSlotElement);
+    return {
+      slotElement: containerSlotElement,
+      address,
+    };
+  }
+  const equipmentSlotElement = e.target.closest(".equipment-slot");
+  if (equipmentSlotElement) {
+    const address = getEquipmentSourceFromSlotElement(equipmentSlotElement);
+    return {
+      slotElement: equipmentSlotElement,
+      address,
+    };
+  }
+  const worldSlotElement = e.target.closest(".hitbox");
+  if (worldSlotElement) {
+    const address = getWorldSourceFromItemElement(worldSlotElement);
+    return {
+      slotElement: worldSlotElement,
+      address,
+    };
+  }
+  return null;
+};
+
+const getPointerTargetFromEvent = (e) => {
+  updateMousePositionInfo(e.clientX, e.clientY);
+  const itemSlotInfo = getItemSlotInfoFromEvent(e);
+  if (itemSlotInfo && (itemSlotInfo.address.type === "equipment" || itemSlotInfo.address.type === "container")) {
+    return {
+      itemSlotInfo: itemSlotInfo,
+      monster: null,
+      tile: null,
+      pointerInsideMap: false,
+    };
+  }
+  const row = mousePosition.row;
+  const col = mousePosition.col;
+  const x = col * TILE_SIZE;
+  const y = row * TILE_SIZE;
+  const pointerInsideMap = mousePosition.isInsideMap;
+  let tile = null;
+  let monster = null;
+  if (pointerInsideMap) {
+    tile = { row, col, x, y };
+    monster = findMonsterAtPosition(x, y);
+  }
+
+  return {
+    itemSlotInfo: itemSlotInfo,
+    monster: monster,
+    tile,
+    pointerInsideMap,
+  };
+};
+
+const handlePointerMouseDown = (e) => {
+  const info = getPointerTargetFromEvent(e);
+  console.log(info);
+};
+
+const handleItemUiMouseDown = (e) => {
+  handlePointerMouseDown(e);
+  const info = getItemSlotInfoFromEvent(e);
+  if (!info || !info.address || !info.slotElement) {
+    return;
+  }
+  e.preventDefault();
+  startItemDrag(info.address);
+  if (dragState.isDragging === true) {
+    if (info.address.type === "world") {
+      if (!isNearPlayer(dragState.item, 1)) {
+        resetDragState();
+        return;
+      }
+      const worldItemUid = info.address.worldItemUid;
+      const parts = document.querySelectorAll(`.world-item-part[data-item-uid="${worldItemUid}"]`);
+      parts.forEach((part) => {
+        part.classList.add("world-item-selected");
+      });
+    } else {
+      info.slotElement.classList.add("container-slot-dragging");
+    }
+  }
+};
+
+const handleItemUiMouseUp = (e) => {
+  if (!dragState.isDragging) {
+    return;
+  }
+
+  const info = getItemSlotInfoFromEvent(e);
+  if (!info && e.target.closest(".jeux-gauche, .jeux-droite, .navbar, .entete-jeux, #boite-chat")) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (info && info.address && info.slotElement) {
+    if (["container", "equipment"].includes(info.address.type)) {
+      e.preventDefault();
+      completeItemDrag(info.address);
+      return;
+    }
+
+    if (info.address.type === "world") {
+      const worldDestination = getWorldDestinationFromMousePosition();
+      if (worldDestination) {
+        e.preventDefault();
+        completeItemDrag(worldDestination);
+        return;
+      }
+    }
+  }
+
+  const worldDestination = getWorldDestinationFromMousePosition();
+  if (worldDestination) {
+    e.preventDefault();
+    completeItemDrag(worldDestination);
+    return;
+  }
+
+  cancelItemDrag();
+};
+document.addEventListener("mousedown", handleItemUiMouseDown);
+document.addEventListener("mouseup", handleItemUiMouseUp);
+
+//#endregion  -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
 
 /* ==================================================== */
 //#region     -----  MONSTRES  -----
 /* ==================================================== */
-/* ---------- MONSTRES - CRÉATION ET AFFICHAGE ---------- */
+/* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
 
 const MonsterHpRefresh = (monster) => {
   const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
@@ -2683,7 +2704,7 @@ const updateMonsterSprite = (monster) => {
   monsterSpriteElement.style.backgroundPosition = `-${source.sourceX}px -${source.sourceY}px`;
 };
 
-/* ---------- MONSTRES - ACCÈS AUX DONNÉES ---------- */
+/* ---------- MONSTRES - COLLECTE DES DONNEES ---------- */
 
 const getMonsterData = (monsterId) => {
   if (monstersDatabase[monsterId]) {
@@ -2694,7 +2715,7 @@ const getMonsterData = (monsterId) => {
   }
 };
 
-/* ---------- MONSTRES - DÉTECTION ET DIRECTION ---------- */
+/* ---------- MONSTRES - DETECTION ET DIRECTION ---------- */
 
 const isMonsterAtPosition = (x, y) => {
   return monsters.some((monster) => {
@@ -2779,7 +2800,7 @@ const updateMonsterDirection = (selfMonster, tile) => {
   }
 };
 
-/* ---------- MONSTRES - SÉLECTION ET MORT ---------- */
+/* ---------- MONSTRES - SELECTION ET MORT ---------- */
 
 const clearMonsterSelection = () => {
   const monsterSelection = document.querySelectorAll(".monster-selected");
@@ -2840,7 +2861,7 @@ const generateMonsterLoot = (monsterData) => {
   return lootContent;
 };
 
-/* ---------- MONSTRES - COMBAT, POSITION ET MOUVEMENT ---------- */
+/* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
 
 const updateMonsterCombat = () => {
   monsters.forEach((monster) => {
@@ -2854,7 +2875,6 @@ const updateMonsterCombat = () => {
       playerState.hp -= getRandomInt(1, monsterData.damage);
       updatePlayerStats();
       hpRefresh();
-      console.log(`hp : ${playerState.hp}`);
       if (playerState.hp <= 0) {
         playerState.hp = 0;
         hpRefresh();
@@ -2948,226 +2968,216 @@ const updateMonsterMovement = () => {
 //#endregion  -----  MONSTRES  -----
 
 /* ==================================================== */
-//#region     -----  ENTRÉES - CLAVIER, SOURIS ET RESIZE  -----
+//#region     -----  PLAYER - COMBAT  -----
 /* ==================================================== */
-/* ---------- ENTRÉES - TOUCHE APPUYÉE ---------- */
+/* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
-document.addEventListener("keydown", (e) => {
-  e.preventDefault();
-  if (e.repeat) {
+const attackMonster = (monster) => {
+  const monsterData = getMonsterData(monster.monsterId);
+  monster.hp -= getRandomInt(1, playerState.damage);
+  if (monster.hp <= 0) {
+    monster.hp = 0;
+    MonsterHpRefresh(monster);
+    deadMonster(monster);
+    playerState.experience += monsterData.experience;
+    updatePlayerExperience();
     return;
   }
-  if (e.key === "ArrowRight" || e.key === "d") {
-    keysPressed.right = true;
-  } else if (e.key === "ArrowLeft" || e.key === "a") {
-    keysPressed.left = true;
-  } else if (e.key === "ArrowUp" || e.key === "w") {
-    keysPressed.up = true;
-  } else if (e.key === "ArrowDown" || e.key === "s") {
-    keysPressed.down = true;
+  MonsterHpRefresh(monster);
+};
+
+const updateCombat = () => {
+  if (selectedMonsterId === null) {
+    return;
+  }
+  const monster = findMonsterById(selectedMonsterId);
+  if (!monster) {
+    return;
+  }
+  if (!isNearPlayer(monster)) {
+    return;
+  }
+  const now = Date.now();
+  if (now < nextPlayerAttackTime) {
+    return;
+  }
+  attackMonster(monster);
+  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+};
+//#endregion  -----  PLAYER - COMBAT  -----
+
+/* ==================================================== */
+//#region     -----  PATHFINDING A*  -----
+/* ==================================================== */
+/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
+
+const getTilePosition = (source) => {
+  const col = source.x / TILE_SIZE;
+  const row = source.y / TILE_SIZE;
+  return { col, row };
+};
+
+const getWorldPosition = (tile) => {
+  const tileX = tile.col * TILE_SIZE;
+  const tileY = tile.row * TILE_SIZE;
+  return { tileX, tileY };
+};
+
+const getNeighbors = (tile) => {
+  return [
+    { row: tile.row, col: tile.col - 1 },
+    { row: tile.row, col: tile.col + 1 },
+    { row: tile.row - 1, col: tile.col },
+    { row: tile.row + 1, col: tile.col },
+  ];
+};
+
+const isWalkableTile = (row, col) => {
+  const tileX = col * TILE_SIZE;
+  const tileY = row * TILE_SIZE;
+  if (!isInsideMap(tileX, tileY)) {
+    return false;
+  }
+  const nextTile = gameMap[row][col];
+
+  if (
+    nextTile === FLOOR &&
+    !isMonsterAtPosition(tileX, tileY) &&
+    !isBlockingItemAtPosition(tileX, tileY) &&
+    !isPlayerAtPosition(tileX, tileY)
+  ) {
+    return true;
   } else {
-    return;
+    return false;
   }
-});
-
-/* ---------- ENTRÉES - TOUCHE RELÂCHÉE ---------- */
-
-document.addEventListener("keyup", (e) => {
-  e.preventDefault();
-  if (e.key === "ArrowRight" || e.key === "d") {
-    keysPressed.right = false;
-  } else if (e.key === "ArrowLeft" || e.key === "a") {
-    keysPressed.left = false;
-  } else if (e.key === "ArrowUp" || e.key === "w") {
-    keysPressed.up = false;
-  } else if (e.key === "ArrowDown" || e.key === "s") {
-    keysPressed.down = false;
-  } else {
-    return;
-  }
-});
-
-/* ---------- ENTRÉES - REDIMENSIONNEMENT FENÊTRE ---------- */
-
-window.addEventListener("resize", () => {
-  updateGameScale();
-});
-
-/* ---------- ENTRÉES - SOURIS ---------- */
-game.addEventListener("mousemove", (e) => {
-  updateMousePositionInfo(e.clientX, e.clientY);
-});
-
-game.addEventListener("click", (e) => {
-  console.log(
-    mousePosition.col,
-    mousePosition.row,
-    mousePosition.gameX,
-    mousePosition.gameY,
-    mousePosition.screenX,
-    mousePosition.screenY,
-    mousePosition.worldX,
-    mousePosition.worldY,
-    mousePosition.isInsideMap,
-  );
-});
-
-/* ---------- ENTRÉES - DRAG AND DROP DES OBJETS UI ---------- */
-
-const getContainerSourceFromSlotElement = (slotElement) => {
-  if (!slotElement) {
-    return null;
-  }
-  const containerUid = Number(slotElement.getAttribute("data-container-uid"));
-  const slotIndex = Number(slotElement.getAttribute("data-container-slot-index"));
-  if (!Number.isInteger(containerUid) || !Number.isInteger(slotIndex)) {
-    return null;
-  }
-  return {
-    type: "container",
-    containerUid,
-    slotIndex,
-  };
 };
 
-const getEquipmentSourceFromSlotElement = (slotElement) => {
-  if (!slotElement) {
-    return null;
-  }
-  const slotName = slotElement.getAttribute("data-equipment-slot");
-  if (!slotName || !(slotName in playerState.equipment)) {
-    return null;
-  }
-  return {
-    type: "equipment",
-    slotName,
-  };
+const getDistance = (a, b) => {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
 };
 
-const getWorldSourceFromItemElement = (itemElement) => {
-  if (!itemElement) {
-    return null;
-  }
-  const itemUid = Number(itemElement.getAttribute("data-item-uid"));
-  if (!Number.isInteger(itemUid)) {
-    return null;
-  }
-  return {
-    type: "world",
-    worldItemUid: itemUid,
-  };
+const getNeighborNodes = (tile, targetTile) => {
+  const neighborsTile = getNeighbors(tile);
+  const neighborsNodes = [];
+  neighborsTile.forEach((neighbors) => {
+    if (isWalkableTile(neighbors.row, neighbors.col)) {
+      const g = tile.g + 1;
+      const h = getDistance(neighbors, targetTile);
+      const node = {
+        row: neighbors.row,
+        col: neighbors.col,
+        g: g,
+        h: h,
+        f: g + h,
+        parent: tile,
+      };
+      neighborsNodes.push(node);
+    }
+  });
+  return neighborsNodes;
 };
 
-const getWorldDestinationFromMousePosition = () => {
-  if (!isMouseInsideMap(mousePosition)) {
-    return null;
-  }
-  const x = mousePosition.col * TILE_SIZE;
-  const y = mousePosition.row * TILE_SIZE;
-  return {
-    type: "world",
-    x,
-    y,
-  };
-};
+/* ---------- PATHFINDING - NODES ET LISTES ---------- */
 
-const getItemSlotInfoFromEvent = (e) => {
-  const containerSlotElement = e.target.closest(".container-slot");
-  if (containerSlotElement) {
-    const address = getContainerSourceFromSlotElement(containerSlotElement);
-    return {
-      slotElement: containerSlotElement,
-      address,
-    };
-  }
-  const equipmentSlotElement = e.target.closest(".equipment-slot");
-  if (equipmentSlotElement) {
-    const address = getEquipmentSourceFromSlotElement(equipmentSlotElement);
-    return {
-      slotElement: equipmentSlotElement,
-      address,
-    };
-  }
-  const worldSlotElement = e.target.closest(".hitbox");
-  if (worldSlotElement) {
-    const address = getWorldSourceFromItemElement(worldSlotElement);
-    return {
-      slotElement: worldSlotElement,
-      address,
-    };
-  }
-  return null;
-};
-
-const handleItemUiMouseDown = (e) => {
-  const info = getItemSlotInfoFromEvent(e);
-  if (!info || !info.address || !info.slotElement) {
-    return;
-  }
-  e.preventDefault();
-  startItemDrag(info.address);
-  if (dragState.isDragging === true) {
-    if (info.address.type === "world") {
-      if (!isNearPlayer(dragState.item, 1)) {
-        resetDragState();
-        return;
+const getSmallerF = (nodesList) => {
+  if (nodesList.length > 0) {
+    let smallF = nodesList[0];
+    nodesList.forEach((node) => {
+      if (node.f < smallF.f) {
+        smallF = node;
+      } else if (node.f === smallF.f) {
+        if (node.h < smallF.h) {
+          smallF = node;
+        }
       }
-      const worldItemUid = info.address.worldItemUid;
-      const parts = document.querySelectorAll(`.world-item-part[data-item-uid="${worldItemUid}"]`);
-      parts.forEach((part) => {
-        part.classList.add("world-item-selected");
-      });
+    });
+    return smallF;
+  }
+};
+
+const isNodeInList = (node, list) => {
+  let nodeInList = false;
+  list.forEach((nodeList) => {
+    if (nodeList.row === node.row && nodeList.col === node.col) {
+      nodeInList = true;
+    }
+  });
+  return nodeInList;
+};
+
+const buildPath = (currentNode) => {
+  let path = [];
+  while (currentNode.parent) {
+    path.push(currentNode);
+    currentNode = currentNode.parent;
+  }
+  return path.reverse();
+};
+
+/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
+
+const pathDestination = (selfTile, destinationTile) => {
+  const neighbors = getNeighbors(destinationTile);
+  const possibleNeighbors = [];
+  let bestDistance = null;
+  let bestNeighbor = null;
+  neighbors.forEach((neighbor) => {
+    if (isWalkableTile(neighbor.row, neighbor.col)) {
+      possibleNeighbors.push(neighbor);
+    }
+  });
+  possibleNeighbors.forEach((possibleNeighbor) => {
+    const distance = getDistance(selfTile, possibleNeighbor);
+    if (bestDistance === null || distance < bestDistance) {
+      bestDistance = distance;
+      bestNeighbor = possibleNeighbor;
+    }
+  });
+
+  return bestNeighbor;
+};
+
+const findPath = (startTile, targetTile) => {
+  const openList = [];
+  const closedList = [];
+  const g = 0;
+  const h = getDistance(startTile, targetTile);
+  const startNode = {
+    row: startTile.row,
+    col: startTile.col,
+    g: g,
+    h: h,
+    f: g + h,
+    parent: null,
+  };
+  openList.push(startNode);
+
+  while (openList.length > 0) {
+    let currentNode = getSmallerF(openList);
+    const index = openList.indexOf(currentNode);
+    if (index > -1) {
+      openList.splice(index, 1);
+    }
+    closedList.push(currentNode);
+    if (currentNode.row === targetTile.row && currentNode.col === targetTile.col) {
+      return buildPath(currentNode);
     } else {
-      info.slotElement.classList.add("container-slot-dragging");
+      const neighborsNodes = getNeighborNodes(currentNode, targetTile);
+      neighborsNodes.forEach((node) => {
+        if (!isNodeInList(node, closedList) && !isNodeInList(node, openList)) {
+          openList.push(node);
+        }
+      });
     }
   }
+  return [];
 };
-
-const handleItemUiMouseUp = (e) => {
-  if (!dragState.isDragging) {
-    return;
-  }
-
-  const info = getItemSlotInfoFromEvent(e);
-  if (!info && e.target.closest(".jeux-gauche, .jeux-droite, .navbar, .entete-jeux, #boite-chat")) {
-    cancelItemDrag();
-    return;
-  }
-
-  if (info && info.address && info.slotElement) {
-    if (["container", "equipment"].includes(info.address.type)) {
-      e.preventDefault();
-      completeItemDrag(info.address);
-      return;
-    }
-
-    if (info.address.type === "world") {
-      const worldDestination = getWorldDestinationFromMousePosition();
-      if (worldDestination) {
-        e.preventDefault();
-        completeItemDrag(worldDestination);
-        return;
-      }
-    }
-  }
-
-  const worldDestination = getWorldDestinationFromMousePosition();
-  if (worldDestination) {
-    e.preventDefault();
-    completeItemDrag(worldDestination);
-    return;
-  }
-
-  cancelItemDrag();
-};
-document.addEventListener("mousedown", handleItemUiMouseDown);
-document.addEventListener("mouseup", handleItemUiMouseUp);
-//#endregion  -----  ENTRÉES - CLAVIER, SOURIS ET RESIZE  -----
+//#endregion  -----  PATHFINDING A*  -----
 
 /* ==================================================== */
-//#region     -----  ÉVÉNEMENTS DU JEU  -----
+//#region     -----  EVENEMENTS DU JEU  -----
 /* ==================================================== */
-/* ---------- ÉVÉNEMENTS - SOURIS ET MENU CONTEXTE ---------- */
+/* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -3193,7 +3203,7 @@ document.addEventListener("mouseup", (e) => {
 
   cancelItemDrag();
 });
-//#endregion  -----  ÉVÉNEMENTS DU JEU  -----
+//#endregion  -----  EVENEMENTS DU JEU  -----
 
 /* ==================================================== */
 //#region     -----  BOUCLE DE JEU  -----
@@ -3213,7 +3223,7 @@ setInterval(gameLoop, GAME_LOOP_MS);
 /* ==================================================== */
 //#region     -----  INITIALISATION DU JEU  -----
 /* ==================================================== */
-/* ---------- INITIALISATION - DÉMARRAGE ---------- */
+/* ---------- INITIALISATION - DEMARRAGE ---------- */
 
 updateGameScale();
 showPlayerName(playerState.name);
@@ -3258,4 +3268,5 @@ updateLight(playerState);
 
 console.log(gameMap);
 console.log(player);
+
 //#endregion  -----  DEBUG CONSOLE  -----
