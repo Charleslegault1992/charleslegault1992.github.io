@@ -291,18 +291,7 @@ main {
   gap: 4px;
 }
 
-.equipment-slot {
-  width: 48px;
-  height: 48px;
-  position: relative;
-  background-image: url("../images/ui/equipmentSlot.png");
-  background-repeat: no-repeat;
-  background-size: auto;
-  image-rendering: pixelated;
-  overflow: hidden;
-  outline: 2px solid rgba(145, 145, 145, 0.5);
-  border-radius: 1px;
-}
+
 
 .equipment-small-slot {
   width: 48px;
@@ -394,6 +383,58 @@ main {
   flex-shrink: 0;
 }
 
+.equipment-slot {
+  width: 48px;
+  height: 48px;
+  position: relative;
+  background-image: url("../images/ui/equipmentSlot.png");
+  background-repeat: no-repeat;
+  background-size: auto;
+  image-rendering: pixelated;
+  overflow: hidden;
+  outline: 2px solid rgba(145, 145, 145, 0.5);
+  border-radius: 1px;
+}
+
+.equipment-slot-empty[data-equipment-slot="necklace"] {
+  background-position: -48px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="helmet"] {
+  background-position: -96px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="backpack"] {
+  background-position: -144px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="armor"] {
+  background-position: -240px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="shield"] {
+  background-position: -288px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="ring"] {
+  background-position: -336px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="legs"] {
+  background-position: -384px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="weapon"] {
+  background-position: -192px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="boots"] {
+  background-position: -480px 0;
+}
+
+.equipment-slot-empty[data-equipment-slot="ammo"] {
+  background-position: -432px 0;
+}
 /* ---------- UI - CONTAINER DOCK ---------- */
 
 .container-dock-wrapper {

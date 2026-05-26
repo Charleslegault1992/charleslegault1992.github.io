@@ -87,7 +87,7 @@ const itemsDatabase = {
     desc: "An apple.",
     type: "food",
     weight: 10,
-    stackable: true,
+    stackable: false,
     blockMovement: false,
     render: {
       atlas: "items",
@@ -819,10 +819,35 @@ const getItemRenderParts = (itemId) => {
   return itemData.render.parts;
 };
 
-const getItemRenderData = (itemId) => {
-  const parts = getItemRenderParts(itemId);
+const getStackableAtlasColOffset = (quantity) => {
+  if (quantity >= 50) {
+    return 4;
+  } else if (quantity >= 25) {
+    return 3;
+  } else if (quantity >= 3) {
+    return 2;
+  } else if (quantity >= 2) {
+    return 1;
+  } else {
+    return 0;
+  }
+};
+
+const getItemRenderData = (item) => {
+  if (!item) {
+    return [];
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return [];
+  }
+  const parts = getItemRenderParts(item.itemId);
   const enrichedParts = parts.map((part) => {
-    const source = getAtlasSource(part.atlasCol, part.atlasRow, SPRITE_SIZE);
+    let atlasCol = part.atlasCol;
+    if (itemData.stackable) {
+      atlasCol += getStackableAtlasColOffset(item.quantity);
+    }
+    const source = getAtlasSource(atlasCol, part.atlasRow, SPRITE_SIZE);
     return {
       ...part,
       ...source,
@@ -845,7 +870,7 @@ const getItemRenderPartsPositions = (item) => {
   if (!item) {
     return [];
   }
-  const parts = getItemRenderData(item.itemId);
+  const parts = getItemRenderData(item);
   return parts.map((part) => {
     return getItemRenderPartPosition(item, part);
   });
@@ -968,7 +993,7 @@ const renderGroundItemParts = (item) => {
   if (!item) {
     return;
   }
-  const enrichedParts = getItemRenderData(item.itemId);
+  const enrichedParts = getItemRenderData(item);
   if (enrichedParts.length <= 0) {
     return;
   }
@@ -1387,29 +1412,61 @@ const updateOpenedContainerSourceType = (item, sourceType) => {
   });
 };
 
-const tryStackItemsDuringDrag = (source, sourceItem, destinationItem) => {
+const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
   if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
     const itemData = getItemData(sourceItem.itemId);
+    let canMoveRestToFreeSlot = true;
     if (itemData && itemData.stackable) {
       const freeStackSpace = 100 - destinationItem.quantity;
-
+      let quantityAllowed = freeStackSpace;
+      if (!isDragAddressCarriedByPlayer(source) && isDragAddressCarriedByPlayer(destination)) {
+        const freeCapSpace = playerState.capacity - calculatePlayerCarriedWeight();
+        const maxQuantityByCapacity = Math.floor(freeCapSpace / itemData.weight);
+        canMoveRestToFreeSlot = maxQuantityByCapacity >= sourceItem.quantity;
+        quantityAllowed = Math.min(freeStackSpace, maxQuantityByCapacity);
+      }
       if (freeStackSpace <= 0) {
         return false;
       }
 
-      if (sourceItem.quantity <= freeStackSpace) {
+      if (quantityAllowed <= 0) {
+        cancelItemDrag();
+        return true;
+      }
+
+      if (sourceItem.quantity <= quantityAllowed) {
         destinationItem.quantity += sourceItem.quantity;
         removeItemFromDragSource(source);
         refreshItemUiAfterDrag();
         return true;
       }
 
-      if (sourceItem.quantity > freeStackSpace) {
-        destinationItem.quantity += freeStackSpace;
-        sourceItem.quantity -= freeStackSpace;
-        refreshItemUiAfterDrag();
-        return true;
+      if (sourceItem.quantity > quantityAllowed) {
+        destinationItem.quantity += quantityAllowed;
+        sourceItem.quantity -= quantityAllowed;
       }
+      if (destination.type === "container" && quantityAllowed === freeStackSpace && canMoveRestToFreeSlot) {
+        const containerItem = findOpenedContainerItemByUid(destination.containerUid);
+        const freeSlot = findFirstEmptyContainerSlot(containerItem);
+        if (freeSlot !== null) {
+          const tempDestination = {
+            type: "container",
+            containerUid: destination.containerUid,
+            slotIndex: freeSlot,
+          };
+          const result = placeItemInDragDestination(tempDestination, sourceItem);
+          if (result) {
+            const removedItem = removeItemFromDragSource(source);
+            if (!removedItem) {
+              containerItem.content[freeSlot] = null;
+              cancelItemDrag();
+              return true;
+            }
+          }
+        }
+      }
+      refreshItemUiAfterDrag();
+      return true;
     }
   }
 
@@ -1588,6 +1645,30 @@ const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
   return false;
 };
 
+const isItemCarriedByPlayer = (itemUid) => {
+  return Object.values(playerState.equipment).some((equipment) => {
+    if (!equipment) {
+      return false;
+    }
+    return isItemInsideItem(equipment, itemUid);
+  });
+};
+
+const isItemInsideItem = (item, searchedUid) => {
+  if (!item) {
+    return false;
+  }
+  if (item.uid === searchedUid) {
+    return true;
+  }
+  if (!isContainerItem(item)) {
+    return false;
+  }
+  return item.content.some((itemInContainer) => {
+    return isItemInsideItem(itemInContainer, searchedUid);
+  });
+};
+
 const isDragAddressCarriedByPlayer = (adress) => {
   if (adress.type === "equipment") {
     return true;
@@ -1599,7 +1680,10 @@ const isDragAddressCarriedByPlayer = (adress) => {
     const container = openedContainers.find((container) => {
       return adress.containerUid === container.item.uid;
     });
-    return isOpenedContainerCarriedByPlayer(container);
+    if (!container) {
+      return false;
+    }
+    return isItemCarriedByPlayer(container.item.uid);
   }
   return false;
 };
@@ -1669,6 +1753,16 @@ const isContainerMoveIntoItself = (sourceItem, destinationContainer) => {
   return false;
 };
 
+const isDropStackToStack = (sourceItem, destinationItem) => {
+  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
+    const itemData = getItemData(sourceItem.itemId);
+    if (itemData && itemData.stackable === true) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const completeItemDrag = (destination) => {
   if (!dragState.isDragging || !destination) {
     cancelItemDrag();
@@ -1689,12 +1783,14 @@ const completeItemDrag = (destination) => {
     return;
   }
 
-  if (isExceedCapacity(source, destination, sourceItem)) {
-    cancelItemDrag();
-    return;
-  }
-
   const destinationItem = getDragSourceItem(destination);
+
+  if (!isDropStackToStack(sourceItem, destinationItem)) {
+    if (isExceedCapacity(source, destination, sourceItem)) {
+      cancelItemDrag();
+      return;
+    }
+  }
 
   if (isSameDragSourceAndDestination(source, destination)) {
     cancelItemDrag();
@@ -1711,7 +1807,7 @@ const completeItemDrag = (destination) => {
     return;
   }
 
-  if (tryStackItemsDuringDrag(source, sourceItem, destinationItem)) {
+  if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
     return;
   }
 
@@ -1761,7 +1857,7 @@ const renderItemIcon = (parentElement, item, slotSize) => {
     return;
   }
   const atlasPath = getAtlasPath(itemData.render.atlas);
-  const enrichedParts = getItemRenderData(item.itemId);
+  const enrichedParts = getItemRenderData(item);
   let totalWidth = 0;
   let totalHeight = 0;
   let minX = null;
@@ -1818,6 +1914,14 @@ const renderEquipmentSlots = () => {
     const slotName = equipmentElement.getAttribute("data-equipment-slot");
     const item = getEquipmentSlotItem(slotName);
     renderItemIcon(equipmentElement, item, 48);
+    if (item) {
+      equipmentElement.classList.add("equipment-slot-filled");
+      equipmentElement.classList.remove("equipment-slot-empty");
+    }
+    if (!item) {
+      equipmentElement.classList.remove("equipment-slot-filled");
+      equipmentElement.classList.add("equipment-slot-empty");
+    }
     if (isContainerItem(item)) {
       equipmentElement.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -3128,4 +3232,5 @@ updateLight(playerState);
 
 console.log(gameMap);
 console.log(player);
+
 //#endregion  -----  DEBUG CONSOLE  -----
