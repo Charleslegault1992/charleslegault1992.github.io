@@ -10,6 +10,7 @@
     - Bouton back sur les bag pour revenir au parent
     - Nettoyage de la fonction completeItemDrag pour la separer en plusieur petites fonctions
     - Ajout et rendre la capacite fonctionnel
+    - Réorganisation de CSS et .JS
 
 0.291 - Drag drop des containers
     - Ajout drag item dans container

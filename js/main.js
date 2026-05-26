@@ -1,5 +1,35 @@
 /* ==================================================== */
-//#region     -----  BASE - ELEMENTS HTML  -----
+//#region     -----  PLAN DU FICHIER  -----
+/* ==================================================== */
+/*
+  01. BASE
+      - Éléments HTML
+      - Constantes et variables
+      - Données du jeu
+  02. CORE
+      - Timing
+      - Outils et helpers
+  03. MONDE
+      - Map
+      - Pathfinding A*
+      - Caméra
+      - Lumière
+  04. JOUEUR
+      - Données, affichage, mouvement, combat
+  05. OBJETS ET INVENTAIRE
+      - Items, rendu, poids, UI
+  06. DRAG AND DROP
+      - Sources, destinations, capacity, validations
+  07. MONSTRES
+      - Affichage, déplacement, combat, loot
+  08. ENTRÉES ET ÉVÉNEMENTS
+      - Clavier, souris, resize, événements globaux
+  09. BOUCLE, INITIALISATION ET DEBUG
+*/
+//#endregion  -----  PLAN DU FICHIER  -----
+
+/* ==================================================== */
+//#region     -----  BASE - ÉLÉMENTS HTML  -----
 /* ==================================================== */
 const panneauGauche = document.querySelector(".jeux-gauche");
 const panneauDroite = document.querySelector(".jeux-droite");
@@ -16,7 +46,7 @@ const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
-//#endregion  -----  BASE - ELEMENTS HTML  -----
+//#endregion  -----  BASE - ÉLÉMENTS HTML  -----
 
 /* ==================================================== */
 //#region     -----  BASE - CONSTANTES ET VARIABLES  -----
@@ -78,7 +108,7 @@ const mousePosition = {
 //#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
 /* ==================================================== */
-//#region     -----  BASE DE DONNEES  -----
+//#region     -----  BASE - DONNÉES DU JEU  -----
 /* ==================================================== */
 const itemsDatabase = {
   apple: {
@@ -336,7 +366,7 @@ const monstersDatabase = {
     ],
   },
 };
-//#endregion  -----  BASE DE DONNEES  -----
+//#endregion  -----  BASE - DONNÉES DU JEU  -----
 
 /* ==================================================== */
 //#region     -----  CORE - TIMING  -----
@@ -354,129 +384,117 @@ const MONSTER_ATTACK_COOLDOWN_MS = 1500;
 //#endregion  -----  CORE - TIMING  -----
 
 /* ==================================================== */
-//#region     -----  PLAYER - CONSTANTES SPRITE  -----
+//#region     -----  CORE - OUTILS ET HELPERS  -----
 /* ==================================================== */
-const PLAYER_FRAME_WIDTH = TILE_SIZE;
-const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
-const PLAYER_ANIMATION_FRAMES = 3;
-//#endregion  -----  PLAYER - CONSTANTES SPRITE  -----
+/* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
-/* ==================================================== */
-//#region     -----  PLAYER  -----
-/* ==================================================== */
-/* ---------- JOUEUR - DONNEES ---------- */
-
-const playerState = {
-  x: playerSpawnX,
-  y: playerSpawnY,
-  name: "Charles",
-  hp: 30,
-  maxHp: 30,
-  level: 0,
-  experience: 0,
-  gold: 0,
-  damage: 10,
-  magicSkill: 0,
-  swordSkill: 1,
-  maceSkill: 1,
-  axeSkill: 1,
-  distanceSkill: 1,
-  shieldSkill: 1,
-  carriedWeight: 0,
-  capacity: 350,
-  speed: 1,
-  direction: "down",
-  walkFrame: 1,
-  light: 900,
-  equipment: {
-    necklace: null,
-    helmet: null,
-    armor: null,
-    shield: null,
-    weapon: null,
-    legs: null,
-    ammo: null,
-    ring: null,
-    boots: null,
-    backpack: null,
-  },
+const getRandomInt = (min, max) => {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
-/* ---------- JOUEUR - AFFICHAGE ---------- */
+const isNearPlayer = (target, range = 1) => {
+  const playerCol = playerState.x / TILE_SIZE;
+  const playerRow = playerState.y / TILE_SIZE;
+  const targetCol = target.x / TILE_SIZE;
+  const targetRow = target.y / TILE_SIZE;
 
-const showPlayerName = (name) => {
-  const playerName = document.createElement("div");
-  playerName.classList.add("name");
-  playerName.textContent = `${name}`;
-  player.appendChild(playerName);
+  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
 };
 
-const getDirectionRow = (playerDirection) => {
-  if (playerDirection === "down") {
-    return 0;
-  } else if (playerDirection === "left") {
-    return 1;
-  } else if (playerDirection === "right") {
-    return 2;
-  } else if (playerDirection === "up") {
-    return 3;
+const isContainerItem = (item) => {
+  if (!item) {
+    return false;
   }
-  return 0;
-};
-
-const updatePlayerSprite = () => {
-  const colonne = playerState.walkFrame;
-  const ligne = getDirectionRow(playerState.direction);
-  const x = -colonne * PLAYER_FRAME_WIDTH;
-  const y = -ligne * PLAYER_FRAME_HEIGHT;
-  player.style.backgroundPosition = `${x}px ${y}px`;
-};
-
-const updatePlayerPosition = () => {
-  player.style.left = `${playerState.x - camera.x}px`;
-  player.style.top = `${playerState.y - camera.y - TILE_SIZE}px`;
-  player.style.zIndex = playerState.y;
-};
-
-/* ---------- JOUEUR - VIE ET MORT ---------- */
-
-const hpRefresh = () => {
-  const playerHp = document.querySelector(".php-red");
-  if (playerHp) {
-    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
-    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return false;
   }
+  return itemData.container === true;
 };
 
-const playerDead = () => {
-  playerState.experience = Math.floor(playerState.experience * 0.9);
-  if (playerState.experience < 0) {
-    playerState.experience = 0;
+/* ---------- OUTILS - MISE À JOUR DU MONDE ---------- */
+
+const updateWorldPosition = () => {
+  updateCamera();
+  if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
+    updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
   }
-  playerState.hp = playerState.maxHp;
-  playerState.x = playerSpawnX;
-  playerState.y = playerSpawnY;
-  updateWorldPosition();
-  updatePlayerExperience();
-  hpRefresh();
+  updateMapPosition();
+  updateItemPosition();
+  updateMonsterPosition();
+  updatePlayerPosition();
+  updateLight(playerState);
 };
-//#endregion  -----  PLAYER  -----
-
-/* ==================================================== */
-//#region     -----  CAMERA  -----
-/* ==================================================== */
-/* ---------- CAMERA - POSITION ---------- */
-
-const updateCamera = () => {
-  camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
-  camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
+const getAtlasSource = (col, row, spriteSize) => {
+  return {
+    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    sourceWidth: spriteSize,
+    sourceHeight: spriteSize,
+  };
 };
-//#endregion  -----  CAMERA  -----
+
+const getHpColor = (hp, maxHp) => {
+  const percent = hp / maxHp;
+
+  const hue = percent * 120;
+
+  return `hsl(${hue}, 100%, 45%)`;
+};
+
+const getAtlasPath = (atlasName) => {
+  if (atlasName === "items") {
+    return "./images/items/items-sheet.png";
+  }
+  if (atlasName === "monsters") {
+    return "./images/monstres/monsters-sheet.png";
+  }
+  console.error(`atlasName: ${atlasName} n'existe pas`);
+};
+
+/* ---------- OUTILS - SOURIS ---------- */
+const isMouseInsideMap = (mousePosition) => {
+  if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
+    return false;
+  }
+  return (
+    mousePosition.worldX >= 0 &&
+    mousePosition.worldX < mapWidth &&
+    mousePosition.worldY >= 0 &&
+    mousePosition.worldY < mapHeight
+  );
+};
+
+const updateMousePositionInfo = (screenX, screenY) => {
+  let gameScale = GAME_SCALE;
+  if (!Number.isFinite(GAME_SCALE) || GAME_SCALE <= 0) {
+    gameScale = 1;
+  }
+
+  const gameRect = game.getBoundingClientRect();
+  const gameX = (screenX - gameRect.left) / gameScale;
+  const gameY = (screenY - gameRect.top) / gameScale;
+  const worldX = camera.x + gameX;
+  const worldY = camera.y + gameY;
+  const col = Math.floor(worldX / TILE_SIZE);
+  const row = Math.floor(worldY / TILE_SIZE);
+
+  mousePosition.screenX = screenX;
+  mousePosition.screenY = screenY;
+  mousePosition.gameX = gameX;
+  mousePosition.gameY = gameY;
+  mousePosition.worldX = worldX;
+  mousePosition.worldY = worldY;
+  mousePosition.row = row;
+  mousePosition.col = col;
+  mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
+};
+//#endregion  -----  CORE - OUTILS ET HELPERS  -----
 
 /* ==================================================== */
-//#region     -----  MAP  -----
+//#region     -----  MAP - DONNÉES, AFFICHAGE ET COLLISIONS  -----
 /* ==================================================== */
-/* ---------- MAP - DONNEES ---------- */
+/* ---------- MAP - DONNÉES ---------- */
 
 const gameMap = [
   [
@@ -664,121 +682,479 @@ const updateMapPosition = () => {
     tile.style.top = `${worldY - camera.y}px`;
   });
 };
-//#endregion  -----  MAP  -----
+//#endregion  -----  MAP - DONNÉES, AFFICHAGE ET COLLISIONS  -----
 
 /* ==================================================== */
-//#region     -----  CORE - OUTILS / HELPERS  -----
+//#region     -----  PATHFINDING A*  -----
 /* ==================================================== */
-/* ---------- OUTILS - MATH ET DISTANCE ---------- */
+/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
 
-const getRandomInt = (min, max) => {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+const getTilePosition = (source) => {
+  const col = source.x / TILE_SIZE;
+  const row = source.y / TILE_SIZE;
+  return { col, row };
 };
 
-const isNearPlayer = (target, range = 1) => {
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
-  const targetCol = target.x / TILE_SIZE;
-  const targetRow = target.y / TILE_SIZE;
-
-  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
+const getWorldPosition = (tile) => {
+  const tileX = tile.col * TILE_SIZE;
+  const tileY = tile.row * TILE_SIZE;
+  return { tileX, tileY };
 };
 
-const isContainerItem = (item) => {
-  if (!item) {
+const getNeighbors = (tile) => {
+  return [
+    { row: tile.row, col: tile.col - 1 },
+    { row: tile.row, col: tile.col + 1 },
+    { row: tile.row - 1, col: tile.col },
+    { row: tile.row + 1, col: tile.col },
+  ];
+};
+
+const isWalkableTile = (row, col) => {
+  const tileX = col * TILE_SIZE;
+  const tileY = row * TILE_SIZE;
+  if (!isInsideMap(tileX, tileY)) {
     return false;
   }
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
+  const nextTile = gameMap[row][col];
+
+  if (
+    nextTile === FLOOR &&
+    !isMonsterAtPosition(tileX, tileY) &&
+    !isBlockingItemAtPosition(tileX, tileY) &&
+    !isPlayerAtPosition(tileX, tileY)
+  ) {
+    return true;
+  } else {
     return false;
   }
-  return itemData.container === true;
 };
 
-/* ---------- OUTILS - MISE A JOUR DU MONDE ---------- */
+const getDistance = (a, b) => {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+};
 
-const updateWorldPosition = () => {
-  updateCamera();
-  if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
-    updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
+const getNeighborNodes = (tile, targetTile) => {
+  const neighborsTile = getNeighbors(tile);
+  const neighborsNodes = [];
+  neighborsTile.forEach((neighbors) => {
+    if (isWalkableTile(neighbors.row, neighbors.col)) {
+      const g = tile.g + 1;
+      const h = getDistance(neighbors, targetTile);
+      const node = {
+        row: neighbors.row,
+        col: neighbors.col,
+        g: g,
+        h: h,
+        f: g + h,
+        parent: tile,
+      };
+      neighborsNodes.push(node);
+    }
+  });
+  return neighborsNodes;
+};
+
+/* ---------- PATHFINDING - NODES ET LISTES ---------- */
+
+const getSmallerF = (nodesList) => {
+  if (nodesList.length > 0) {
+    let smallF = nodesList[0];
+    nodesList.forEach((node) => {
+      if (node.f < smallF.f) {
+        smallF = node;
+      } else if (node.f === smallF.f) {
+        if (node.h < smallF.h) {
+          smallF = node;
+        }
+      }
+    });
+    return smallF;
   }
-  updateMapPosition();
-  updateItemPosition();
-  updateMonsterPosition();
-  updatePlayerPosition();
-  updateLight(playerState);
 };
-const getAtlasSource = (col, row, spriteSize) => {
-  return {
-    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceWidth: spriteSize,
-    sourceHeight: spriteSize,
+
+const isNodeInList = (node, list) => {
+  let nodeInList = false;
+  list.forEach((nodeList) => {
+    if (nodeList.row === node.row && nodeList.col === node.col) {
+      nodeInList = true;
+    }
+  });
+  return nodeInList;
+};
+
+const buildPath = (currentNode) => {
+  let path = [];
+  while (currentNode.parent) {
+    path.push(currentNode);
+    currentNode = currentNode.parent;
+  }
+  return path.reverse();
+};
+
+/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
+
+const pathDestination = (selfTile, destinationTile) => {
+  const neighbors = getNeighbors(destinationTile);
+  const possibleNeighbors = [];
+  let bestDistance = null;
+  let bestNeighbor = null;
+  neighbors.forEach((neighbor) => {
+    if (isWalkableTile(neighbor.row, neighbor.col)) {
+      possibleNeighbors.push(neighbor);
+    }
+  });
+  possibleNeighbors.forEach((possibleNeighbor) => {
+    const distance = getDistance(selfTile, possibleNeighbor);
+    if (bestDistance === null || distance < bestDistance) {
+      bestDistance = distance;
+      bestNeighbor = possibleNeighbor;
+    }
+  });
+
+  return bestNeighbor;
+};
+
+const findPath = (startTile, targetTile) => {
+  const openList = [];
+  const closedList = [];
+  const g = 0;
+  const h = getDistance(startTile, targetTile);
+  const startNode = {
+    row: startTile.row,
+    col: startTile.col,
+    g: g,
+    h: h,
+    f: g + h,
+    parent: null,
   };
-};
+  openList.push(startNode);
 
-const getHpColor = (hp, maxHp) => {
-  const percent = hp / maxHp;
-
-  const hue = percent * 120;
-
-  return `hsl(${hue}, 100%, 45%)`;
-};
-
-const getAtlasPath = (atlasName) => {
-  if (atlasName === "items") {
-    return "./images/items/items-sheet.png";
+  while (openList.length > 0) {
+    let currentNode = getSmallerF(openList);
+    const index = openList.indexOf(currentNode);
+    if (index > -1) {
+      openList.splice(index, 1);
+    }
+    closedList.push(currentNode);
+    if (currentNode.row === targetTile.row && currentNode.col === targetTile.col) {
+      return buildPath(currentNode);
+    } else {
+      const neighborsNodes = getNeighborNodes(currentNode, targetTile);
+      neighborsNodes.forEach((node) => {
+        if (!isNodeInList(node, closedList) && !isNodeInList(node, openList)) {
+          openList.push(node);
+        }
+      });
+    }
   }
-  if (atlasName === "monsters") {
-    return "./images/monstres/monsters-sheet.png";
-  }
-  console.error(`atlasName: ${atlasName} n'existe pas`);
+  return [];
 };
-
-/* ---------- OUTILS - SOURIS ---------- */
-const isMouseInsideMap = (mousePosition) => {
-  if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
-    return false;
-  }
-  return (
-    mousePosition.worldX >= 0 &&
-    mousePosition.worldX < mapWidth &&
-    mousePosition.worldY >= 0 &&
-    mousePosition.worldY < mapHeight
-  );
-};
-
-const updateMousePositionInfo = (screenX, screenY) => {
-  let gameScale = GAME_SCALE;
-  if (!Number.isFinite(GAME_SCALE) || GAME_SCALE <= 0) {
-    gameScale = 1;
-  }
-
-  const gameRect = game.getBoundingClientRect();
-  const gameX = (screenX - gameRect.left) / gameScale;
-  const gameY = (screenY - gameRect.top) / gameScale;
-  const worldX = camera.x + gameX;
-  const worldY = camera.y + gameY;
-  const col = Math.floor(worldX / TILE_SIZE);
-  const row = Math.floor(worldY / TILE_SIZE);
-
-  mousePosition.screenX = screenX;
-  mousePosition.screenY = screenY;
-  mousePosition.gameX = gameX;
-  mousePosition.gameY = gameY;
-  mousePosition.worldX = worldX;
-  mousePosition.worldY = worldY;
-  mousePosition.row = row;
-  mousePosition.col = col;
-  mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
-};
-
-//#endregion  -----  CORE - OUTILS / HELPERS  -----
+//#endregion  -----  PATHFINDING A*  -----
 
 /* ==================================================== */
-//#region     -----  ITEMS  -----
+//#region     -----  CAMÉRA  -----
 /* ==================================================== */
-/* ---------- ITEMS - ACCES BASE DE DONNEES ---------- */
+/* ---------- CAMÉRA - POSITION ---------- */
+
+const updateCamera = () => {
+  camera.x = playerState.x + TILE_SIZE / 2 - GAME_WIDTH / 2;
+  camera.y = playerState.y + TILE_SIZE / 2 - GAME_HEIGHT / 2;
+};
+//#endregion  -----  CAMÉRA  -----
+
+/* ==================================================== */
+//#region     -----  LUMIÈRE - CANVAS  -----
+/* ==================================================== */
+lightCanvas.width = GAME_WIDTH;
+lightCanvas.height = GAME_HEIGHT;
+const ctx = lightCanvas.getContext("2d");
+
+/* ---------- LUMIÈRE - AFFICHAGE ---------- */
+
+const updateLight = (source) => {
+  if (currentMap.dark) {
+    let lightRadius = 0;
+    const screenX = source.x - camera.x + TILE_SIZE / 2;
+    const screenY = source.y - camera.y + TILE_SIZE / 2;
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    if (source.light <= 0) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
+    } else {
+      ctx.fillStyle = "rgb(0, 0, 0)";
+    }
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.globalCompositeOperation = "destination-out";
+    if (source.light <= 0) {
+      lightRadius = 70;
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, lightRadius);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
+      gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.04)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(screenX - lightRadius, screenY - lightRadius, lightRadius * 2, lightRadius * 2);
+    } else {
+      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light);
+      gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
+      gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+
+      ctx.fillRect(screenX - source.light, screenY - source.light, source.light * 2, source.light * 2);
+      const bright = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light * 0.85);
+      ctx.globalCompositeOperation = "source-over";
+      bright.addColorStop(0, "rgba(251, 255, 137, 0)");
+      bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
+      bright.addColorStop(0.7, "rgba(249, 97, 2, 0.07)");
+      bright.addColorStop(0.8, "rgba(249, 2, 2, 0.07)");
+      bright.addColorStop(1, "rgba(255, 0, 0, 0)");
+      ctx.fillStyle = bright;
+
+      ctx.fillRect(
+        screenX - source.light * 0.85,
+        screenY - source.light * 0.85,
+        source.light * 2 * 0.85,
+        source.light * 2 * 0.85,
+      );
+    }
+    ctx.globalCompositeOperation = "source-over";
+  } else {
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  }
+};
+//#endregion  -----  LUMIÈRE - CANVAS  -----
+
+/* ==================================================== */
+//#region     -----  JOUEUR - DONNÉES ET AFFICHAGE  -----
+/* ==================================================== */
+/* ---------- JOUEUR - DONNÉES ---------- */
+
+const playerState = {
+  x: playerSpawnX,
+  y: playerSpawnY,
+  name: "Charles",
+  hp: 30,
+  maxHp: 30,
+  level: 0,
+  experience: 0,
+  gold: 0,
+  damage: 10,
+  magicSkill: 0,
+  swordSkill: 1,
+  maceSkill: 1,
+  axeSkill: 1,
+  distanceSkill: 1,
+  shieldSkill: 1,
+  carriedWeight: 0,
+  capacity: 350,
+  speed: 1,
+  direction: "down",
+  walkFrame: 1,
+  light: 900,
+  equipment: {
+    necklace: null,
+    helmet: null,
+    armor: null,
+    shield: null,
+    weapon: null,
+    legs: null,
+    ammo: null,
+    ring: null,
+    boots: null,
+    backpack: null,
+  },
+};
+
+/* ---------- JOUEUR - AFFICHAGE ---------- */
+
+const showPlayerName = (name) => {
+  const playerName = document.createElement("div");
+  playerName.classList.add("name");
+  playerName.textContent = `${name}`;
+  player.appendChild(playerName);
+};
+
+const getDirectionRow = (playerDirection) => {
+  if (playerDirection === "down") {
+    return 0;
+  } else if (playerDirection === "left") {
+    return 1;
+  } else if (playerDirection === "right") {
+    return 2;
+  } else if (playerDirection === "up") {
+    return 3;
+  }
+  return 0;
+};
+
+const updatePlayerSprite = () => {
+  const colonne = playerState.walkFrame;
+  const ligne = getDirectionRow(playerState.direction);
+  const x = -colonne * PLAYER_FRAME_WIDTH;
+  const y = -ligne * PLAYER_FRAME_HEIGHT;
+  player.style.backgroundPosition = `${x}px ${y}px`;
+};
+
+const updatePlayerPosition = () => {
+  player.style.left = `${playerState.x - camera.x}px`;
+  player.style.top = `${playerState.y - camera.y - TILE_SIZE}px`;
+  player.style.zIndex = playerState.y;
+};
+
+/* ---------- JOUEUR - VIE ET MORT ---------- */
+
+const hpRefresh = () => {
+  const playerHp = document.querySelector(".php-red");
+  if (playerHp) {
+    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
+    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
+  }
+};
+
+const playerDead = () => {
+  playerState.experience = Math.floor(playerState.experience * 0.9);
+  if (playerState.experience < 0) {
+    playerState.experience = 0;
+  }
+  playerState.hp = playerState.maxHp;
+  playerState.x = playerSpawnX;
+  playerState.y = playerSpawnY;
+  updateWorldPosition();
+  updatePlayerExperience();
+  hpRefresh();
+};
+//#endregion  -----  JOUEUR - DONNÉES ET AFFICHAGE  -----
+
+/* ==================================================== */
+//#region     -----  JOUEUR - CONSTANTES SPRITE  -----
+/* ==================================================== */
+const PLAYER_FRAME_WIDTH = TILE_SIZE;
+const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
+const PLAYER_ANIMATION_FRAMES = 3;
+//#endregion  -----  JOUEUR - CONSTANTES SPRITE  -----
+
+/* ==================================================== */
+//#region     -----  JOUEUR - MOUVEMENT  -----
+/* ==================================================== */
+const keysPressed = {
+  right: false,
+  left: false,
+  up: false,
+  down: false,
+};
+
+/* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
+
+const getPlayerMoveCooldown = () => {
+  if (playerState.level < 100) {
+    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
+  } else {
+    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
+  }
+};
+
+const getWantedDirection = () => {
+  if (keysPressed.right) {
+    return "right";
+  } else if (keysPressed.left) {
+    return "left";
+  } else if (keysPressed.up) {
+    return "up";
+  } else if (keysPressed.down) {
+    return "down";
+  } else {
+    return;
+  }
+};
+
+/* ---------- JOUEUR - MISE À JOUR DU MOUVEMENT ---------- */
+
+const updateMovement = () => {
+  const direction = getWantedDirection();
+  if (!direction) {
+    playerState.walkFrame = 1;
+    updatePlayerSprite();
+    return;
+  }
+
+  const now = Date.now();
+  if (now < nextPlayerMoveTime) {
+    return;
+  }
+  let nextX = playerState.x;
+  let nextY = playerState.y;
+  if (direction === "right") {
+    nextX += MOVE_SPEED;
+  } else if (direction === "left") {
+    nextX -= MOVE_SPEED;
+  } else if (direction === "up") {
+    nextY -= MOVE_SPEED;
+  } else if (direction === "down") {
+    nextY += MOVE_SPEED;
+  } else {
+    return;
+  }
+
+  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
+    playerState.x = nextX;
+    playerState.y = nextY;
+    playerState.direction = direction;
+    playerState.walkFrame += 1;
+    if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
+      playerState.walkFrame = 0;
+    }
+  }
+  updatePlayerSprite();
+  updateWorldPosition();
+  nextPlayerMoveTime = now + getPlayerMoveCooldown();
+  closeFarOpenedContainers();
+};
+//#endregion  -----  JOUEUR - MOUVEMENT  -----
+
+/* ==================================================== */
+//#region     -----  JOUEUR - COMBAT  -----
+/* ==================================================== */
+/* ---------- COMBAT JOUEUR - ATTAQUE ET MISE À JOUR ---------- */
+
+const attackMonster = (monster) => {
+  const monsterData = getMonsterData(monster.monsterId);
+  monster.hp -= getRandomInt(1, playerState.damage);
+  if (monster.hp <= 0) {
+    monster.hp = 0;
+    MonsterHpRefresh(monster);
+    deadMonster(monster);
+    playerState.experience += monsterData.experience;
+    updatePlayerExperience();
+    return;
+  }
+  MonsterHpRefresh(monster);
+};
+
+const updateCombat = () => {
+  if (selectedMonsterId === null) {
+    return;
+  }
+  const monster = findMonsterById(selectedMonsterId);
+  if (!monster) {
+    return;
+  }
+  if (!isNearPlayer(monster)) {
+    return;
+  }
+  const now = Date.now();
+  if (now < nextPlayerAttackTime) {
+    return;
+  }
+  attackMonster(monster);
+  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+};
+//#endregion  -----  JOUEUR - COMBAT  -----
+
+/* ==================================================== */
+//#region     -----  OBJETS - DONNÉES ET RENDU  -----
+/* ==================================================== */
+/* ---------- OBJETS - ACCÈS BASE DE DONNÉES ---------- */
 
 const getItemData = (itemId) => {
   if (itemsDatabase[itemId]) {
@@ -789,7 +1165,7 @@ const getItemData = (itemId) => {
   }
 };
 
-/* ---------- ITEMS - VALIDATION GAMEPLAY ---------- */
+/* ---------- OBJETS - VALIDATION GAMEPLAY ---------- */
 
 const isValidWorldItem = (item) => {
   if (!item) {
@@ -809,7 +1185,7 @@ const isValidWorldItem = (item) => {
   return true;
 };
 
-/* ---------- ITEMS - DONNEES ATLAS ---------- */
+/* ---------- OBJETS - DONNÉES ATLAS ---------- */
 
 const getItemRenderParts = (itemId) => {
   const itemData = getItemData(itemId);
@@ -884,7 +1260,7 @@ const applyItemRenderPartPosition = (element, position) => {
   element.style.zIndex = position.zIndex;
 };
 
-/* ---------- ITEMS - VALIDATION ATLAS FUTUR ---------- */
+/* ---------- OBJETS - VALIDATION ATLAS FUTUR ---------- */
 
 const isValidItemRenderPart = (part) => {
   if (
@@ -908,12 +1284,12 @@ const areValidItemRenderParts = (parts) => {
     return isValidItemRenderPart(part);
   });
 };
-//#endregion  -----  ITEMS  -----
+//#endregion  -----  OBJETS - DONNÉES ET RENDU  -----
 
 /* ==================================================== */
-//#region     -----  ITEMS - MONDE ET RENDU DOM  -----
+//#region     -----  OBJETS - MONDE ET RENDU DOM  -----
 /* ==================================================== */
-/* ---------- ITEMS - CREATION DONNEES ---------- */
+/* ---------- OBJETS - CRÉATION DES DONNÉES ---------- */
 const createItemInstance = (itemId, quantity, content = []) => {
   const itemData = getItemData(itemId);
   if (!itemData) {
@@ -944,7 +1320,7 @@ const createGroundItem = (itemId, quantity, x, y, content = []) => {
   return worldItem;
 };
 
-/* ---------- ITEMS - CREATION DOM ---------- */
+/* ---------- OBJETS - CRÉATION DOM ---------- */
 
 const createItemPartElement = (item, part, partIndex) => {
   const itemData = getItemData(item.itemId);
@@ -1006,7 +1382,7 @@ const renderGroundItemParts = (item) => {
   game.appendChild(createWorldItemHitbox(item));
 };
 
-/* ---------- ITEMS - AFFICHAGE DOM ---------- */
+/* ---------- OBJETS - AFFICHAGE DOM ---------- */
 
 const renderGroundItems = (items) => {
   for (let i = 0; i < items.length; i++) {
@@ -1015,7 +1391,7 @@ const renderGroundItems = (items) => {
   }
 };
 
-/* ---------- ITEMS - AJOUT ET RETRAIT MONDE ---------- */
+/* ---------- OBJETS - AJOUT ET RETRAIT DU MONDE ---------- */
 
 const addGroundItem = (worldItem) => {
   if (isValidWorldItem(worldItem)) {
@@ -1035,7 +1411,7 @@ const removeGroundItemRender = (itemUid) => {
   });
 };
 
-/* ---------- ITEMS - COLLISION ---------- */
+/* ---------- OBJETS - COLLISION ---------- */
 
 const isBlockingItemAtPosition = (x, y) => {
   return worldItems.some((item) => {
@@ -1047,12 +1423,12 @@ const isBlockingItemAtPosition = (x, y) => {
     }
   });
 };
-//#endregion  -----  ITEMS - MONDE ET RENDU DOM  -----
+//#endregion  -----  OBJETS - MONDE ET RENDU DOM  -----
 
 /* ==================================================== */
-//#region     -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
+//#region     -----  INVENTAIRE - POIDS ET MISE À JOUR  -----
 /* ==================================================== */
-/* ---------- INVENTAIRE - CALCULE DONNEES ---------- */
+/* ---------- INVENTAIRE - CALCUL DES DONNÉES ---------- */
 
 const getItemTotalWeight = (item) => {
   if (!item) {
@@ -1093,7 +1469,7 @@ const updatePlayerCarriedWeight = () => {
   playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
 };
 
-/* ---------- INVENTAIRE - MISE A JOUR ITEMS ---------- */
+/* ---------- INVENTAIRE - MISE À JOUR DES OBJETS ---------- */
 
 const updateItemPosition = () => {
   worldItems.forEach((item) => {
@@ -1123,722 +1499,11 @@ const updateItemPosition = () => {
     });
   });
 };
-//#endregion  -----  ITEMS - INVENTAIRE - DONNEES ET INTERACTIONS  -----
+//#endregion  -----  INVENTAIRE - POIDS ET MISE À JOUR  -----
 
 /* ==================================================== */
-//#region     -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
+//#region     -----  UI - INVENTAIRE, STATS ET SCALE  -----
 /* ==================================================== */
-
-/* ---------- DRAG - ETAT ---------- */
-
-const resetDragState = () => {
-  dragState.isDragging = false;
-  dragState.item = null;
-  dragState.sourceType = null;
-  dragState.sourceSlotIndex = null;
-  dragState.sourceSlotName = null;
-  dragState.sourceContainerUid = null;
-  dragState.sourceWorldItemUid = null;
-};
-
-const cancelItemDrag = () => {
-  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
-  const draggingWorld = document.querySelectorAll(".world-item-selected");
-
-  draggingSlots.forEach((slot) => {
-    slot.classList.remove("container-slot-dragging");
-  });
-  draggingWorld.forEach((worldItem) => {
-    worldItem.classList.remove("world-item-selected");
-  });
-  resetDragState();
-};
-
-/* ---------- DRAG - DEPART SOURCE ---------- */
-
-const startItemDrag = (source) => {
-  if (!source) {
-    return;
-  }
-  const item = getDragSourceItem(source);
-  if (!item) {
-    return;
-  }
-  resetDragState();
-  dragState.isDragging = true;
-  dragState.item = item;
-
-  if (source.type === "container") {
-    dragState.sourceType = "container";
-    dragState.sourceContainerUid = source.containerUid;
-    dragState.sourceSlotIndex = source.slotIndex;
-  } else if (source.type === "equipment") {
-    dragState.sourceType = "equipment";
-    dragState.sourceSlotName = source.slotName;
-  } else if (source.type === "world") {
-    dragState.sourceType = "world";
-    dragState.sourceWorldItemUid = source.worldItemUid;
-  } else {
-    resetDragState();
-    return;
-  }
-};
-
-/* ---------- DRAG - LECTURE SOURCE ---------- */
-const getDragSourceFromState = () => {
-  if (!dragState.isDragging) {
-    return null;
-  }
-  if (dragState.sourceType === "container") {
-    return {
-      type: dragState.sourceType,
-      containerUid: dragState.sourceContainerUid,
-      slotIndex: dragState.sourceSlotIndex,
-    };
-  } else if (dragState.sourceType === "equipment") {
-    return {
-      type: dragState.sourceType,
-      slotName: dragState.sourceSlotName,
-    };
-  } else if (dragState.sourceType === "world") {
-    return {
-      type: dragState.sourceType,
-      worldItemUid: dragState.sourceWorldItemUid,
-    };
-  } else {
-    return null;
-  }
-};
-
-const getDragSourceItem = (source) => {
-  if (!source) {
-    return null;
-  }
-
-  if (source.type === "container") {
-    const container = findOpenedContainerItemByUid(source.containerUid);
-    if (!container || !container.content) {
-      return null;
-    }
-    return container.content[source.slotIndex];
-  } else if (source.type === "equipment") {
-    const item = getEquipmentSlotItem(source.slotName);
-    return item;
-  } else if (source.type === "world") {
-    const item = worldItems.find((item) => {
-      return item.uid === source.worldItemUid;
-    });
-    if (!item) {
-      return null;
-    }
-    return item;
-  } else {
-    return null;
-  }
-};
-
-/* ---------- DRAG - MODIFICATION SOURCE ---------- */
-
-const removeItemFromDragSource = (source) => {
-  if (!source) {
-    return null;
-  }
-  const item = getDragSourceItem(source);
-  if (!item) {
-    return null;
-  }
-  if (source.type === "container") {
-    const container = findOpenedContainerItemByUid(source.containerUid);
-    if (!container || !container.content) {
-      return null;
-    }
-    container.content[source.slotIndex] = null;
-    return item;
-  } else if (source.type === "equipment") {
-    const slotName = source.slotName;
-    playerState.equipment[slotName] = null;
-    return item;
-  } else if (source.type === "world") {
-    const itemIndex = worldItems.findIndex((worldItem) => {
-      return worldItem.uid === source.worldItemUid;
-    });
-
-    if (itemIndex === -1) {
-      return null;
-    }
-    worldItems.splice(itemIndex, 1);
-    removeGroundItemRender(item.uid);
-    return item;
-  } else {
-    return null;
-  }
-};
-
-/* ---------- DRAG - DESTINATION ---------- */
-
-const placeItemInDragDestination = (destination, item) => {
-  if (!destination || !item) {
-    return null;
-  }
-  if (destination.type === "container") {
-    let container = null;
-    if (destination.containerItem) {
-      container = destination.containerItem;
-    } else {
-      container = findOpenedContainerItemByUid(destination.containerUid);
-    }
-    if (!container || !container.content) {
-      return null;
-    }
-    if (!container.content[destination.slotIndex]) {
-      container.content[destination.slotIndex] = item;
-      return true;
-    } else {
-      const existingItem = container.content[destination.slotIndex];
-      container.content[destination.slotIndex] = item;
-      return existingItem;
-    }
-  } else if (destination.type === "equipment") {
-    if (
-      !destination.slotName ||
-      !(destination.slotName in playerState.equipment) ||
-      !canPlaceItemInEquipmentSlot(item, destination.slotName)
-    ) {
-      return null;
-    }
-
-    if (!playerState.equipment[destination.slotName]) {
-      playerState.equipment[destination.slotName] = item;
-      return true;
-    } else {
-      const existingItem = playerState.equipment[destination.slotName];
-      playerState.equipment[destination.slotName] = item;
-      return existingItem;
-    }
-  } else if (destination.type === "world") {
-    const tilePosition = getTilePosition(destination);
-    if (
-      !Number.isInteger(destination.x) ||
-      !Number.isInteger(destination.y) ||
-      !isInsideMap(destination.x, destination.y) ||
-      gameMap[tilePosition.row][tilePosition.col] !== FLOOR
-    ) {
-      return null;
-    }
-
-    item.x = destination.x;
-    item.y = destination.y;
-    addGroundItem(item);
-    return true;
-  } else {
-    return null;
-  }
-};
-
-const isItemInsideContainer = (containerItem, searchedItemUid) => {
-  if (!containerItem || !containerItem.content) {
-    return false;
-  }
-  const itemData = getItemData(containerItem.itemId);
-  if (!itemData || !itemData.capacity) {
-    return false;
-  }
-  for (let index = 0; index < itemData.capacity; index++) {
-    const item = containerItem.content[index];
-
-    if (!item) {
-      continue;
-    }
-    if (item.uid === searchedItemUid) {
-      return true;
-    }
-    if (isContainerItem(item)) {
-      if (isItemInsideContainer(item, searchedItemUid)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-/* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
-const refreshItemUiAfterDrag = () => {
-  renderContainerDock();
-  updatePlayerCarriedWeight();
-  updatePlayerInventory();
-  cancelItemDrag();
-};
-
-const canPlaceItemInEquipmentSlot = (item, slotName) => {
-  if (!item || !slotName) {
-    return false;
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData || !Array.isArray(itemData.equipmentSlot)) {
-    return false;
-  }
-  return itemData.equipmentSlot.includes(slotName);
-};
-
-const findFirstEmptyContainerSlot = (containerItem) => {
-  if (!containerItem || !containerItem.content) {
-    return null;
-  }
-  const itemData = getItemData(containerItem.itemId);
-  if (!itemData || !itemData.capacity) {
-    return null;
-  }
-  for (let index = 0; index < itemData.capacity; index++) {
-    if (!containerItem.content[index]) {
-      return index;
-    }
-  }
-  return null;
-};
-
-const closeFarOpenedContainers = () => {
-  openedContainers.forEach((container) => {
-    if (container.sourceType === "world" && !isNearPlayer(container.item, 1)) {
-      closeContainer(container.item);
-    }
-  });
-};
-
-const updateOpenedContainerSourceType = (item, sourceType) => {
-  openedContainers.forEach((container) => {
-    if (container.item.uid === item.uid) {
-      container.sourceType = sourceType;
-    }
-  });
-};
-
-const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
-  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
-    const itemData = getItemData(sourceItem.itemId);
-    let canMoveRestToFreeSlot = true;
-    if (itemData && itemData.stackable) {
-      const freeStackSpace = 100 - destinationItem.quantity;
-      let quantityAllowed = freeStackSpace;
-      if (!isDragAddressCarriedByPlayer(source) && isDragAddressCarriedByPlayer(destination)) {
-        const freeCapSpace = playerState.capacity - calculatePlayerCarriedWeight();
-        const maxQuantityByCapacity = Math.floor(freeCapSpace / itemData.weight);
-        canMoveRestToFreeSlot = maxQuantityByCapacity >= sourceItem.quantity;
-        quantityAllowed = Math.min(freeStackSpace, maxQuantityByCapacity);
-      }
-      if (freeStackSpace <= 0) {
-        return false;
-      }
-
-      if (quantityAllowed <= 0) {
-        cancelItemDrag();
-        return true;
-      }
-
-      if (sourceItem.quantity <= quantityAllowed) {
-        destinationItem.quantity += sourceItem.quantity;
-        removeItemFromDragSource(source);
-        refreshItemUiAfterDrag();
-        return true;
-      }
-
-      if (sourceItem.quantity > quantityAllowed) {
-        destinationItem.quantity += quantityAllowed;
-        sourceItem.quantity -= quantityAllowed;
-      }
-      if (destination.type === "container" && quantityAllowed === freeStackSpace && canMoveRestToFreeSlot) {
-        const containerItem = findOpenedContainerItemByUid(destination.containerUid);
-        const freeSlot = findFirstEmptyContainerSlot(containerItem);
-        if (freeSlot !== null) {
-          const tempDestination = {
-            type: "container",
-            containerUid: destination.containerUid,
-            slotIndex: freeSlot,
-          };
-          const result = placeItemInDragDestination(tempDestination, sourceItem);
-          if (result) {
-            const removedItem = removeItemFromDragSource(source);
-            if (!removedItem) {
-              containerItem.content[freeSlot] = null;
-              cancelItemDrag();
-              return true;
-            }
-          }
-        }
-      }
-      refreshItemUiAfterDrag();
-      return true;
-    }
-  }
-
-  return false;
-};
-
-const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationItem) => {
-  if (destinationItem && isContainerItem(destinationItem)) {
-    if (destinationItem === sourceItem) {
-      cancelItemDrag();
-      return true;
-    }
-
-    const emptySlot = findFirstEmptyContainerSlot(destinationItem);
-    if (emptySlot === null) {
-      cancelItemDrag();
-      return true;
-    }
-
-    const destinationSlotContainer = {
-      type: "container",
-      containerItem: destinationItem,
-      slotIndex: emptySlot,
-    };
-
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return true;
-    }
-    placeItemInDragDestination(destinationSlotContainer, removedItem);
-    if (isContainerItem(removedItem)) {
-      updateOpenedContainerSourceType(removedItem, "container");
-    }
-
-    refreshItemUiAfterDrag();
-    return true;
-  }
-  return false;
-};
-
-const tryMoveItemToEmptySlotDuringDrag = (source, sourceItem, destination, destinationItem) => {
-  if (
-    !destinationItem &&
-    (destination.type === "container" ||
-      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName)))
-  ) {
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return true;
-    }
-    placeItemInDragDestination(destination, removedItem);
-    if (isContainerItem(removedItem)) {
-      if (destination.type === "container") {
-        updateOpenedContainerSourceType(removedItem, "container");
-      } else if (destination.type === "equipment") {
-        updateOpenedContainerSourceType(removedItem, "equipment");
-      }
-    }
-    refreshItemUiAfterDrag();
-    return true;
-  }
-  return false;
-};
-
-const tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag = (source, destination, destinationItem) => {
-  if (
-    source.type === "equipment" &&
-    destination.type === "container" &&
-    destinationItem &&
-    !canPlaceItemInEquipmentSlot(destinationItem, source.slotName)
-  ) {
-    const destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
-    if (!destinationContainer) {
-      cancelItemDrag();
-      return true;
-    }
-    const emptySlot = findFirstEmptyContainerSlot(destinationContainer);
-    if (emptySlot === null) {
-      cancelItemDrag();
-      return true;
-    }
-
-    const destinationSlotContainer = {
-      type: "container",
-      containerUid: destination.containerUid,
-      slotIndex: emptySlot,
-    };
-
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return true;
-    }
-    placeItemInDragDestination(destinationSlotContainer, removedItem);
-    if (isContainerItem(removedItem)) {
-      updateOpenedContainerSourceType(removedItem, "container");
-    }
-    refreshItemUiAfterDrag();
-    return true;
-  }
-  return false;
-};
-
-const trySwapItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
-  if (
-    (destination.type === "container" ||
-      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName))) &&
-    (source.type === "container" ||
-      (source.type === "equipment" && canPlaceItemInEquipmentSlot(destinationItem, source.slotName)))
-  ) {
-    const removedSource = removeItemFromDragSource(source);
-    if (!removedSource) {
-      cancelItemDrag();
-      return true;
-    }
-    const removedDestination = removeItemFromDragSource(destination);
-    if (!removedDestination) {
-      cancelItemDrag();
-      return true;
-    }
-    placeItemInDragDestination(destination, removedSource);
-    if (isContainerItem(removedSource)) {
-      updateOpenedContainerSourceType(removedSource, destination.type);
-    }
-    placeItemInDragDestination(source, removedDestination);
-    if (isContainerItem(removedDestination)) {
-      updateOpenedContainerSourceType(removedDestination, source.type);
-    }
-    refreshItemUiAfterDrag();
-    return true;
-  }
-  return false;
-};
-
-const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
-  if (destination.type === "world") {
-    if (!isNearPlayer(destination, 9)) {
-      cancelItemDrag();
-      return true;
-    }
-    const oldSource = {
-      type: "world",
-      x: sourceItem.x,
-      y: sourceItem.y,
-    };
-    const removedItem = removeItemFromDragSource(source);
-    if (!removedItem) {
-      cancelItemDrag();
-      return true;
-    }
-
-    const result = placeItemInDragDestination(destination, removedItem);
-    if (result) {
-      if (isContainerItem(removedItem)) {
-        updateOpenedContainerSourceType(removedItem, "world");
-        closeFarOpenedContainers();
-      }
-
-      refreshItemUiAfterDrag();
-
-      return true;
-    } else {
-      if (source.type === "world") {
-        placeItemInDragDestination(oldSource, removedItem);
-        refreshItemUiAfterDrag();
-        return true;
-      } else {
-        placeItemInDragDestination(source, removedItem);
-        refreshItemUiAfterDrag();
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const isItemCarriedByPlayer = (itemUid) => {
-  return Object.values(playerState.equipment).some((equipment) => {
-    if (!equipment) {
-      return false;
-    }
-    return isItemInsideItem(equipment, itemUid);
-  });
-};
-
-const isItemInsideItem = (item, searchedUid) => {
-  if (!item) {
-    return false;
-  }
-  if (item.uid === searchedUid) {
-    return true;
-  }
-  if (!isContainerItem(item)) {
-    return false;
-  }
-  return item.content.some((itemInContainer) => {
-    return isItemInsideItem(itemInContainer, searchedUid);
-  });
-};
-
-const isDragAddressCarriedByPlayer = (adress) => {
-  if (adress.type === "equipment") {
-    return true;
-  }
-  if (adress.type === "world") {
-    return false;
-  }
-  if (adress.type === "container") {
-    const container = openedContainers.find((container) => {
-      return adress.containerUid === container.item.uid;
-    });
-    if (!container) {
-      return false;
-    }
-    return isItemCarriedByPlayer(container.item.uid);
-  }
-  return false;
-};
-const isOpenedContainerCarriedByPlayer = (openedContainer) => {
-  if (!openedContainer) {
-    return false;
-  }
-
-  if (openedContainer.sourceType === "equipment") {
-    return true;
-  }
-  if (openedContainer.sourceType === "world") {
-    return false;
-  }
-  if (openedContainer.sourceType === "container") {
-    if (openedContainer.parent !== null) {
-      return isOpenedContainerCarriedByPlayer(openedContainer.parent);
-    }
-  }
-  return false;
-};
-
-const isExceedCapacity = (source, destination, item) => {
-  const sourceCarried = isDragAddressCarriedByPlayer(source);
-  const destinationCarried = isDragAddressCarriedByPlayer(destination);
-  if (!sourceCarried && destinationCarried) {
-    if (playerState.capacity - playerState.carriedWeight < getItemTotalWeight(item)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const isSameDragSourceAndDestination = (source, destination) => {
-  if (
-    source.type === "container" &&
-    destination.type === "container" &&
-    source.containerUid === destination.containerUid &&
-    source.slotIndex === destination.slotIndex
-  ) {
-    return true;
-  }
-  if (source.type === "equipment" && destination.type === "equipment" && source.slotName === destination.slotName) {
-    return true;
-  }
-  return false;
-};
-
-const isContainerMoveIntoContainerItemItself = (sourceItem, destinationItem) => {
-  if (isContainerItem(sourceItem) && destinationItem && isContainerItem(destinationItem)) {
-    if (destinationItem.uid === sourceItem.uid) {
-      return true;
-    }
-    if (isItemInsideContainer(sourceItem, destinationItem.uid)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const isContainerMoveIntoItself = (sourceItem, destinationContainer) => {
-  if (isContainerItem(sourceItem) && destinationContainer) {
-    if (destinationContainer.uid === sourceItem.uid || isItemInsideContainer(sourceItem, destinationContainer.uid)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const isDropStackToStack = (sourceItem, destinationItem) => {
-  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
-    const itemData = getItemData(sourceItem.itemId);
-    if (itemData && itemData.stackable === true) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const completeItemDrag = (destination) => {
-  if (!dragState.isDragging || !destination) {
-    cancelItemDrag();
-    return;
-  }
-  const source = getDragSourceFromState();
-  const sourceItem = getDragSourceItem(source);
-  if (sourceItem !== dragState.item) {
-    cancelItemDrag();
-    return;
-  }
-  if (source.type === "world" && !isNearPlayer(sourceItem, 1)) {
-    cancelItemDrag();
-    return;
-  }
-
-  if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
-    return;
-  }
-
-  const destinationItem = getDragSourceItem(destination);
-
-  if (!isDropStackToStack(sourceItem, destinationItem)) {
-    if (isExceedCapacity(source, destination, sourceItem)) {
-      cancelItemDrag();
-      return;
-    }
-  }
-
-  if (isSameDragSourceAndDestination(source, destination)) {
-    cancelItemDrag();
-    return;
-  }
-
-  let destinationContainer = null;
-  if (destination.type === "container") {
-    destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
-  }
-
-  if (isContainerMoveIntoItself(sourceItem, destinationContainer)) {
-    cancelItemDrag();
-    return;
-  }
-
-  if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return;
-  }
-
-  if (isContainerMoveIntoContainerItemItself(sourceItem, destinationItem)) {
-    cancelItemDrag();
-    return;
-  }
-
-  if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
-    return;
-  }
-
-  if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return;
-  }
-
-  if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
-    return;
-  }
-
-  if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return;
-  }
-  cancelItemDrag();
-};
-//#endregion  -----  DRAG AND DROP - DONNEES ET ACTIONS  -----
-
-/* ==================================================== */
-//#region     -----  UI  -----
-/* ==================================================== */
-
 /* ---------- UI - INVENTAIRE ---------- */
 const getEquipmentSlotItem = (slotName) => {
   if (!playerState.equipment[slotName]) {
@@ -2220,152 +1885,1072 @@ const updateGameScale = () => {
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
   boiteJeuxInner.style.top = `${gameTop}px`;
 };
-//#endregion  -----  UI  -----
+//#endregion  -----  UI - INVENTAIRE, STATS ET SCALE  -----
 
 /* ==================================================== */
-//#region     -----  LIGHT - CANVAS  -----
+//#region     -----  DRAG AND DROP - OBJETS  -----
 /* ==================================================== */
-lightCanvas.width = GAME_WIDTH;
-lightCanvas.height = GAME_HEIGHT;
-const ctx = lightCanvas.getContext("2d");
+/* ---------- DRAG AND DROP - ÉTAT ---------- */
 
-/* ---------- LUMIERE - AFFICHAGE ---------- */
+const resetDragState = () => {
+  dragState.isDragging = false;
+  dragState.item = null;
+  dragState.sourceType = null;
+  dragState.sourceSlotIndex = null;
+  dragState.sourceSlotName = null;
+  dragState.sourceContainerUid = null;
+  dragState.sourceWorldItemUid = null;
+};
 
-const updateLight = (source) => {
-  if (currentMap.dark) {
-    let lightRadius = 0;
-    const screenX = source.x - camera.x + TILE_SIZE / 2;
-    const screenY = source.y - camera.y + TILE_SIZE / 2;
-    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    if (source.light <= 0) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.96)";
+const cancelItemDrag = () => {
+  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
+  const draggingWorld = document.querySelectorAll(".world-item-selected");
+
+  draggingSlots.forEach((slot) => {
+    slot.classList.remove("container-slot-dragging");
+  });
+  draggingWorld.forEach((worldItem) => {
+    worldItem.classList.remove("world-item-selected");
+  });
+  resetDragState();
+};
+
+/* ---------- DRAG AND DROP - DÉPART SOURCE ---------- */
+
+const startItemDrag = (source) => {
+  if (!source) {
+    return;
+  }
+  const item = getDragSourceItem(source);
+  if (!item) {
+    return;
+  }
+  resetDragState();
+  dragState.isDragging = true;
+  dragState.item = item;
+
+  if (source.type === "container") {
+    dragState.sourceType = "container";
+    dragState.sourceContainerUid = source.containerUid;
+    dragState.sourceSlotIndex = source.slotIndex;
+  } else if (source.type === "equipment") {
+    dragState.sourceType = "equipment";
+    dragState.sourceSlotName = source.slotName;
+  } else if (source.type === "world") {
+    dragState.sourceType = "world";
+    dragState.sourceWorldItemUid = source.worldItemUid;
+  } else {
+    resetDragState();
+    return;
+  }
+};
+
+/* ---------- DRAG AND DROP - LECTURE SOURCE ---------- */
+const getDragSourceFromState = () => {
+  if (!dragState.isDragging) {
+    return null;
+  }
+  if (dragState.sourceType === "container") {
+    return {
+      type: dragState.sourceType,
+      containerUid: dragState.sourceContainerUid,
+      slotIndex: dragState.sourceSlotIndex,
+    };
+  } else if (dragState.sourceType === "equipment") {
+    return {
+      type: dragState.sourceType,
+      slotName: dragState.sourceSlotName,
+    };
+  } else if (dragState.sourceType === "world") {
+    return {
+      type: dragState.sourceType,
+      worldItemUid: dragState.sourceWorldItemUid,
+    };
+  } else {
+    return null;
+  }
+};
+
+const getDragSourceItem = (source) => {
+  if (!source) {
+    return null;
+  }
+
+  if (source.type === "container") {
+    const container = findOpenedContainerItemByUid(source.containerUid);
+    if (!container || !container.content) {
+      return null;
+    }
+    return container.content[source.slotIndex];
+  } else if (source.type === "equipment") {
+    const item = getEquipmentSlotItem(source.slotName);
+    return item;
+  } else if (source.type === "world") {
+    const item = worldItems.find((item) => {
+      return item.uid === source.worldItemUid;
+    });
+    if (!item) {
+      return null;
+    }
+    return item;
+  } else {
+    return null;
+  }
+};
+
+/* ---------- DRAG AND DROP - MODIFICATION SOURCE ---------- */
+
+const removeItemFromDragSource = (source) => {
+  if (!source) {
+    return null;
+  }
+  const item = getDragSourceItem(source);
+  if (!item) {
+    return null;
+  }
+  if (source.type === "container") {
+    const container = findOpenedContainerItemByUid(source.containerUid);
+    if (!container || !container.content) {
+      return null;
+    }
+    container.content[source.slotIndex] = null;
+    return item;
+  } else if (source.type === "equipment") {
+    const slotName = source.slotName;
+    playerState.equipment[slotName] = null;
+    return item;
+  } else if (source.type === "world") {
+    const itemIndex = worldItems.findIndex((worldItem) => {
+      return worldItem.uid === source.worldItemUid;
+    });
+
+    if (itemIndex === -1) {
+      return null;
+    }
+    worldItems.splice(itemIndex, 1);
+    removeGroundItemRender(item.uid);
+    return item;
+  } else {
+    return null;
+  }
+};
+
+/* ---------- DRAG AND DROP - DESTINATION ---------- */
+
+const placeItemInDragDestination = (destination, item) => {
+  if (!destination || !item) {
+    return null;
+  }
+  if (destination.type === "container") {
+    let container = null;
+    if (destination.containerItem) {
+      container = destination.containerItem;
     } else {
-      ctx.fillStyle = "rgb(0, 0, 0)";
+      container = findOpenedContainerItemByUid(destination.containerUid);
     }
-    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    ctx.globalCompositeOperation = "destination-out";
-    if (source.light <= 0) {
-      lightRadius = 70;
-      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, lightRadius);
-      gradient.addColorStop(0, "rgba(0, 0, 0, 0.08)");
-      gradient.addColorStop(0.8, "rgba(0, 0, 0, 0.04)");
-      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(screenX - lightRadius, screenY - lightRadius, lightRadius * 2, lightRadius * 2);
+    if (!container || !container.content) {
+      return null;
+    }
+    if (!container.content[destination.slotIndex]) {
+      container.content[destination.slotIndex] = item;
+      return true;
     } else {
-      const gradient = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light);
-      gradient.addColorStop(0, "rgba(0, 0, 0, 0.69)");
-      gradient.addColorStop(0.6, "rgba(0, 0, 0, 0.1)");
-      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.fillStyle = gradient;
-
-      ctx.fillRect(screenX - source.light, screenY - source.light, source.light * 2, source.light * 2);
-      const bright = ctx.createRadialGradient(screenX, screenY, 20, screenX, screenY, source.light * 0.85);
-      ctx.globalCompositeOperation = "source-over";
-      bright.addColorStop(0, "rgba(251, 255, 137, 0)");
-      bright.addColorStop(0.4, "rgba(247, 255, 2, 0.04)");
-      bright.addColorStop(0.7, "rgba(249, 97, 2, 0.07)");
-      bright.addColorStop(0.8, "rgba(249, 2, 2, 0.07)");
-      bright.addColorStop(1, "rgba(255, 0, 0, 0)");
-      ctx.fillStyle = bright;
-
-      ctx.fillRect(
-        screenX - source.light * 0.85,
-        screenY - source.light * 0.85,
-        source.light * 2 * 0.85,
-        source.light * 2 * 0.85,
-      );
+      const existingItem = container.content[destination.slotIndex];
+      container.content[destination.slotIndex] = item;
+      return existingItem;
     }
-    ctx.globalCompositeOperation = "source-over";
+  } else if (destination.type === "equipment") {
+    if (
+      !destination.slotName ||
+      !(destination.slotName in playerState.equipment) ||
+      !canPlaceItemInEquipmentSlot(item, destination.slotName)
+    ) {
+      return null;
+    }
+
+    if (!playerState.equipment[destination.slotName]) {
+      playerState.equipment[destination.slotName] = item;
+      return true;
+    } else {
+      const existingItem = playerState.equipment[destination.slotName];
+      playerState.equipment[destination.slotName] = item;
+      return existingItem;
+    }
+  } else if (destination.type === "world") {
+    const tilePosition = getTilePosition(destination);
+    if (
+      !Number.isInteger(destination.x) ||
+      !Number.isInteger(destination.y) ||
+      !isInsideMap(destination.x, destination.y) ||
+      gameMap[tilePosition.row][tilePosition.col] !== FLOOR
+    ) {
+      return null;
+    }
+
+    item.x = destination.x;
+    item.y = destination.y;
+    addGroundItem(item);
+    return true;
   } else {
-    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  }
-};
-//#endregion  -----  LIGHT - CANVAS  -----
-
-/* ==================================================== */
-//#region     -----  JOUEUR - MOUVEMENT  -----
-/* ==================================================== */
-const keysPressed = {
-  right: false,
-  left: false,
-  up: false,
-  down: false,
-};
-
-/* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
-
-const getPlayerMoveCooldown = () => {
-  if (playerState.level < 100) {
-    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
-  } else {
-    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
-  }
-};
-
-const getWantedDirection = () => {
-  if (keysPressed.right) {
-    return "right";
-  } else if (keysPressed.left) {
-    return "left";
-  } else if (keysPressed.up) {
-    return "up";
-  } else if (keysPressed.down) {
-    return "down";
-  } else {
-    return;
+    return null;
   }
 };
 
-/* ---------- JOUEUR - MISE A JOUR MOUVEMENT ---------- */
-
-const updateMovement = () => {
-  const direction = getWantedDirection();
-  if (!direction) {
-    playerState.walkFrame = 1;
-    updatePlayerSprite();
-    return;
+const isItemInsideContainer = (containerItem, searchedItemUid) => {
+  if (!containerItem || !containerItem.content) {
+    return false;
   }
-
-  const now = Date.now();
-  if (now < nextPlayerMoveTime) {
-    return;
+  const itemData = getItemData(containerItem.itemId);
+  if (!itemData || !itemData.capacity) {
+    return false;
   }
-  let nextX = playerState.x;
-  let nextY = playerState.y;
-  if (direction === "right") {
-    nextX += MOVE_SPEED;
-  } else if (direction === "left") {
-    nextX -= MOVE_SPEED;
-  } else if (direction === "up") {
-    nextY -= MOVE_SPEED;
-  } else if (direction === "down") {
-    nextY += MOVE_SPEED;
-  } else {
-    return;
-  }
+  for (let index = 0; index < itemData.capacity; index++) {
+    const item = containerItem.content[index];
 
-  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
-    playerState.x = nextX;
-    playerState.y = nextY;
-    playerState.direction = direction;
-    playerState.walkFrame += 1;
-    if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
-      playerState.walkFrame = 0;
+    if (!item) {
+      continue;
+    }
+    if (item.uid === searchedItemUid) {
+      return true;
+    }
+    if (isContainerItem(item)) {
+      if (isItemInsideContainer(item, searchedItemUid)) {
+        return true;
+      }
     }
   }
-  updatePlayerSprite();
-  updateWorldPosition();
-  nextPlayerMoveTime = now + getPlayerMoveCooldown();
-  closeFarOpenedContainers();
+  return false;
 };
-//#endregion  -----  JOUEUR - MOUVEMENT  -----
+
+/* ---------- DRAG AND DROP - VALIDATION DE L’ACTION ---------- */
+const refreshItemUiAfterDrag = () => {
+  renderContainerDock();
+  updatePlayerCarriedWeight();
+  updatePlayerInventory();
+  cancelItemDrag();
+};
+
+const canPlaceItemInEquipmentSlot = (item, slotName) => {
+  if (!item || !slotName) {
+    return false;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData || !Array.isArray(itemData.equipmentSlot)) {
+    return false;
+  }
+  return itemData.equipmentSlot.includes(slotName);
+};
+
+const findFirstEmptyContainerSlot = (containerItem) => {
+  if (!containerItem || !containerItem.content) {
+    return null;
+  }
+  const itemData = getItemData(containerItem.itemId);
+  if (!itemData || !itemData.capacity) {
+    return null;
+  }
+  for (let index = 0; index < itemData.capacity; index++) {
+    if (!containerItem.content[index]) {
+      return index;
+    }
+  }
+  return null;
+};
+
+const closeFarOpenedContainers = () => {
+  openedContainers.forEach((container) => {
+    if (container.sourceType === "world" && !isNearPlayer(container.item, 1)) {
+      closeContainer(container.item);
+    }
+  });
+};
+
+const updateOpenedContainerSourceType = (item, sourceType) => {
+  openedContainers.forEach((container) => {
+    if (container.item.uid === item.uid) {
+      container.sourceType = sourceType;
+    }
+  });
+};
+
+const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
+    const itemData = getItemData(sourceItem.itemId);
+    let canMoveRestToFreeSlot = true;
+    if (itemData && itemData.stackable) {
+      const freeStackSpace = 100 - destinationItem.quantity;
+      let quantityAllowed = freeStackSpace;
+      if (!isDragAddressCarriedByPlayer(source) && isDragAddressCarriedByPlayer(destination)) {
+        const freeCapSpace = playerState.capacity - calculatePlayerCarriedWeight();
+        const maxQuantityByCapacity = Math.floor(freeCapSpace / itemData.weight);
+        canMoveRestToFreeSlot = maxQuantityByCapacity >= sourceItem.quantity;
+        quantityAllowed = Math.min(freeStackSpace, maxQuantityByCapacity);
+      }
+      if (freeStackSpace <= 0) {
+        return false;
+      }
+
+      if (quantityAllowed <= 0) {
+        cancelItemDrag();
+        return true;
+      }
+
+      if (sourceItem.quantity <= quantityAllowed) {
+        destinationItem.quantity += sourceItem.quantity;
+        removeItemFromDragSource(source);
+        refreshItemUiAfterDrag();
+        return true;
+      }
+
+      if (sourceItem.quantity > quantityAllowed) {
+        destinationItem.quantity += quantityAllowed;
+        sourceItem.quantity -= quantityAllowed;
+      }
+      if (destination.type === "container" && quantityAllowed === freeStackSpace && canMoveRestToFreeSlot) {
+        const containerItem = findOpenedContainerItemByUid(destination.containerUid);
+        const freeSlot = findFirstEmptyContainerSlot(containerItem);
+        if (freeSlot !== null) {
+          const tempDestination = {
+            type: "container",
+            containerUid: destination.containerUid,
+            slotIndex: freeSlot,
+          };
+
+          let rollbackDestination = source;
+
+          if (source.type === "world") {
+            rollbackDestination = {
+              type: "world",
+              x: sourceItem.x,
+              y: sourceItem.y,
+            };
+          }
+
+          const removedItem = removeItemFromDragSource(source);
+          if (!removedItem) {
+            cancelItemDrag();
+            return true;
+          }
+          const result = placeItemInDragDestination(tempDestination, removedItem);
+          if (!result) {
+            placeItemInDragDestination(rollbackDestination, removedItem);
+          }
+        }
+      }
+      refreshItemUiAfterDrag();
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationItem) => {
+  if (destinationItem && isContainerItem(destinationItem)) {
+    if (destinationItem === sourceItem) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const emptySlot = findFirstEmptyContainerSlot(destinationItem);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerItem: destinationItem,
+      slotIndex: emptySlot,
+    };
+
+    if (!isItemCarriedByPlayer(sourceItem.uid) && isItemCarriedByPlayer(destinationItem.uid)) {
+      if (getItemTotalWeight(sourceItem) > getPlayerRemainingCapacity()) {
+        cancelItemDrag();
+        return true;
+      }
+    }
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
+    if (isContainerItem(removedItem)) {
+      updateOpenedContainerSourceType(removedItem, "container");
+    }
+
+    refreshItemUiAfterDrag();
+    return true;
+  }
+
+  return false;
+};
+
+const tryMoveItemToEmptySlotDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (
+    !destinationItem &&
+    (destination.type === "container" ||
+      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName)))
+  ) {
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destination, removedItem);
+    if (isContainerItem(removedItem)) {
+      if (destination.type === "container") {
+        updateOpenedContainerSourceType(removedItem, "container");
+      } else if (destination.type === "equipment") {
+        updateOpenedContainerSourceType(removedItem, "equipment");
+      }
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag = (source, destination, destinationItem) => {
+  if (
+    source.type === "equipment" &&
+    destination.type === "container" &&
+    destinationItem &&
+    !canPlaceItemInEquipmentSlot(destinationItem, source.slotName)
+  ) {
+    const destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
+    if (!destinationContainer) {
+      cancelItemDrag();
+      return true;
+    }
+    const emptySlot = findFirstEmptyContainerSlot(destinationContainer);
+    if (emptySlot === null) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const destinationSlotContainer = {
+      type: "container",
+      containerUid: destination.containerUid,
+      slotIndex: emptySlot,
+    };
+
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destinationSlotContainer, removedItem);
+    if (isContainerItem(removedItem)) {
+      updateOpenedContainerSourceType(removedItem, "container");
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const trySwapItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (
+    (destination.type === "container" ||
+      (destination.type === "equipment" && canPlaceItemInEquipmentSlot(sourceItem, destination.slotName))) &&
+    (source.type === "container" ||
+      (source.type === "equipment" && canPlaceItemInEquipmentSlot(destinationItem, source.slotName)))
+  ) {
+    const removedSource = removeItemFromDragSource(source);
+    if (!removedSource) {
+      cancelItemDrag();
+      return true;
+    }
+    const removedDestination = removeItemFromDragSource(destination);
+    if (!removedDestination) {
+      cancelItemDrag();
+      return true;
+    }
+    placeItemInDragDestination(destination, removedSource);
+    if (isContainerItem(removedSource)) {
+      updateOpenedContainerSourceType(removedSource, destination.type);
+    }
+    placeItemInDragDestination(source, removedDestination);
+    if (isContainerItem(removedDestination)) {
+      updateOpenedContainerSourceType(removedDestination, source.type);
+    }
+    refreshItemUiAfterDrag();
+    return true;
+  }
+  return false;
+};
+
+const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
+  if (destination.type === "world") {
+    if (!isNearPlayer(destination, 9)) {
+      cancelItemDrag();
+      return true;
+    }
+    const oldSource = {
+      type: "world",
+      x: sourceItem.x,
+      y: sourceItem.y,
+    };
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      cancelItemDrag();
+      return true;
+    }
+
+    const result = placeItemInDragDestination(destination, removedItem);
+    if (result) {
+      if (isContainerItem(removedItem)) {
+        updateOpenedContainerSourceType(removedItem, "world");
+        closeFarOpenedContainers();
+      }
+
+      refreshItemUiAfterDrag();
+
+      return true;
+    } else {
+      if (source.type === "world") {
+        placeItemInDragDestination(oldSource, removedItem);
+        refreshItemUiAfterDrag();
+        return true;
+      } else {
+        placeItemInDragDestination(source, removedItem);
+        refreshItemUiAfterDrag();
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const isItemCarriedByPlayer = (itemUid) => {
+  return Object.values(playerState.equipment).some((equipment) => {
+    if (!equipment) {
+      return false;
+    }
+    return isItemInsideItem(equipment, itemUid);
+  });
+};
+
+const isItemInsideItem = (item, searchedUid) => {
+  if (!item) {
+    return false;
+  }
+  if (item.uid === searchedUid) {
+    return true;
+  }
+  if (!isContainerItem(item)) {
+    return false;
+  }
+  return item.content.some((itemInContainer) => {
+    return isItemInsideItem(itemInContainer, searchedUid);
+  });
+};
+
+const isDragAddressCarriedByPlayer = (adress) => {
+  if (adress.type === "equipment") {
+    return true;
+  }
+  if (adress.type === "world") {
+    return false;
+  }
+  if (adress.type === "container") {
+    const container = openedContainers.find((container) => {
+      return adress.containerUid === container.item.uid;
+    });
+    if (!container) {
+      return false;
+    }
+    return isItemCarriedByPlayer(container.item.uid);
+  }
+  return false;
+};
+
+const isExceedCapacity = (source, destination, item) => {
+  const sourceCarried = isDragAddressCarriedByPlayer(source);
+  const destinationCarried = isDragAddressCarriedByPlayer(destination);
+  if (!sourceCarried && destinationCarried) {
+    if (playerState.capacity - playerState.carriedWeight < getItemTotalWeight(item)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isSameDragSourceAndDestination = (source, destination) => {
+  if (
+    source.type === "container" &&
+    destination.type === "container" &&
+    source.containerUid === destination.containerUid &&
+    source.slotIndex === destination.slotIndex
+  ) {
+    return true;
+  }
+  if (source.type === "equipment" && destination.type === "equipment" && source.slotName === destination.slotName) {
+    return true;
+  }
+  return false;
+};
+
+const isContainerMoveIntoContainerItemItself = (sourceItem, destinationItem) => {
+  if (isContainerItem(sourceItem) && destinationItem && isContainerItem(destinationItem)) {
+    if (destinationItem.uid === sourceItem.uid) {
+      return true;
+    }
+    if (isItemInsideContainer(sourceItem, destinationItem.uid)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isContainerMoveIntoItself = (sourceItem, destinationContainer) => {
+  if (isContainerItem(sourceItem) && destinationContainer) {
+    if (destinationContainer.uid === sourceItem.uid || isItemInsideContainer(sourceItem, destinationContainer.uid)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isDropStackToStack = (sourceItem, destinationItem) => {
+  if (destinationItem && sourceItem.itemId === destinationItem.itemId) {
+    const itemData = getItemData(sourceItem.itemId);
+    if (itemData && itemData.stackable === true) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const completeItemDrag = (destination) => {
+  if (!dragState.isDragging || !destination) {
+    cancelItemDrag();
+    return;
+  }
+  const source = getDragSourceFromState();
+  const sourceItem = getDragSourceItem(source);
+  if (sourceItem !== dragState.item) {
+    cancelItemDrag();
+    return;
+  }
+  if (source.type === "world" && !isNearPlayer(sourceItem, 1)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
+    return;
+  }
+
+  const destinationItem = getDragSourceItem(destination);
+
+  if (!isDropStackToStack(sourceItem, destinationItem)) {
+    if (isExceedCapacity(source, destination, sourceItem)) {
+      cancelItemDrag();
+      return;
+    }
+  }
+
+  if (isSameDragSourceAndDestination(source, destination)) {
+    cancelItemDrag();
+    return;
+  }
+
+  let destinationContainer = null;
+  if (destination.type === "container") {
+    destinationContainer = findOpenedContainerItemByUid(destination.containerUid);
+  }
+
+  if (isContainerMoveIntoItself(sourceItem, destinationContainer)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
+    return;
+  }
+
+  if (isContainerMoveIntoContainerItemItself(sourceItem, destinationItem)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
+    return;
+  }
+
+  if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
+    return;
+  }
+
+  if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
+    return;
+  }
+
+  if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
+    return;
+  }
+  cancelItemDrag();
+};
+//#endregion  -----  DRAG AND DROP - OBJETS  -----
 
 /* ==================================================== */
-//#region     -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
+//#region     -----  MONSTRES  -----
 /* ==================================================== */
-/* ---------- INPUTS - TOUCHE APPUYEE ---------- */
+/* ---------- MONSTRES - CRÉATION ET AFFICHAGE ---------- */
+
+const MonsterHpRefresh = (monster) => {
+  const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
+  if (monsterHp) {
+    const monsterData = getMonsterData(monster.monsterId);
+    monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
+    monsterHp.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
+  }
+};
+
+const createMonster = (monsterId, x, y) => {
+  const monsterData = getMonsterData(monsterId);
+  if (!monsterData) {
+    return null;
+  }
+  const monster = {
+    monsterId,
+    x,
+    y,
+    hp: monsterData.maxHp,
+    uid: nextMonsterId++,
+    nextMoveTime: 0,
+    path: [],
+    nextPathRefreshTime: 0,
+    direction: "down",
+    walkFrame: 1,
+  };
+  return monster;
+};
+
+const renderMonsters = (monstersList) => {
+  for (let i = 0; i < monstersList.length; i++) {
+    const div = document.createElement("div");
+    const monster = monstersList[i];
+    const monsterData = getMonsterData(monster.monsterId);
+    div.classList.add("monster");
+    div.style.width = `${monsterData.drawWidth}px`;
+    div.style.height = `${monsterData.drawHeight}px`;
+    if (monster.uid === selectedMonsterId) {
+      div.classList.add("monster-selected");
+    }
+    const monsterName = document.createElement("div");
+    monsterName.classList.add("monster-name");
+    monsterName.textContent = `${monsterData.name}`;
+    const hpContainer = document.createElement("div");
+    hpContainer.classList.add("hp-bar");
+    const hpRed = document.createElement("div");
+    hpRed.classList.add("hp-red");
+    div.setAttribute("data-monster-uid", monster.uid);
+    hpRed.setAttribute("data-monster-uid", monster.uid);
+    const monsterSprite = document.createElement("div");
+    monsterSprite.classList.add("monster-sprite");
+    const atlasPath = getAtlasPath(monsterData.atlas);
+    monsterSprite.style.backgroundImage = `url("${atlasPath}")`;
+    monsterSprite.style.width = `${monsterData.drawWidth}px`;
+    monsterSprite.style.height = `${monsterData.drawHeight}px`;
+    div.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectMonster(monster);
+    });
+    div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
+    div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
+    div.style.zIndex = monster.y;
+    hpContainer.appendChild(hpRed);
+    div.appendChild(monsterName);
+    div.appendChild(hpContainer);
+    div.appendChild(monsterSprite);
+    game.appendChild(div);
+    updateMonsterSprite(monster);
+  }
+};
+
+const updateMonsterSprite = (monster) => {
+  const monsterData = getMonsterData(monster.monsterId);
+  const col = monsterData.atlasCol + monster.walkFrame;
+  const row = monsterData.atlasRow + getDirectionRow(monster.direction);
+  const monsterElement = findMonsterElement(monster.uid);
+  const monsterSpriteElement = monsterElement.querySelector(".monster-sprite");
+  const source = getAtlasSource(col, row, monsterData.spriteSize);
+  monsterSpriteElement.style.backgroundPosition = `-${source.sourceX}px -${source.sourceY}px`;
+};
+
+/* ---------- MONSTRES - ACCÈS AUX DONNÉES ---------- */
+
+const getMonsterData = (monsterId) => {
+  if (monstersDatabase[monsterId]) {
+    return monstersDatabase[monsterId];
+  } else {
+    console.error(`monsterId: ${monsterId} n'existe pas dans monstersDatabase`);
+    return null;
+  }
+};
+
+/* ---------- MONSTRES - DÉTECTION ET DIRECTION ---------- */
+
+const isMonsterAtPosition = (x, y) => {
+  return monsters.some((monster) => {
+    return monster.x === x && monster.y === y;
+  });
+};
+const findMonsterAtPosition = (x, y) => {
+  return monsters.find((monster) => {
+    return monster.x === x && monster.y === y;
+  });
+};
+
+const selectMonster = (monster) => {
+  if (!monster) {
+    return;
+  }
+  clearMonsterSelection();
+  if (monster.uid === selectedMonsterId) {
+    selectedMonsterId = null;
+    return;
+  }
+  selectedMonsterId = monster.uid;
+  selectMonsterElement(selectedMonsterId);
+};
+
+const isPlayerAtPosition = (x, y) => {
+  return playerState.x === x && playerState.y === y;
+};
+
+const updateMonsterDirectionToPlayer = (monster) => {
+  const monsterTile = getTilePosition(monster);
+  const playerTile = getTilePosition(playerState);
+  const diffCol = playerTile.col - monsterTile.col;
+  const diffRow = playerTile.row - monsterTile.row;
+  if (Math.abs(diffCol) > Math.abs(diffRow)) {
+    if (diffCol > 0) {
+      monster.direction = "right";
+    } else if (diffCol < 0) {
+      monster.direction = "left";
+    }
+  } else {
+    if (diffRow > 0) {
+      monster.direction = "down";
+    } else if (diffRow < 0) {
+      monster.direction = "up";
+    }
+  }
+};
+
+const removeMonster = (monsterId) => {
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+  if (monsterElement) {
+    monsterElement.remove();
+  }
+  const monsterIndex = monsters.findIndex((monster) => {
+    return monsterId === monster.uid;
+  });
+  if (monsterIndex != -1) {
+    monsters.splice(monsterIndex, 1);
+  }
+};
+
+const clearMonsters = () => {
+  const monstersElements = document.querySelectorAll(".monster");
+  monstersElements.forEach((monster) => {
+    monster.remove();
+  });
+};
+
+const updateMonsterDirection = (selfMonster, tile) => {
+  const monsterTile = getTilePosition(selfMonster);
+  if (tile) {
+    if (monsterTile.col > tile.col && monsterTile.row === tile.row) {
+      selfMonster.direction = "left";
+    } else if (monsterTile.col < tile.col && monsterTile.row === tile.row) {
+      selfMonster.direction = "right";
+    } else if (monsterTile.col === tile.col && monsterTile.row < tile.row) {
+      selfMonster.direction = "down";
+    } else if (monsterTile.col === tile.col && monsterTile.row > tile.row) {
+      selfMonster.direction = "up";
+    }
+  }
+};
+
+/* ---------- MONSTRES - SÉLECTION ET MORT ---------- */
+
+const clearMonsterSelection = () => {
+  const monsterSelection = document.querySelectorAll(".monster-selected");
+  monsterSelection.forEach((monster) => {
+    monster.classList.remove("monster-selected");
+  });
+};
+
+const deadMonster = (monster) => {
+  const monsterData = getMonsterData(monster.monsterId);
+  const lootContent = generateMonsterLoot(monsterData);
+  addGroundItem(createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, lootContent));
+  removeMonster(monster.uid);
+  selectedMonsterId = null;
+};
+
+const findNearMonster = (monsterList) => {
+  const nearMonsterIndex = monsterList.findIndex((monster) => {
+    return isNearPlayer(monster);
+  });
+  return nearMonsterIndex;
+};
+
+const findMonsterById = (monsterId) => {
+  const monster = monsters.find((monster) => {
+    return monsterId === monster.uid;
+  });
+  return monster;
+};
+
+const selectMonsterElement = (monsterId) => {
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+  if (monsterElement) {
+    monsterElement.classList.add("monster-selected");
+  }
+};
+
+const findMonsterElement = (monsterId) => {
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+  return monsterElement;
+};
+
+const generateMonsterLoot = (monsterData) => {
+  const lootContent = [];
+  if (!monsterData.loot || !Array.isArray(monsterData.loot)) {
+    return lootContent;
+  }
+  monsterData.loot.forEach((loot) => {
+    const random = getRandomInt(1, 100);
+    if (random <= loot.chance) {
+      const quantity = getRandomInt(loot.minQuantity, loot.maxQuantity);
+      const item = createItemInstance(loot.itemId, quantity);
+      if (item) {
+        lootContent.push(item);
+      }
+    }
+  });
+  return lootContent;
+};
+
+/* ---------- MONSTRES - COMBAT, POSITION ET MOUVEMENT ---------- */
+
+const updateMonsterCombat = () => {
+  monsters.forEach((monster) => {
+    if (isNearPlayer(monster)) {
+      const monsterData = getMonsterData(monster.monsterId);
+      const now = Date.now();
+      if (now < nextMonsterAttackTime) {
+        return;
+      }
+      nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
+      playerState.hp -= getRandomInt(1, monsterData.damage);
+      updatePlayerStats();
+      hpRefresh();
+      console.log(`hp : ${playerState.hp}`);
+      if (playerState.hp <= 0) {
+        playerState.hp = 0;
+        hpRefresh();
+        playerDead();
+      }
+      return;
+    }
+  });
+};
+
+const updateMonsterPosition = () => {
+  monsters.forEach((monster) => {
+    const monsterData = getMonsterData(monster.monsterId);
+    const monsterElement = document.querySelector(`.monster[data-monster-uid="${monster.uid}"]`);
+    if (monsterElement) {
+      monsterElement.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
+      monsterElement.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
+      monsterElement.style.zIndex = monster.y;
+    }
+  });
+};
+
+const updateMonsterMovement = () => {
+  const date = Date.now();
+  monsters.forEach((monster) => {
+    if (!isNearPlayer(monster, 12)) {
+      return;
+    }
+    if (isNearPlayer(monster, 1)) {
+      return;
+    }
+    if (monster.nextMoveTime > date) {
+      return;
+    }
+    const monsterData = getMonsterData(monster.monsterId);
+    monster.nextMoveTime = date + monsterData.moveCooldown;
+    const monsterPosition = getTilePosition(monster);
+    const destination = pathDestination(monsterPosition, getTilePosition(playerState));
+    if (destination !== null) {
+      if (monster.path.length <= 0) {
+        monster.path = findPath(monsterPosition, destination);
+        monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
+      } else {
+        const oldPathEnd = monster.path[monster.path.length - 1];
+
+        if (getDistance(oldPathEnd, destination) > 2) {
+          const newPath = findPath(monsterPosition, destination);
+          if (newPath.length > 0) {
+            monster.path = newPath;
+            monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
+          }
+        } else if (date >= monster.nextPathRefreshTime) {
+          const newPath = findPath(monsterPosition, destination);
+          monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
+          if (getDistance(oldPathEnd, destination) > 1 && newPath && newPath.length > 0) {
+            monster.path = newPath;
+          }
+        }
+      }
+
+      if (monster.path.length <= 0) {
+        return;
+      }
+
+      const nextStep = monster.path[0];
+      if (!isWalkableTile(nextStep.row, nextStep.col)) {
+        const newPath = findPath(monsterPosition, destination);
+        if (newPath.length <= 0) {
+          return;
+        } else {
+          monster.path = newPath;
+        }
+      }
+      if (monster.path.length <= 0) {
+        return;
+      }
+      updateMonsterDirection(monster, monster.path[0]);
+      monster.walkFrame += 1;
+      if (monster.walkFrame >= monsterData.animationFrames) {
+        monster.walkFrame = 0;
+      }
+      updateMonsterSprite(monster);
+      const { tileX, tileY } = getWorldPosition(monster.path[0]);
+      monster.path.shift();
+      monster.x = tileX;
+      monster.y = tileY;
+    }
+  });
+  updateMonsterPosition();
+};
+//#endregion  -----  MONSTRES  -----
+
+/* ==================================================== */
+//#region     -----  ENTRÉES - CLAVIER, SOURIS ET RESIZE  -----
+/* ==================================================== */
+/* ---------- ENTRÉES - TOUCHE APPUYÉE ---------- */
 
 document.addEventListener("keydown", (e) => {
   e.preventDefault();
@@ -2385,7 +2970,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-/* ---------- INPUTS - TOUCHE RELACHEE ---------- */
+/* ---------- ENTRÉES - TOUCHE RELÂCHÉE ---------- */
 
 document.addEventListener("keyup", (e) => {
   e.preventDefault();
@@ -2402,13 +2987,13 @@ document.addEventListener("keyup", (e) => {
   }
 });
 
-/* ---------- INPUTS - RESIZE FENETRE ---------- */
+/* ---------- ENTRÉES - REDIMENSIONNEMENT FENÊTRE ---------- */
 
 window.addEventListener("resize", () => {
   updateGameScale();
 });
 
-/* ---------- INPUTS - SOURIS ---------- */
+/* ---------- ENTRÉES - SOURIS ---------- */
 game.addEventListener("mousemove", (e) => {
   updateMousePositionInfo(e.clientX, e.clientY);
 });
@@ -2427,7 +3012,7 @@ game.addEventListener("click", (e) => {
   );
 });
 
-/* ---------- INPUTS - DRAG ITEM UI ---------- */
+/* ---------- ENTRÉES - DRAG AND DROP DES OBJETS UI ---------- */
 
 const getContainerSourceFromSlotElement = (slotElement) => {
   if (!slotElement) {
@@ -2577,571 +3162,12 @@ const handleItemUiMouseUp = (e) => {
 };
 document.addEventListener("mousedown", handleItemUiMouseDown);
 document.addEventListener("mouseup", handleItemUiMouseUp);
-
-//#endregion  -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
-
-/* ==================================================== */
-//#region     -----  MONSTRES  -----
-/* ==================================================== */
-/* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
-
-const MonsterHpRefresh = (monster) => {
-  const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
-  if (monsterHp) {
-    const monsterData = getMonsterData(monster.monsterId);
-    monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
-    monsterHp.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
-  }
-};
-
-const createMonster = (monsterId, x, y) => {
-  const monsterData = getMonsterData(monsterId);
-  if (!monsterData) {
-    return null;
-  }
-  const monster = {
-    monsterId,
-    x,
-    y,
-    hp: monsterData.maxHp,
-    uid: nextMonsterId++,
-    nextMoveTime: 0,
-    path: [],
-    nextPathRefreshTime: 0,
-    direction: "down",
-    walkFrame: 1,
-  };
-  return monster;
-};
-
-const renderMonsters = (monstersList) => {
-  for (let i = 0; i < monstersList.length; i++) {
-    const div = document.createElement("div");
-    const monster = monstersList[i];
-    const monsterData = getMonsterData(monster.monsterId);
-    div.classList.add("monster");
-    div.style.width = `${monsterData.drawWidth}px`;
-    div.style.height = `${monsterData.drawHeight}px`;
-    if (monster.uid === selectedMonsterId) {
-      div.classList.add("monster-selected");
-    }
-    const monsterName = document.createElement("div");
-    monsterName.classList.add("monster-name");
-    monsterName.textContent = `${monsterData.name}`;
-    const hpContainer = document.createElement("div");
-    hpContainer.classList.add("hp-bar");
-    const hpRed = document.createElement("div");
-    hpRed.classList.add("hp-red");
-    div.setAttribute("data-monster-uid", monster.uid);
-    hpRed.setAttribute("data-monster-uid", monster.uid);
-    const monsterSprite = document.createElement("div");
-    monsterSprite.classList.add("monster-sprite");
-    const atlasPath = getAtlasPath(monsterData.atlas);
-    monsterSprite.style.backgroundImage = `url("${atlasPath}")`;
-    monsterSprite.style.width = `${monsterData.drawWidth}px`;
-    monsterSprite.style.height = `${monsterData.drawHeight}px`;
-    div.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      selectMonster(monster);
-    });
-    div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
-    div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
-    div.style.zIndex = monster.y;
-    hpContainer.appendChild(hpRed);
-    div.appendChild(monsterName);
-    div.appendChild(hpContainer);
-    div.appendChild(monsterSprite);
-    game.appendChild(div);
-    updateMonsterSprite(monster);
-  }
-};
-
-const updateMonsterSprite = (monster) => {
-  const monsterData = getMonsterData(monster.monsterId);
-  const col = monsterData.atlasCol + monster.walkFrame;
-  const row = monsterData.atlasRow + getDirectionRow(monster.direction);
-  const monsterElement = findMonsterElement(monster.uid);
-  const monsterSpriteElement = monsterElement.querySelector(".monster-sprite");
-  const source = getAtlasSource(col, row, monsterData.spriteSize);
-  monsterSpriteElement.style.backgroundPosition = `-${source.sourceX}px -${source.sourceY}px`;
-};
-
-/* ---------- MONSTRES - COLLECTE DES DONNEES ---------- */
-
-const getMonsterData = (monsterId) => {
-  if (monstersDatabase[monsterId]) {
-    return monstersDatabase[monsterId];
-  } else {
-    console.error(`monsterId: ${monsterId} n'existe pas dans monstersDatabase`);
-    return null;
-  }
-};
-
-/* ---------- MONSTRES - DETECTION ET DIRECTION ---------- */
-
-const isMonsterAtPosition = (x, y) => {
-  return monsters.some((monster) => {
-    return monster.x === x && monster.y === y;
-  });
-};
-const findMonsterAtPosition = (x, y) => {
-  return monsters.find((monster) => {
-    return monster.x === x && monster.y === y;
-  });
-};
-
-const selectMonster = (monster) => {
-  if (!monster) {
-    return;
-  }
-  clearMonsterSelection();
-  if (monster.uid === selectedMonsterId) {
-    selectedMonsterId = null;
-    return;
-  }
-  selectedMonsterId = monster.uid;
-  selectMonsterElement(selectedMonsterId);
-};
-
-const isPlayerAtPosition = (x, y) => {
-  return playerState.x === x && playerState.y === y;
-};
-
-const updateMonsterDirectionToPlayer = (monster) => {
-  const monsterTile = getTilePosition(monster);
-  const playerTile = getTilePosition(playerState);
-  const diffCol = playerTile.col - monsterTile.col;
-  const diffRow = playerTile.row - monsterTile.row;
-  if (Math.abs(diffCol) > Math.abs(diffRow)) {
-    if (diffCol > 0) {
-      monster.direction = "right";
-    } else if (diffCol < 0) {
-      monster.direction = "left";
-    }
-  } else {
-    if (diffRow > 0) {
-      monster.direction = "down";
-    } else if (diffRow < 0) {
-      monster.direction = "up";
-    }
-  }
-};
-
-const removeMonster = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
-  if (monsterElement) {
-    monsterElement.remove();
-  }
-  const monsterIndex = monsters.findIndex((monster) => {
-    return monsterId === monster.uid;
-  });
-  if (monsterIndex != -1) {
-    monsters.splice(monsterIndex, 1);
-  }
-};
-
-const clearMonsters = () => {
-  const monstersElements = document.querySelectorAll(".monster");
-  monstersElements.forEach((monster) => {
-    monster.remove();
-  });
-};
-
-const updateMonsterDirection = (selfMonster, tile) => {
-  const monsterTile = getTilePosition(selfMonster);
-  if (tile) {
-    if (monsterTile.col > tile.col && monsterTile.row === tile.row) {
-      selfMonster.direction = "left";
-    } else if (monsterTile.col < tile.col && monsterTile.row === tile.row) {
-      selfMonster.direction = "right";
-    } else if (monsterTile.col === tile.col && monsterTile.row < tile.row) {
-      selfMonster.direction = "down";
-    } else if (monsterTile.col === tile.col && monsterTile.row > tile.row) {
-      selfMonster.direction = "up";
-    }
-  }
-};
-
-/* ---------- MONSTRES - SELECTION ET MORT ---------- */
-
-const clearMonsterSelection = () => {
-  const monsterSelection = document.querySelectorAll(".monster-selected");
-  monsterSelection.forEach((monster) => {
-    monster.classList.remove("monster-selected");
-  });
-};
-
-const deadMonster = (monster) => {
-  const monsterData = getMonsterData(monster.monsterId);
-  const lootContent = generateMonsterLoot(monsterData);
-  addGroundItem(createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, lootContent));
-  removeMonster(monster.uid);
-  selectedMonsterId = null;
-};
-
-const findNearMonster = (monsterList) => {
-  const nearMonsterIndex = monsterList.findIndex((monster) => {
-    return isNearPlayer(monster);
-  });
-  return nearMonsterIndex;
-};
-
-const findMonsterById = (monsterId) => {
-  const monster = monsters.find((monster) => {
-    return monsterId === monster.uid;
-  });
-  return monster;
-};
-
-const selectMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
-  if (monsterElement) {
-    monsterElement.classList.add("monster-selected");
-  }
-};
-
-const findMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
-  return monsterElement;
-};
-
-const generateMonsterLoot = (monsterData) => {
-  const lootContent = [];
-  if (!monsterData.loot || !Array.isArray(monsterData.loot)) {
-    return lootContent;
-  }
-  monsterData.loot.forEach((loot) => {
-    const random = getRandomInt(1, 100);
-    if (random <= loot.chance) {
-      const quantity = getRandomInt(loot.minQuantity, loot.maxQuantity);
-      const item = createItemInstance(loot.itemId, quantity);
-      if (item) {
-        lootContent.push(item);
-      }
-    }
-  });
-  return lootContent;
-};
-
-/* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
-
-const updateMonsterCombat = () => {
-  monsters.forEach((monster) => {
-    if (isNearPlayer(monster)) {
-      const monsterData = getMonsterData(monster.monsterId);
-      const now = Date.now();
-      if (now < nextMonsterAttackTime) {
-        return;
-      }
-      nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
-      playerState.hp -= getRandomInt(1, monsterData.damage);
-      updatePlayerStats();
-      hpRefresh();
-      console.log(`hp : ${playerState.hp}`);
-      if (playerState.hp <= 0) {
-        playerState.hp = 0;
-        hpRefresh();
-        playerDead();
-      }
-      return;
-    }
-  });
-};
-
-const updateMonsterPosition = () => {
-  monsters.forEach((monster) => {
-    const monsterData = getMonsterData(monster.monsterId);
-    const monsterElement = document.querySelector(`.monster[data-monster-uid="${monster.uid}"]`);
-    if (monsterElement) {
-      monsterElement.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
-      monsterElement.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
-      monsterElement.style.zIndex = monster.y;
-    }
-  });
-};
-
-const updateMonsterMovement = () => {
-  const date = Date.now();
-  monsters.forEach((monster) => {
-    if (!isNearPlayer(monster, 12)) {
-      return;
-    }
-    if (isNearPlayer(monster, 1)) {
-      return;
-    }
-    if (monster.nextMoveTime > date) {
-      return;
-    }
-    const monsterData = getMonsterData(monster.monsterId);
-    monster.nextMoveTime = date + monsterData.moveCooldown;
-    const monsterPosition = getTilePosition(monster);
-    const destination = pathDestination(monsterPosition, getTilePosition(playerState));
-    if (destination !== null) {
-      if (monster.path.length <= 0) {
-        monster.path = findPath(monsterPosition, destination);
-        monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
-      } else {
-        const oldPathEnd = monster.path[monster.path.length - 1];
-
-        if (getDistance(oldPathEnd, destination) > 2) {
-          const newPath = findPath(monsterPosition, destination);
-          if (newPath.length > 0) {
-            monster.path = newPath;
-            monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
-          }
-        } else if (date >= monster.nextPathRefreshTime) {
-          const newPath = findPath(monsterPosition, destination);
-          monster.nextPathRefreshTime = date + monsterData.pathRefreshCooldown;
-          if (getDistance(oldPathEnd, destination) > 1 && newPath && newPath.length > 0) {
-            monster.path = newPath;
-          }
-        }
-      }
-
-      if (monster.path.length <= 0) {
-        return;
-      }
-
-      const nextStep = monster.path[0];
-      if (!isWalkableTile(nextStep.row, nextStep.col)) {
-        const newPath = findPath(monsterPosition, destination);
-        if (newPath.length <= 0) {
-          return;
-        } else {
-          monster.path = newPath;
-        }
-      }
-      if (monster.path.length <= 0) {
-        return;
-      }
-      updateMonsterDirection(monster, monster.path[0]);
-      monster.walkFrame += 1;
-      if (monster.walkFrame >= monsterData.animationFrames) {
-        monster.walkFrame = 0;
-      }
-      updateMonsterSprite(monster);
-      const { tileX, tileY } = getWorldPosition(monster.path[0]);
-      monster.path.shift();
-      monster.x = tileX;
-      monster.y = tileY;
-    }
-  });
-  updateMonsterPosition();
-};
-//#endregion  -----  MONSTRES  -----
+//#endregion  -----  ENTRÉES - CLAVIER, SOURIS ET RESIZE  -----
 
 /* ==================================================== */
-//#region     -----  PLAYER - COMBAT  -----
+//#region     -----  ÉVÉNEMENTS DU JEU  -----
 /* ==================================================== */
-/* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
-
-const attackMonster = (monster) => {
-  const monsterData = getMonsterData(monster.monsterId);
-  monster.hp -= getRandomInt(1, playerState.damage);
-  if (monster.hp <= 0) {
-    monster.hp = 0;
-    MonsterHpRefresh(monster);
-    deadMonster(monster);
-    playerState.experience += monsterData.experience;
-    updatePlayerExperience();
-    return;
-  }
-  MonsterHpRefresh(monster);
-};
-
-const updateCombat = () => {
-  if (selectedMonsterId === null) {
-    return;
-  }
-  const monster = findMonsterById(selectedMonsterId);
-  if (!monster) {
-    return;
-  }
-  if (!isNearPlayer(monster)) {
-    return;
-  }
-  const now = Date.now();
-  if (now < nextPlayerAttackTime) {
-    return;
-  }
-  attackMonster(monster);
-  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
-};
-//#endregion  -----  PLAYER - COMBAT  -----
-
-/* ==================================================== */
-//#region     -----  PATHFINDING A*  -----
-/* ==================================================== */
-/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
-
-const getTilePosition = (source) => {
-  const col = source.x / TILE_SIZE;
-  const row = source.y / TILE_SIZE;
-  return { col, row };
-};
-
-const getWorldPosition = (tile) => {
-  const tileX = tile.col * TILE_SIZE;
-  const tileY = tile.row * TILE_SIZE;
-  return { tileX, tileY };
-};
-
-const getNeighbors = (tile) => {
-  return [
-    { row: tile.row, col: tile.col - 1 },
-    { row: tile.row, col: tile.col + 1 },
-    { row: tile.row - 1, col: tile.col },
-    { row: tile.row + 1, col: tile.col },
-  ];
-};
-
-const isWalkableTile = (row, col) => {
-  const tileX = col * TILE_SIZE;
-  const tileY = row * TILE_SIZE;
-  if (!isInsideMap(tileX, tileY)) {
-    return false;
-  }
-  const nextTile = gameMap[row][col];
-
-  if (
-    nextTile === FLOOR &&
-    !isMonsterAtPosition(tileX, tileY) &&
-    !isBlockingItemAtPosition(tileX, tileY) &&
-    !isPlayerAtPosition(tileX, tileY)
-  ) {
-    return true;
-  } else {
-    return false;
-  }
-};
-
-const getDistance = (a, b) => {
-  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
-};
-
-const getNeighborNodes = (tile, targetTile) => {
-  const neighborsTile = getNeighbors(tile);
-  const neighborsNodes = [];
-  neighborsTile.forEach((neighbors) => {
-    if (isWalkableTile(neighbors.row, neighbors.col)) {
-      const g = tile.g + 1;
-      const h = getDistance(neighbors, targetTile);
-      const node = {
-        row: neighbors.row,
-        col: neighbors.col,
-        g: g,
-        h: h,
-        f: g + h,
-        parent: tile,
-      };
-      neighborsNodes.push(node);
-    }
-  });
-  return neighborsNodes;
-};
-
-/* ---------- PATHFINDING - NODES ET LISTES ---------- */
-
-const getSmallerF = (nodesList) => {
-  if (nodesList.length > 0) {
-    let smallF = nodesList[0];
-    nodesList.forEach((node) => {
-      if (node.f < smallF.f) {
-        smallF = node;
-      } else if (node.f === smallF.f) {
-        if (node.h < smallF.h) {
-          smallF = node;
-        }
-      }
-    });
-    return smallF;
-  }
-};
-
-const isNodeInList = (node, list) => {
-  let nodeInList = false;
-  list.forEach((nodeList) => {
-    if (nodeList.row === node.row && nodeList.col === node.col) {
-      nodeInList = true;
-    }
-  });
-  return nodeInList;
-};
-
-const buildPath = (currentNode) => {
-  let path = [];
-  while (currentNode.parent) {
-    path.push(currentNode);
-    currentNode = currentNode.parent;
-  }
-  return path.reverse();
-};
-
-/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
-
-const pathDestination = (selfTile, destinationTile) => {
-  const neighbors = getNeighbors(destinationTile);
-  const possibleNeighbors = [];
-  let bestDistance = null;
-  let bestNeighbor = null;
-  neighbors.forEach((neighbor) => {
-    if (isWalkableTile(neighbor.row, neighbor.col)) {
-      possibleNeighbors.push(neighbor);
-    }
-  });
-  possibleNeighbors.forEach((possibleNeighbor) => {
-    const distance = getDistance(selfTile, possibleNeighbor);
-    if (bestDistance === null || distance < bestDistance) {
-      bestDistance = distance;
-      bestNeighbor = possibleNeighbor;
-    }
-  });
-
-  return bestNeighbor;
-};
-
-const findPath = (startTile, targetTile) => {
-  const openList = [];
-  const closedList = [];
-  const g = 0;
-  const h = getDistance(startTile, targetTile);
-  const startNode = {
-    row: startTile.row,
-    col: startTile.col,
-    g: g,
-    h: h,
-    f: g + h,
-    parent: null,
-  };
-  openList.push(startNode);
-
-  while (openList.length > 0) {
-    let currentNode = getSmallerF(openList);
-    const index = openList.indexOf(currentNode);
-    if (index > -1) {
-      openList.splice(index, 1);
-    }
-    closedList.push(currentNode);
-    if (currentNode.row === targetTile.row && currentNode.col === targetTile.col) {
-      return buildPath(currentNode);
-    } else {
-      const neighborsNodes = getNeighborNodes(currentNode, targetTile);
-      neighborsNodes.forEach((node) => {
-        if (!isNodeInList(node, closedList) && !isNodeInList(node, openList)) {
-          openList.push(node);
-        }
-      });
-    }
-  }
-  return [];
-};
-//#endregion  -----  PATHFINDING A*  -----
-
-/* ==================================================== */
-//#region     -----  EVENEMENTS DU JEU  -----
-/* ==================================================== */
-/* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */
+/* ---------- ÉVÉNEMENTS - SOURIS ET MENU CONTEXTE ---------- */
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -3167,7 +3193,7 @@ document.addEventListener("mouseup", (e) => {
 
   cancelItemDrag();
 });
-//#endregion  -----  EVENEMENTS DU JEU  -----
+//#endregion  -----  ÉVÉNEMENTS DU JEU  -----
 
 /* ==================================================== */
 //#region     -----  BOUCLE DE JEU  -----
@@ -3187,7 +3213,7 @@ setInterval(gameLoop, GAME_LOOP_MS);
 /* ==================================================== */
 //#region     -----  INITIALISATION DU JEU  -----
 /* ==================================================== */
-/* ---------- INITIALISATION - DEMARRAGE ---------- */
+/* ---------- INITIALISATION - DÉMARRAGE ---------- */
 
 updateGameScale();
 showPlayerName(playerState.name);
@@ -3232,5 +3258,4 @@ updateLight(playerState);
 
 console.log(gameMap);
 console.log(player);
-
 //#endregion  -----  DEBUG CONSOLE  -----
