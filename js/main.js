@@ -52,6 +52,10 @@ const dragState = {
   sourceSlotName: null,
   sourceContainerUid: null,
   sourceWorldItemUid: null,
+  pendingSource: null,
+  pendingSlotElement: null,
+  startScreenX: null,
+  startScreenY: null,
 };
 
 const playerSpawnX = 13 * TILE_SIZE;
@@ -973,6 +977,10 @@ const createWorldItemHitbox = (item) => {
 
   hitbox.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (shouldBlockContextMenuAction()) {
+      return;
+    }
 
     const monster = findMonsterAtPosition(item.x, item.y);
     if (monster) {
@@ -1152,6 +1160,14 @@ const cancelItemDrag = () => {
     worldItem.classList.remove("world-item-selected");
   });
   resetDragState();
+  resetDragStatePending();
+};
+
+const resetDragStatePending = () => {
+  dragState.pendingSource = null;
+  dragState.pendingSlotElement = null;
+  dragState.startScreenX = null;
+  dragState.startScreenY = null;
 };
 
 /* ---------- DRAG - DEPART SOURCE ---------- */
@@ -1925,6 +1941,10 @@ const renderEquipmentSlots = () => {
     if (isContainerItem(item)) {
       equipmentElement.addEventListener("contextmenu", (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        if (shouldBlockContextMenuAction()) {
+          return;
+        }
         const itemData = getItemData(item.itemId);
         if (!itemData) {
           return;
@@ -2019,6 +2039,10 @@ const renderContainerSlots = (containerBody, containerItem) => {
         });
         slot.addEventListener("contextmenu", (e) => {
           e.preventDefault();
+          e.stopPropagation();
+          if (shouldBlockContextMenuAction()) {
+            return;
+          }
           const itemData = getItemData(slotItem.itemId);
 
           if (itemData && parentWrapper) {
@@ -2365,6 +2389,54 @@ const updateMovement = () => {
 /* ==================================================== */
 //#region     -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
 /* ==================================================== */
+/* ---------- INPUTS - ETAT CENTRAL ---------- */
+
+const inputState = {
+  isLeftClickDown: false,
+  isRightClickDown: false,
+  isLookComboTriggered: false,
+  lastDetectedTarget: null,
+  shouldBlockNextContextMenu: false,
+};
+
+const updateInputStateOnMouseDown = (e) => {
+  if (e.button === 2) {
+    inputState.isRightClickDown = true;
+  }
+  if (e.button === 0) {
+    inputState.isLeftClickDown = true;
+  }
+  if (inputState.isLeftClickDown && inputState.isRightClickDown && !dragState.isDragging) {
+    inputState.isLookComboTriggered = true;
+    inputState.shouldBlockNextContextMenu = true;
+  }
+  inputState.lastDetectedTarget = getPointerTargetFromEvent(e);
+};
+
+const updateInputStateOnMouseUp = (e) => {
+  if (e.button === 2) {
+    inputState.isRightClickDown = false;
+  }
+  if (e.button === 0) {
+    inputState.isLeftClickDown = false;
+  }
+  if (!inputState.isLeftClickDown || !inputState.isRightClickDown) {
+    inputState.isLookComboTriggered = false;
+  }
+  if (!inputState.isLeftClickDown && !inputState.isRightClickDown) {
+    inputState.lastDetectedTarget = null;
+  }
+};
+
+const shouldBlockContextMenuAction = () => {
+  if (inputState.shouldBlockNextContextMenu) {
+    inputState.shouldBlockNextContextMenu = false;
+    return true;
+  } else {
+    return false;
+  }
+};
+
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
 document.addEventListener("keydown", (e) => {
@@ -2409,8 +2481,9 @@ window.addEventListener("resize", () => {
 });
 
 /* ---------- INPUTS - SOURIS ---------- */
-game.addEventListener("mousemove", (e) => {
+document.addEventListener("mousemove", (e) => {
   updateMousePositionInfo(e.clientX, e.clientY);
+  handleItemUiMouseMove(e);
 });
 
 game.addEventListener("click", (e) => {
@@ -2426,6 +2499,55 @@ game.addEventListener("click", (e) => {
     mousePosition.isInsideMap,
   );
 });
+/* ---------- INPUTS - ACTIONS SOURIS ---------- */
+const lookAtPointerTarget = (target) => {
+  let lookInfo = {};
+
+  if (target.monster) {
+    const monsterData = getMonsterData(target.monster.monsterId);
+    if (!monsterData) {
+      return null;
+    }
+    lookInfo = {
+      name: monsterData.name,
+      desc: monsterData.desc,
+    };
+    return lookInfo;
+  } else if (target.item) {
+    const itemData = getItemData(target.item.itemId);
+    if (!itemData) {
+      return null;
+    }
+    lookInfo = {
+      name: itemData.name,
+      desc: itemData.desc,
+      quantity: target.item.quantity,
+      weight: getItemTotalWeight(target.item),
+    };
+    return lookInfo;
+  } else if (target.tile) {
+    lookInfo = {
+      name: "Tile",
+      desc: "A tile.",
+    };
+    return lookInfo;
+  } else {
+    return null;
+  }
+};
+
+const handleLookCombo = () => {
+  const target = inputState.lastDetectedTarget;
+  if (!target) {
+    return false;
+  }
+  const lookInfo = lookAtPointerTarget(target);
+  if (!lookInfo) {
+    return false;
+  }
+  console.log(lookInfo);
+  return true;
+};
 
 /* ---------- INPUTS - DRAG ITEM UI ---------- */
 
@@ -2517,9 +2639,14 @@ const getItemSlotInfoFromEvent = (e) => {
 const getPointerTargetFromEvent = (e) => {
   updateMousePositionInfo(e.clientX, e.clientY);
   const itemSlotInfo = getItemSlotInfoFromEvent(e);
+  let item = null;
+  if (itemSlotInfo && itemSlotInfo.address) {
+    item = getDragSourceItem(itemSlotInfo.address);
+  }
   if (itemSlotInfo && (itemSlotInfo.address.type === "equipment" || itemSlotInfo.address.type === "container")) {
     return {
       itemSlotInfo: itemSlotInfo,
+      item,
       monster: null,
       tile: null,
       pointerInsideMap: false,
@@ -2539,40 +2666,55 @@ const getPointerTargetFromEvent = (e) => {
 
   return {
     itemSlotInfo: itemSlotInfo,
+    item,
     monster: monster,
     tile,
     pointerInsideMap,
   };
 };
 
-const handlePointerMouseDown = (e) => {
-  const info = getPointerTargetFromEvent(e);
-  console.log(info);
-};
-
 const handleItemUiMouseDown = (e) => {
-  handlePointerMouseDown(e);
+  if (e.button !== 0) {
+    return;
+  }
   const info = getItemSlotInfoFromEvent(e);
   if (!info || !info.address || !info.slotElement) {
     return;
   }
   e.preventDefault();
-  startItemDrag(info.address);
+  dragState.pendingSource = info.address;
+  dragState.pendingSlotElement = info.slotElement;
+  dragState.startScreenX = e.clientX;
+  dragState.startScreenY = e.clientY;
+};
+
+const handleItemUiMouseMove = (e) => {
+  if (!dragState.pendingSource || !inputState.isLeftClickDown || inputState.isLookComboTriggered) {
+    return;
+  }
+  const mouseMoveDistance = Math.abs(dragState.startScreenX - e.clientX) + Math.abs(dragState.startScreenY - e.clientY);
+  if (mouseMoveDistance < 5) {
+    return;
+  }
+  const item = getDragSourceItem(dragState.pendingSource);
+  if (!item || (dragState.pendingSource.type === "world" && !isNearPlayer(item, 1))) {
+    resetDragState();
+    resetDragStatePending();
+    return;
+  }
+  startItemDrag(dragState.pendingSource);
   if (dragState.isDragging === true) {
-    if (info.address.type === "world") {
-      if (!isNearPlayer(dragState.item, 1)) {
-        resetDragState();
-        return;
-      }
-      const worldItemUid = info.address.worldItemUid;
+    if (dragState.pendingSource.type === "world") {
+      const worldItemUid = dragState.pendingSource.worldItemUid;
       const parts = document.querySelectorAll(`.world-item-part[data-item-uid="${worldItemUid}"]`);
       parts.forEach((part) => {
         part.classList.add("world-item-selected");
       });
     } else {
-      info.slotElement.classList.add("container-slot-dragging");
+      dragState.pendingSlotElement.classList.add("container-slot-dragging");
     }
   }
+  resetDragStatePending();
 };
 
 const handleItemUiMouseUp = (e) => {
@@ -2612,8 +2754,21 @@ const handleItemUiMouseUp = (e) => {
 
   cancelItemDrag();
 };
-document.addEventListener("mousedown", handleItemUiMouseDown);
-document.addEventListener("mouseup", handleItemUiMouseUp);
+
+document.addEventListener("mousedown", (e) => {
+  updateInputStateOnMouseDown(e);
+  if (inputState.isLookComboTriggered) {
+    e.preventDefault();
+    handleLookCombo();
+    return;
+  }
+  handleItemUiMouseDown(e);
+});
+
+document.addEventListener("mouseup", (e) => {
+  handleItemUiMouseUp(e);
+  updateInputStateOnMouseUp(e);
+});
 
 //#endregion  -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
 
@@ -2680,6 +2835,10 @@ const renderMonsters = (monstersList) => {
     div.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (shouldBlockContextMenuAction()) {
+        return;
+      }
+
       selectMonster(monster);
     });
     div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
@@ -3181,6 +3340,10 @@ const findPath = (startTile, targetTile) => {
 
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
+  e.stopPropagation();
+  if (shouldBlockContextMenuAction()) {
+    return;
+  }
 });
 boiteJeux.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -3194,6 +3357,7 @@ boiteJeux.addEventListener("click", (e) => {
 
 document.addEventListener("mouseup", (e) => {
   if (!dragState.isDragging) {
+    resetDragStatePending();
     return;
   }
 

@@ -1,3 +1,7 @@
+0.293 - Opion look et autoWalk
+    - Ajout de l'option look avec un combo de clique gauche + clique droit
+    - Changement de l'attitude du drag pour quil commence seulement au mouvement
+
 0.292 - Drag UI
     - Ajout du vrai système drag/drop central avec dragState
     - Validation equipment data-driven avec equipmentSlot
