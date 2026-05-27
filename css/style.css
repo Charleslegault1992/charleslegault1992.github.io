@@ -292,6 +292,55 @@ main {
 /* #endregion  ----- PANNEAUX UI ----- */
 
 /* ==================================================== */
+/* #region     ----- UI - TEXTE FLOTTANT ----- */
+/* ==================================================== */
+
+.floating-text-wrapper {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: none;
+  animation: floating-text-animation 2s ease-out forwards;
+}
+
+.floating-text {
+  max-width: 260px;
+  padding: 4px 8px;
+
+  color: #6de920;
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  line-height: 1.35;
+  text-align: center;
+  white-space: pre-line;
+  text-shadow: 1px 1px 2px black;
+}
+
+@keyframes floating-text-animation {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  12% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  80% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+/* #endregion  ----- UI - TEXTE FLOTTANT ----- */
+
+/* ==================================================== */
 /* #region     ----- UI - EQUIPMENT / INVENTAIRE ----- */
 /* ==================================================== */
 
@@ -559,7 +608,7 @@ main {
 .container-slot-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content:flex-start;
+  justify-content: flex-start;
   gap: 4px;
   width: 100%;
   margin: 0 auto;
@@ -582,8 +631,7 @@ main {
 }
 
 .world-item-selected {
-  filter: drop-shadow(0 0 1px #ffffffa8) drop-shadow(0 0 2px #ffffff78)
-    drop-shadow(0 0 6px #ffffff33);
+  filter: drop-shadow(0 0 1px #ffffffa8) drop-shadow(0 0 2px #ffffff78) drop-shadow(0 0 6px #ffffff33);
 }
 
 /* #endregion  ----- UI - CONTAINER DOCK ----- */
@@ -693,7 +741,7 @@ main {
 
   height: 6px;
   background: black;
-  pointer-events: none
+  pointer-events: none;
 }
 
 .hp-red,
@@ -701,7 +749,7 @@ main {
   height: 100%;
   background: var(--hp-color);
   box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.71);
-  pointer-events: none
+  pointer-events: none;
 }
 
 .name,
@@ -718,7 +766,7 @@ main {
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  pointer-events: none
+  pointer-events: none;
 }
 
 /* #endregion  ----- BARS ET NOMS ----- */

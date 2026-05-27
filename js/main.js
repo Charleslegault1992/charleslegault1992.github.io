@@ -90,6 +90,7 @@ const itemsDatabase = {
     name: "Apple",
     desc: "An apple.",
     type: "food",
+    suffix: "an",
     weight: 10,
     stackable: false,
     blockMovement: false,
@@ -111,6 +112,7 @@ const itemsDatabase = {
     name: "Box",
     desc: "A big old box.",
     type: "container",
+    suffix: "a",
     weight: 80,
     stackable: false,
     blockMovement: true,
@@ -139,6 +141,7 @@ const itemsDatabase = {
     name: "Health Potion",
     desc: "Drinking it might give you some benefit.",
     type: "consumable",
+    suffix: "a",
     weight: 25,
     stackable: true,
     blockMovement: false,
@@ -160,6 +163,7 @@ const itemsDatabase = {
     name: "Rat Corpse",
     desc: "A dead rat.",
     type: "corpse",
+    suffix: "a",
     weight: 75,
     stackable: false,
     blockMovement: false,
@@ -184,6 +188,7 @@ const itemsDatabase = {
     desc: "An old rusty sword.",
     type: "sword",
     equipmentSlot: ["weapon"],
+    suffix: "a",
     weight: 30,
     stackable: false,
     blockMovement: false,
@@ -205,6 +210,7 @@ const itemsDatabase = {
     name: "Spider Corpse",
     desc: "A dead spider.",
     type: "corpse",
+    suffix: "a",
     weight: 100,
     stackable: false,
     blockMovement: false,
@@ -229,6 +235,7 @@ const itemsDatabase = {
     desc: "A bag. (Slot: 8)",
     type: "bag",
     equipmentSlot: ["backpack"],
+    suffix: "a",
     weight: 15,
     stackable: false,
     blockMovement: false,
@@ -252,6 +259,7 @@ const itemsDatabase = {
     name: "Gold Coin",
     desc: "A gold coin.",
     type: "currency",
+    suffix: "a",
     weight: 0.1,
     stackable: true,
     blockMovement: false,
@@ -274,7 +282,8 @@ const monstersDatabase = {
   rat: {
     monsterId: "rat",
     name: "Rat",
-    desc: "A rat.",
+    desc: "A small but vicious rat.",
+    suffix: "a",
     maxHp: 20,
     damage: 2,
     experience: 50,
@@ -309,6 +318,7 @@ const monstersDatabase = {
     monsterId: "spider",
     name: "Spider",
     desc: "A venomous spider.",
+    suffix: "a",
     maxHp: 50,
     damage: 4,
     experience: 75,
@@ -2244,6 +2254,50 @@ const updateGameScale = () => {
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
   boiteJeuxInner.style.top = `${gameTop}px`;
 };
+
+/* ---------- UI - TEXTE FLOTTANT ---------- */
+const showFloatingTextAbovePlayer = (text) => {
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("floating-text-wrapper");
+  wrapper.style.left = `${playerState.x - camera.x + TILE_SIZE / 2}px`;
+  wrapper.style.top = `${playerState.y - camera.y - 160}px`;
+
+  const div = document.createElement("div");
+  div.classList.add("floating-text");
+  div.textContent = `${text}`;
+
+  wrapper.appendChild(div);
+  game.appendChild(wrapper);
+  setTimeout(() => {
+    wrapper.remove();
+  }, 2000);
+};
+
+const showLookFloatingText = (lookInfo) => {
+  if (!lookInfo) {
+    return;
+  }
+  let text = "";
+
+  const isCarriedItem = lookInfo.sourceType === "equipment" || lookInfo.sourceType === "container";
+  const isNearbyWorldItem = lookInfo.sourceType === "world" && isNearPlayer(lookInfo.target, 1);
+
+  if (lookInfo.weight !== undefined && lookInfo.quantity && (isCarriedItem || isNearbyWorldItem)) {
+    let suffixName = lookInfo.suffix;
+    let name = lookInfo.name;
+    let suffixWeight = "It weighs";
+    if (lookInfo.quantity > 1) {
+      suffixName = lookInfo.quantity;
+      name += "s";
+      suffixWeight = "They weigh";
+    }
+    text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
+  } else {
+    text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
+  }
+  showFloatingTextAbovePlayer(text);
+};
+
 //#endregion  -----  UI  -----
 
 /* ==================================================== */
@@ -2486,19 +2540,6 @@ document.addEventListener("mousemove", (e) => {
   handleItemUiMouseMove(e);
 });
 
-game.addEventListener("click", (e) => {
-  console.log(
-    mousePosition.col,
-    mousePosition.row,
-    mousePosition.gameX,
-    mousePosition.gameY,
-    mousePosition.screenX,
-    mousePosition.screenY,
-    mousePosition.worldX,
-    mousePosition.worldY,
-    mousePosition.isInsideMap,
-  );
-});
 /* ---------- INPUTS - ACTIONS SOURIS ---------- */
 const lookAtPointerTarget = (target) => {
   let lookInfo = {};
@@ -2511,6 +2552,8 @@ const lookAtPointerTarget = (target) => {
     lookInfo = {
       name: monsterData.name,
       desc: monsterData.desc,
+      suffix: monsterData.suffix,
+      target: target.monster,
     };
     return lookInfo;
   } else if (target.item) {
@@ -2521,14 +2564,19 @@ const lookAtPointerTarget = (target) => {
     lookInfo = {
       name: itemData.name,
       desc: itemData.desc,
+      suffix: itemData.suffix,
       quantity: target.item.quantity,
       weight: getItemTotalWeight(target.item),
+      target: target.item,
+      sourceType: target.itemSlotInfo.address.type,
     };
     return lookInfo;
   } else if (target.tile) {
     lookInfo = {
       name: "Tile",
       desc: "A tile.",
+      suffix: "a",
+      target: target.tile,
     };
     return lookInfo;
   } else {
@@ -2545,7 +2593,7 @@ const handleLookCombo = () => {
   if (!lookInfo) {
     return false;
   }
-  console.log(lookInfo);
+  showLookFloatingText(lookInfo);
   return true;
 };
 
