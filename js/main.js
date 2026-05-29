@@ -434,7 +434,6 @@ let PLAYER_MOVE_COOLDOWN_MS = 200;
 
 let nextPlayerMoveTime = 0;
 let nextPlayerAttackTime = 0;
-let nextMonsterAttackTime = 0;
 
 const MONSTER_ATTACK_COOLDOWN_MS = 1500;
 //#endregion  -----  CORE - TIMING  -----
@@ -2083,21 +2082,17 @@ const updatePlayerInventory = () => {
                   </div>
 
                   <div class="equipment-right-bar">
-                    <div class="equipment-icon-grid">
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                      <div class="equipment-icon-button"></div>
-                    </div>
-
                     <button class="equipment-ui-button">Follow</button>
                     <button class="equipment-ui-button">PVP</button>
                     <button class="equipment-ui-button">Friends</button>
                     <button class="equipment-ui-button">Options</button>
                     <button class="equipment-ui-button">Logout</button>
                   </div>
+                </div>
+               <div class="stance-bar">
+                  <button class="stance-button">Full Attack</button>
+                  <button class="stance-button stance-button-active">Balanced</button>
+                  <button class="stance-button">Full Defense</button>
                 </div>
               </div>
             </div>`;
@@ -2972,6 +2967,7 @@ const createMonster = (monsterId, x, y) => {
     hp: monsterData.maxHp,
     uid: nextMonsterId++,
     nextMoveTime: 0,
+    nextAttackTime: 0,
     path: [],
     nextPathRefreshTime: 0,
     direction: "down",
@@ -3204,10 +3200,10 @@ const updateMonsterCombat = () => {
     if (isNearPlayer(monster)) {
       const monsterData = getMonsterData(monster.monsterId);
       const now = Date.now();
-      if (now < nextMonsterAttackTime) {
+      if (now < monster.nextAttackTime) {
         return;
       }
-      nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
+      monster.nextAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
       const attackResult = calculateDamageTakenByPlayer(monsterData.combat);
       if (attackResult.finalDamage > 0) {
         playerState.hp -= attackResult.finalDamage;

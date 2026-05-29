@@ -454,6 +454,7 @@ main {
   overflow: hidden;
   outline: 2px solid rgba(145, 145, 145, 0.5);
   border-radius: 1px;
+  
 }
 
 .equipment-cap-slot {
@@ -474,7 +475,7 @@ main {
 .equipment-right-bar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 15px;
 }
 
 .equipment-ui-button {
@@ -482,34 +483,21 @@ main {
   height: 24px;
   font-size: 9px;
   color: white;
-  background-image: url("../images/ui/equipmentSlot.png");
+  background-image: url("../images/ui/equipmentSlotButton.png");
   background-repeat: no-repeat;
-  background-size: auto;
+  background-size: 100% 100%;
   image-rendering: pixelated;
   overflow: hidden;
-  outline: 2px solid rgba(145, 145, 145, 0.5);
+  outline: 1px solid rgba(145, 145, 145, 0.5);
   border-radius: 1px;
   padding: 0;
   margin-left: 9px;
-}
-
-.equipment-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 22px);
-  gap: 1px;
-  margin-left: 10px;
-}
-
-.equipment-icon-button {
-  width: 22px;
-  height: 22px;
-  background-image: url("../images/ui/equipmentSlot.png");
-  background-repeat: no-repeat;
-  background-size: auto;
-  image-rendering: pixelated;
-  overflow: hidden;
-  outline: 2px solid rgba(145, 145, 145, 0.5);
-  border-radius: 1px;
+  color: rgb(225, 225, 225);
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 1px 1px 2px black;
 }
 
 .item-icon-part {
@@ -584,6 +572,52 @@ main {
 
 .equipment-slot-empty[data-equipment-slot="ammo"] {
   background-position: -432px 0;
+}
+
+.stance-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 3px 3px 1px 3px;
+}
+
+.stance-button {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 3px;
+
+  color: rgb(225, 225, 225);
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 1px 1px 2px black;
+
+  background: linear-gradient(180deg, rgb(47, 52, 55), rgb(15, 17, 19));
+  border: 1px solid rgba(210, 210, 210, 0.35);
+  outline: 1px solid rgba(0, 0, 0, 0.9);
+  border-radius: 2px;
+
+  cursor: pointer;
+}
+
+.stance-button:hover {
+  background: linear-gradient(180deg, rgb(62, 68, 72), rgb(20, 23, 25));
+  border-color: rgba(230, 230, 230, 0.55);
+}
+
+.stance-button:active {
+  transform: translateY(1px);
+}
+
+.stance-button-active {
+  color: rgb(255, 230, 150);
+  background: linear-gradient(180deg, rgb(75, 63, 35), rgb(24, 20, 12));
+  border-color: rgba(255, 220, 120, 0.75);
+  box-shadow: inset 0 0 4px rgba(255, 210, 90, 0.25);
 }
 
 /* #endregion  ----- UI - EQUIPMENT / INVENTAIRE ----- */

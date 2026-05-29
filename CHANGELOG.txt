@@ -7,6 +7,7 @@
     - Ajout de hitChance/armorReduction/blockChance pour joueur et monstre
     - Mise en place de l'algorithme pour envoyer et recevoir des degats
     - Changement dans les databases pour filier avec le nouvelle algorithme
+    - Ajustement dans le UI et ajout des stances Full Attack / Balanced / Full Defense
 
 0.292 - Drag UI
     - Ajout du vrai système drag/drop central avec dragState
