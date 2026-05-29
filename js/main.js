@@ -2405,6 +2405,25 @@ const showFloatingTextAboveMonster = (monster, text, type) => {
     textElement.remove();
   }, 1300);
 };
+
+const showFloatingTextAbovePlayer = (text, type) => {
+  const playerElement = game.querySelector("#player");
+  if (!playerElement) {
+    return;
+  }
+  const playerTextElement = playerElement.querySelector(".player-floating-text-layer");
+  if (!playerTextElement) {
+    return;
+  }
+  const textElement = document.createElement("div");
+  textElement.classList.add("floating-combat-text");
+  textElement.classList.add(`floating-combat-text-${type}`);
+  textElement.textContent = `${text}`;
+  playerTextElement.appendChild(textElement);
+  setTimeout(() => {
+    textElement.remove();
+  }, 1300);
+};
 //#endregion  -----  UI  -----
 
 /* ==================================================== */
@@ -3189,7 +3208,11 @@ const updateMonsterCombat = () => {
         return;
       }
       nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
-      playerState.hp -= getRandomInt(1, monsterData.combat.attack);
+      const attackResult = calculateDamageTakenByPlayer(monsterData.combat);
+      if (attackResult.finalDamage > 0) {
+        playerState.hp -= attackResult.finalDamage;
+      }
+      showFloatingTextAbovePlayer(attackResult.text, attackResult.textType);
       updatePlayerStats();
       hpRefresh();
       if (playerState.hp <= 0) {
@@ -3337,7 +3360,7 @@ const getEquippedWeaponCombatData = () => {
 const getPlayerWeaponAttack = () => {
   const weaponCombatData = getEquippedWeaponCombatData();
   if (!weaponCombatData || !Number.isFinite(weaponCombatData.attack)) {
-    return 3;
+    return 4;
   }
   return weaponCombatData.attack;
 };
@@ -3438,8 +3461,8 @@ const calculatePlayerAttackResult = (target) => {
     };
   //!!!!! RAW DAMAGE !!!!
   const levelBonus = playerState.level * 0.2;
-  let minDamage = levelBonus + attackSkill * 0.35 + weaponAttack * 0.8;
-  let maxDamage = levelBonus + attackSkill * 0.9 + weaponAttack * 2.2;
+  let minDamage = levelBonus + attackSkill * 0.25 + weaponAttack * 0.4;
+  let maxDamage = levelBonus + attackSkill * 0.6 + weaponAttack * 1.1;
   minDamage = minDamage * combatModeData.attackMultiplier;
   maxDamage = maxDamage * combatModeData.attackMultiplier;
   const rawDamage = getRandomFloat(minDamage, maxDamage);
@@ -3474,8 +3497,8 @@ const calculatePlayerAttackResult = (target) => {
       didHit: true,
       wasBlocked,
       finalDamage: 0,
-      text: "block",
-      textType: "block",
+      text: "0",
+      textType: "absorb",
     };
   } else {
     return {
@@ -3509,8 +3532,13 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
       textType: "miss",
     };
   //!!!!! BLOCK CHANCE && DAMAGE REDUCTION !!!!
+  let attackerAttack = 1;
+  if (attackerCombatData && Number.isFinite(attackerCombatData.attack)) {
+    attackerAttack = Math.max(1, attackerCombatData.attack);
+  }
+  const rawDamage = getRandomFloat(1, attackerAttack);
   let wasBlocked = false;
-  let blockChance = 10 + shieldSkill * 0.8 + playerShieldDefense * 1.2;
+  let blockChance = 10 + shieldSkill * 0.8 + playerShieldDefense * 0.8;
   blockChance *= combatModeData.blockChanceMultiplier;
   blockChance = clamp(blockChance, 5, 70);
   let defensePower = 0;
@@ -3518,15 +3546,10 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   const rollBlock = getRandomInt(1, 100);
   if (rollBlock <= blockChance) {
     wasBlocked = true;
-    defensePower = playerShieldDefense * 0.8 + shieldSkill * 0.25;
+    defensePower = playerShieldDefense * 0.25 + shieldSkill * 0.1;
     defensePower *= combatModeData.defenseMultiplier;
     defenseReduction = getRandomFloat(defensePower * 0.6, defensePower * 1.2);
   }
-  let attackerAttack = 1;
-  if (attackerCombatData && attackerCombatData.attack) {
-    attackerAttack = Math.max(1, attackerCombatData.attack);
-  }
-  const rawDamage = getRandomFloat(1, attackerAttack);
   const damageAfterDefense = rawDamage - defenseReduction;
   if (damageAfterDefense <= 0) {
     return {
@@ -3539,8 +3562,8 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   }
   //!!!!! ARMOR REDUCTION !!!!
   const armorPower = playerArmor * combatModeData.armorMultiplier;
-  const armorReductionMin = armorPower * 0.45;
-  const armorReductionMax = armorPower * 0.9;
+  const armorReductionMin = armorPower * 0.2;
+  const armorReductionMax = armorPower * 0.45;
   const armorReduction = getRandomFloat(armorReductionMin, armorReductionMax);
   const damageAfterArmor = damageAfterDefense - armorReduction;
   const finalDamage = Math.max(0, Math.floor(damageAfterArmor));
@@ -3549,8 +3572,8 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
       didHit: true,
       wasBlocked,
       finalDamage: 0,
-      text: "block",
-      textType: "block",
+      text: "0",
+      textType: "absorb",
     };
   } else {
     return {
@@ -3570,9 +3593,11 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
 
 const attackMonster = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
-  const damage = getRandomInt(1, playerState.damage);
-  monster.hp -= damage;
-  showFloatingTextAboveMonster(monster, damage, "damage");
+  const attackResult = calculatePlayerAttackResult(monster);
+  if (attackResult.finalDamage > 0) {
+    monster.hp -= attackResult.finalDamage;
+  }
+  showFloatingTextAboveMonster(monster, attackResult.text, attackResult.textType);
   if (monster.hp <= 0) {
     monster.hp = 0;
     MonsterHpRefresh(monster);

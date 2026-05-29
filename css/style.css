@@ -351,6 +351,15 @@ main {
   pointer-events: none;
   z-index: 10003;
 }
+.player-floating-text-layer {
+  position: absolute;
+  left: 50%;
+  top: -25;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 10003;
+}
 
 .floating-combat-text {
   position: absolute;
@@ -379,6 +388,9 @@ main {
 
 .floating-combat-text-block {
   color: #ffd447;
+}
+.floating-combat-text-absorb {
+  color: #7d7d7d;
 }
 
 .floating-combat-text-heal {

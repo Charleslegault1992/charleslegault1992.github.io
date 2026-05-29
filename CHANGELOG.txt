@@ -4,6 +4,7 @@
     - Ajout fonciton pour afficher message au dessus du joueur
     - Ajout de inputState pour controller les differents cliques
     - Finalisation de la logique pour l'option look + test
+    - Ajout de hitChance/armorReduction/blockChance pour joueur et monstre
     - Mise en place de l'algorithme pour envoyer et recevoir des degats
     - Changement dans les databases pour filier avec le nouvelle algorithme
 
