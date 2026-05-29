@@ -313,7 +313,11 @@ main {
   line-height: 1.35;
   text-align: center;
   white-space: pre-line;
-  text-shadow: 1px 1px 2px black;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px 1px 0 #000,
+    1px -1px 0 #000,
+    -1px -1px 0 #000;
 }
 
 @keyframes floating-text-animation {
@@ -335,6 +339,68 @@ main {
   100% {
     opacity: 0;
     transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+.monster-floating-text-layer {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 10003;
+}
+
+.floating-combat-text {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: "Arial", sans-serif;
+  font-size: 13px;
+  font-weight: bold;
+  text-shadow:
+    1px 1px 0 #000,
+    -1px 1px 0 #000,
+    1px -1px 0 #000,
+    -1px -1px 0 #000;
+  animation: combatTextFloat 1.3s ease-out forwards;
+}
+
+.floating-combat-text-damage {
+  color: #ff4747;
+}
+
+.floating-combat-text-miss {
+  color: #bfbfbf;
+}
+
+.floating-combat-text-block {
+  color: #ffd447;
+}
+
+.floating-combat-text-heal {
+  color: #48ff6a;
+}
+
+@keyframes combatTextFloat {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0);
+  }
+  12% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-46px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-46px);
   }
 }
 

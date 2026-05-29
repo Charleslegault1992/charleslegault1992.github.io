@@ -1,8 +1,11 @@
-0.293 - Opion look et autoWalk
+0.293 - Opion look et algorithme pour combat
     - Ajout de l'option look avec un combo de clique gauche + clique droit
     - Changement de l'attitude du drag pour quil commence seulement au mouvement
     - Ajout fonciton pour afficher message au dessus du joueur
+    - Ajout de inputState pour controller les differents cliques
     - Finalisation de la logique pour l'option look + test
+    - Mise en place de l'algorithme pour envoyer et recevoir des degats
+    - Changement dans les databases pour filier avec le nouvelle algorithme
 
 0.292 - Drag UI
     - Ajout du vrai système drag/drop central avec dragState

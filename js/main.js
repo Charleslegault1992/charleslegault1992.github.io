@@ -185,13 +185,20 @@ const itemsDatabase = {
   sword: {
     itemId: "sword",
     name: "Sword",
-    desc: "An old rusty sword.",
-    type: "sword",
+    desc: "An old rusty sword. (ATK: 6)",
+    type: "weapon",
     equipmentSlot: ["weapon"],
     suffix: "a",
-    weight: 30,
+    weight: 25,
     stackable: false,
     blockMovement: false,
+    combat: {
+      weaponType: "sword",
+      attack: 6,
+      defense: 3,
+      skillName: "swordSkill",
+      range: 1,
+    },
     render: {
       atlas: "items",
       parts: [
@@ -205,6 +212,59 @@ const itemsDatabase = {
       ],
     },
   },
+  woodenShield: {
+    itemId: "woodenShield",
+    name: "Wooden Shield",
+    desc: "An old wooden shield",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 35,
+    stackable: false,
+    blockMovement: false,
+    combat: {
+      shieldDefense: 14,
+    },
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 6,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  leatherArmor: {
+    itemId: "leatherArmor",
+    name: "Leather Armor",
+    desc: "A classic leather armor.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 35,
+    stackable: false,
+    blockMovement: false,
+    combat: {
+      armor: 5,
+    },
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 9,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+
   spiderCorpse: {
     itemId: "spiderCorpse",
     name: "Spider Corpse",
@@ -285,7 +345,6 @@ const monstersDatabase = {
     desc: "A small but vicious rat.",
     suffix: "a",
     maxHp: 20,
-    damage: 2,
     experience: 50,
     moveCooldown: 275,
     pathRefreshCooldown: 800,
@@ -299,6 +358,13 @@ const monstersDatabase = {
     animationFrames: 3,
     spriteSize: SPRITE_SIZE,
     corpseItemId: "ratCorpse",
+    combat: {
+      attack: 4,
+      armor: 1,
+      defense: 1,
+      blockChance: 3,
+      hitChance: 70,
+    },
     loot: [
       {
         itemId: "goldCoin",
@@ -320,7 +386,6 @@ const monstersDatabase = {
     desc: "A venomous spider.",
     suffix: "a",
     maxHp: 50,
-    damage: 4,
     experience: 75,
     moveCooldown: 250,
     pathRefreshCooldown: 800,
@@ -334,6 +399,13 @@ const monstersDatabase = {
     animationFrames: 3,
     spriteSize: SPRITE_SIZE,
     corpseItemId: "spiderCorpse",
+    combat: {
+      attack: 8,
+      armor: 2,
+      defense: 3,
+      blockChance: 8,
+      hitChance: 75,
+    },
     loot: [
       {
         itemId: "goldCoin",
@@ -343,7 +415,7 @@ const monstersDatabase = {
       },
       {
         itemId: "sword",
-        chance: 100,
+        chance: 30,
         minQuantity: 1,
         maxQuantity: 1,
       },
@@ -402,6 +474,7 @@ const playerState = {
   direction: "down",
   walkFrame: 1,
   light: 900,
+  combatMode: "balanced",
   equipment: {
     necklace: null,
     helmet: null,
@@ -689,6 +762,10 @@ const getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
+const getRandomFloat = (min, max) => {
+  return Math.random() * (max - min) + min;
+};
+
 const isNearPlayer = (target, range = 1) => {
   const playerCol = playerState.x / TILE_SIZE;
   const playerRow = playerState.y / TILE_SIZE;
@@ -707,6 +784,16 @@ const isContainerItem = (item) => {
     return false;
   }
   return itemData.container === true;
+};
+
+const clamp = (value, min, max) => {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
 };
 
 /* ---------- OUTILS - MISE A JOUR DU MONDE ---------- */
@@ -2256,11 +2343,11 @@ const updateGameScale = () => {
 };
 
 /* ---------- UI - TEXTE FLOTTANT ---------- */
-const showFloatingTextAbovePlayer = (text) => {
+const showFloatingTextAboveTarget = (text, offsetY, target) => {
   const wrapper = document.createElement("div");
   wrapper.classList.add("floating-text-wrapper");
-  wrapper.style.left = `${playerState.x - camera.x + TILE_SIZE / 2}px`;
-  wrapper.style.top = `${playerState.y - camera.y - 160}px`;
+  wrapper.style.left = `${target.x - camera.x + TILE_SIZE / 2}px`;
+  wrapper.style.top = `${target.y - camera.y - offsetY}px`;
 
   const div = document.createElement("div");
   div.classList.add("floating-text");
@@ -2278,11 +2365,12 @@ const showLookFloatingText = (lookInfo) => {
     return;
   }
   let text = "";
-
+  let offsetY = 130;
   const isCarriedItem = lookInfo.sourceType === "equipment" || lookInfo.sourceType === "container";
   const isNearbyWorldItem = lookInfo.sourceType === "world" && isNearPlayer(lookInfo.target, 1);
 
   if (lookInfo.weight !== undefined && lookInfo.quantity && (isCarriedItem || isNearbyWorldItem)) {
+    offsetY = 150;
     let suffixName = lookInfo.suffix;
     let name = lookInfo.name;
     let suffixWeight = "It weighs";
@@ -2293,11 +2381,30 @@ const showLookFloatingText = (lookInfo) => {
     }
     text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
   } else {
+    offsetY = 130;
     text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
   }
-  showFloatingTextAbovePlayer(text);
+  showFloatingTextAboveTarget(text, offsetY, playerState);
 };
 
+const showFloatingTextAboveMonster = (monster, text, type) => {
+  const monsterElement = findMonsterElement(monster.uid);
+  if (!monsterElement) {
+    return;
+  }
+  const monsterTextElement = monsterElement.querySelector(".monster-floating-text-layer");
+  if (!monsterTextElement) {
+    return;
+  }
+  const textElement = document.createElement("div");
+  textElement.classList.add("floating-combat-text");
+  textElement.classList.add(`floating-combat-text-${type}`);
+  textElement.textContent = `${text}`;
+  monsterTextElement.appendChild(textElement);
+  setTimeout(() => {
+    textElement.remove();
+  }, 1300);
+};
 //#endregion  -----  UI  -----
 
 /* ==================================================== */
@@ -2865,6 +2972,8 @@ const renderMonsters = (monstersList) => {
     if (monster.uid === selectedMonsterId) {
       div.classList.add("monster-selected");
     }
+    const monsterText = document.createElement("div");
+    monsterText.classList.add("monster-floating-text-layer");
     const monsterName = document.createElement("div");
     monsterName.classList.add("monster-name");
     monsterName.textContent = `${monsterData.name}`;
@@ -2893,6 +3002,7 @@ const renderMonsters = (monstersList) => {
     div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
     div.style.zIndex = monster.y;
     hpContainer.appendChild(hpRed);
+    div.appendChild(monsterText);
     div.appendChild(monsterName);
     div.appendChild(hpContainer);
     div.appendChild(monsterSprite);
@@ -3045,8 +3155,8 @@ const selectMonsterElement = (monsterId) => {
   }
 };
 
-const findMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+const findMonsterElement = (monsterUid) => {
+  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterUid}"]`);
   return monsterElement;
 };
 
@@ -3079,7 +3189,7 @@ const updateMonsterCombat = () => {
         return;
       }
       nextMonsterAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
-      playerState.hp -= getRandomInt(1, monsterData.damage);
+      playerState.hp -= getRandomInt(1, monsterData.combat.attack);
       updatePlayerStats();
       hpRefresh();
       if (playerState.hp <= 0) {
@@ -3177,11 +3287,292 @@ const updateMonsterMovement = () => {
 /* ==================================================== */
 //#region     -----  PLAYER - COMBAT  -----
 /* ==================================================== */
+/* ---------- COMBAT - STATS ET FORMULES ---------- */
+const getCombatModeData = () => {
+  const combatMode = playerState.combatMode;
+  if (combatMode === "fullAttack") {
+    return {
+      attackMultiplier: 1.15,
+      defenseMultiplier: 0.8,
+      blockChanceMultiplier: 0.8,
+      armorMultiplier: 0.95,
+    };
+  } else if (combatMode === "fullDefense") {
+    return {
+      attackMultiplier: 0.85,
+      defenseMultiplier: 1.35,
+      blockChanceMultiplier: 1.3,
+      armorMultiplier: 1.1,
+    };
+  } else {
+    return {
+      attackMultiplier: 1,
+      defenseMultiplier: 1,
+      blockChanceMultiplier: 1,
+      armorMultiplier: 1,
+    };
+  }
+};
+
+const getEquippedWeapon = () => {
+  if (!playerState.equipment.weapon) {
+    return null;
+  }
+  const weapon = playerState.equipment.weapon;
+  return weapon;
+};
+
+const getEquippedWeaponCombatData = () => {
+  const weapon = getEquippedWeapon();
+  if (!weapon) {
+    return null;
+  }
+  const weaponData = getItemData(weapon.itemId);
+  if (!weaponData || !weaponData.combat) {
+    return null;
+  }
+  return weaponData.combat;
+};
+
+const getPlayerWeaponAttack = () => {
+  const weaponCombatData = getEquippedWeaponCombatData();
+  if (!weaponCombatData || !Number.isFinite(weaponCombatData.attack)) {
+    return 3;
+  }
+  return weaponCombatData.attack;
+};
+
+const getPlayerAttackSkill = () => {
+  const combatData = getEquippedWeaponCombatData();
+  if (!combatData || !combatData.skillName) {
+    return 1;
+  }
+  const skillName = combatData.skillName;
+  if (!(skillName in playerState)) {
+    return 1;
+  }
+  return playerState[skillName];
+};
+
+const getPlayerTotalArmor = () => {
+  let totalArmor = 0;
+  for (const equipment of Object.values(playerState.equipment)) {
+    if (!equipment) {
+      continue;
+    }
+    const itemData = getItemData(equipment.itemId);
+    if (!itemData || !itemData.combat || !Number.isFinite(itemData.combat.armor)) {
+      continue;
+    }
+    totalArmor += itemData.combat.armor;
+  }
+  return totalArmor;
+};
+
+const getPlayerShieldDefense = () => {
+  if (playerState.equipment.shield) {
+    const shield = playerState.equipment.shield;
+    const shieldData = getItemData(shield.itemId);
+    if (shieldData && shieldData.combat && Number.isFinite(shieldData.combat.shieldDefense)) {
+      return shieldData.combat.shieldDefense;
+    }
+  } else {
+    if (playerState.equipment.weapon) {
+      const weaponCombatData = getEquippedWeaponCombatData();
+      if (weaponCombatData && Number.isFinite(weaponCombatData.defense)) {
+        return weaponCombatData.defense;
+      }
+    }
+  }
+  return 0;
+};
+
+const getTargetCombatData = (target) => {
+  if (!target || !target.monsterId) {
+    return {
+      attack: 0,
+      armor: 0,
+      defense: 0,
+      blockChance: 0,
+      hitChance: 0,
+    };
+  }
+  const monsterData = getMonsterData(target.monsterId);
+  if (!monsterData || !monsterData.combat) {
+    return {
+      attack: 0,
+      armor: 0,
+      defense: 0,
+      blockChance: 0,
+      hitChance: 0,
+    };
+  }
+  const targetCombatData = monsterData.combat;
+  return targetCombatData;
+};
+
+const calculatePlayerAttackResult = (target) => {
+  const combatModeData = getCombatModeData();
+  const targetCombatData = getTargetCombatData(target);
+  const weaponAttack = getPlayerWeaponAttack();
+  const attackSkill = getPlayerAttackSkill();
+  const baseHitChance = 65;
+  //!!!!! HIT CHANCE !!!!
+  let hitChance =
+    baseHitChance +
+    attackSkill * 1.2 +
+    weaponAttack * 1.5 -
+    targetCombatData.defense * 2 -
+    targetCombatData.blockChance * 0.5;
+  hitChance *= combatModeData.attackMultiplier;
+  hitChance = clamp(hitChance, 35, 95);
+  //!!!!! ROLL POUR MISS !!!!
+  const roll = getRandomInt(1, 100);
+  if (roll > hitChance)
+    return {
+      didHit: false,
+      wasBlocked: false,
+      finalDamage: 0,
+      text: "miss",
+      textType: "miss",
+    };
+  //!!!!! RAW DAMAGE !!!!
+  const levelBonus = playerState.level * 0.2;
+  let minDamage = levelBonus + attackSkill * 0.35 + weaponAttack * 0.8;
+  let maxDamage = levelBonus + attackSkill * 0.9 + weaponAttack * 2.2;
+  minDamage = minDamage * combatModeData.attackMultiplier;
+  maxDamage = maxDamage * combatModeData.attackMultiplier;
+  const rawDamage = getRandomFloat(minDamage, maxDamage);
+  //!!!!! BLOCK CHANCE && DAMAGE REDUCTION !!!!
+  let wasBlocked = false;
+  let blockChance = targetCombatData.blockChance;
+  blockChance = clamp(blockChance, 0, 60);
+  let defenseReduction = 0;
+  const rollBlock = getRandomInt(1, 100);
+  if (rollBlock <= blockChance) {
+    wasBlocked = true;
+    defenseReduction = targetCombatData.defense * getRandomFloat(0.6, 1.2);
+  }
+  const damageAfterDefense = rawDamage - defenseReduction;
+  if (damageAfterDefense <= 0) {
+    return {
+      didHit: true,
+      wasBlocked,
+      finalDamage: 0,
+      text: "block",
+      textType: "block",
+    };
+  }
+  //!!!!! ARMOR REDUCTION !!!!
+  const armorReductionMin = targetCombatData.armor * 0.45;
+  const armorReductionMax = targetCombatData.armor * 0.9;
+  const armorReduction = getRandomFloat(armorReductionMin, armorReductionMax);
+  const damageAfterArmor = damageAfterDefense - armorReduction;
+  const finalDamage = Math.max(0, Math.floor(damageAfterArmor));
+  if (finalDamage <= 0) {
+    return {
+      didHit: true,
+      wasBlocked,
+      finalDamage: 0,
+      text: "block",
+      textType: "block",
+    };
+  } else {
+    return {
+      didHit: true,
+      wasBlocked,
+      rawDamage,
+      defenseReduction,
+      armorReduction,
+      finalDamage,
+      text: finalDamage,
+      textType: "damage",
+    };
+  }
+};
+
+const calculateDamageTakenByPlayer = (attackerCombatData) => {
+  const combatModeData = getCombatModeData();
+  const playerArmor = getPlayerTotalArmor();
+  const playerShieldDefense = getPlayerShieldDefense();
+  const shieldSkill = playerState.shieldSkill;
+  //!!!!! CHANCE MONSTRE HIT !!!!
+  let hitChance = attackerCombatData.hitChance - shieldSkill * 0.4;
+  hitChance = clamp(hitChance, 35, 95);
+  const roll = getRandomInt(1, 100);
+  if (roll > hitChance)
+    return {
+      didHit: false,
+      wasBlocked: false,
+      finalDamage: 0,
+      text: "miss",
+      textType: "miss",
+    };
+  //!!!!! BLOCK CHANCE && DAMAGE REDUCTION !!!!
+  let wasBlocked = false;
+  let blockChance = 10 + shieldSkill * 0.8 + playerShieldDefense * 1.2;
+  blockChance *= combatModeData.blockChanceMultiplier;
+  blockChance = clamp(blockChance, 5, 70);
+  let defensePower = 0;
+  let defenseReduction = 0;
+  const rollBlock = getRandomInt(1, 100);
+  if (rollBlock <= blockChance) {
+    wasBlocked = true;
+    defensePower = playerShieldDefense * 0.8 + shieldSkill * 0.25;
+    defensePower *= combatModeData.defenseMultiplier;
+    defenseReduction = getRandomFloat(defensePower * 0.6, defensePower * 1.2);
+  }
+  let attackerAttack = 1;
+  if (attackerCombatData && attackerCombatData.attack) {
+    attackerAttack = Math.max(1, attackerCombatData.attack);
+  }
+  const rawDamage = getRandomFloat(1, attackerAttack);
+  const damageAfterDefense = rawDamage - defenseReduction;
+  if (damageAfterDefense <= 0) {
+    return {
+      didHit: true,
+      wasBlocked,
+      finalDamage: 0,
+      text: "block",
+      textType: "block",
+    };
+  }
+  //!!!!! ARMOR REDUCTION !!!!
+  const armorPower = playerArmor * combatModeData.armorMultiplier;
+  const armorReductionMin = armorPower * 0.45;
+  const armorReductionMax = armorPower * 0.9;
+  const armorReduction = getRandomFloat(armorReductionMin, armorReductionMax);
+  const damageAfterArmor = damageAfterDefense - armorReduction;
+  const finalDamage = Math.max(0, Math.floor(damageAfterArmor));
+  if (finalDamage <= 0) {
+    return {
+      didHit: true,
+      wasBlocked,
+      finalDamage: 0,
+      text: "block",
+      textType: "block",
+    };
+  } else {
+    return {
+      didHit: true,
+      wasBlocked,
+      rawDamage,
+      defenseReduction,
+      armorReduction,
+      finalDamage,
+      text: finalDamage,
+      textType: "damage",
+    };
+  }
+};
+
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
 const attackMonster = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
-  monster.hp -= getRandomInt(1, playerState.damage);
+  const damage = getRandomInt(1, playerState.damage);
+  monster.hp -= damage;
+  showFloatingTextAboveMonster(monster, damage, "damage");
   if (monster.hp <= 0) {
     monster.hp = 0;
     MonsterHpRefresh(monster);
@@ -3446,6 +3837,9 @@ renderMap(gameMap);
 playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
 playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
+playerState.equipment.backpack.content[2] = createItemInstance("woodenShield", 1);
+playerState.equipment.backpack.content[3] = createItemInstance("sword", 1);
+playerState.equipment.backpack.content[4] = createItemInstance("leatherArmor", 1);
 
 updatePlayerCarriedWeight();
 updatePlayerInventory();
