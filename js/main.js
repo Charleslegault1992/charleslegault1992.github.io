@@ -2090,15 +2090,17 @@ const updatePlayerInventory = () => {
                   </div>
                 </div>
                <div class="stance-bar">
-                  <button class="stance-button">Full Attack</button>
-                  <button class="stance-button stance-button-active">Balanced</button>
-                  <button class="stance-button">Full Defense</button>
+                  <button class="stance-button" data-combat-mode="fullAttack">Full Attack</button>
+                  <button class="stance-button stance-button-active" data-combat-mode="balanced">Balanced</button>
+                  <button class="stance-button" data-combat-mode="fullDefense">Full Defense</button>
                 </div>
               </div>
             </div>`;
 
   playerInventory.innerHTML = html;
   renderEquipmentSlots();
+  bindCombatModeButtons();
+  refreshCombatModeButtons();
 };
 
 const renderContainerSlots = (containerBody, containerItem) => {
@@ -2290,7 +2292,43 @@ const toggleContainerMinimized = (containerItem) => {
   openedContainer.isMinimized = !openedContainer.isMinimized;
   renderContainerDock();
 };
+/* ----------UI - COMBAT MODE ---------- */
 
+const setPlayerCombatMode = (combatMode) => {
+  playerState.combatMode = combatMode;
+};
+
+const refreshCombatModeButtons = () => {
+  const combatMode = playerState.combatMode;
+  const stanceButtonElement = document.querySelectorAll(".stance-button");
+  if (!combatMode) {
+    return;
+  }
+  stanceButtonElement.forEach((stanceButton) => {
+    stanceButton.classList.remove("stance-button-active");
+    const buttonStance = stanceButton.getAttribute("data-combat-mode");
+    if (buttonStance === combatMode) {
+      stanceButton.classList.add("stance-button-active");
+    }
+    
+  });
+};
+
+const bindCombatModeButtons = () => {
+  const stanceButtonElement = document.querySelectorAll(".stance-button");
+  if (!stanceButtonElement) {
+    return;
+  }
+  stanceButtonElement.forEach((stanceButton) => {
+    stanceButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const combatMode = stanceButton.getAttribute("data-combat-mode");
+      setPlayerCombatMode(combatMode);
+      refreshCombatModeButtons();
+    });
+  });
+};
 /* ---------- UI - STATS JOUEUR ---------- */
 
 const updatePlayerStats = () => {
