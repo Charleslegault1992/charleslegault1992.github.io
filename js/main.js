@@ -79,6 +79,14 @@ const mousePosition = {
   col: null,
   isInsideMap: false,
 };
+
+const itemUseState = {
+  isUsingItem: false,
+  source: null,
+  item: null,
+  useData: null,
+  startedAt: null,
+};
 //#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
 /* ==================================================== */
@@ -94,6 +102,10 @@ const itemsDatabase = {
     weight: 10,
     stackable: false,
     blockMovement: false,
+    use: {
+      mode: "direct",
+      action: "eat",
+    },
     render: {
       atlas: "items",
       parts: [
@@ -156,6 +168,12 @@ const itemsDatabase = {
           zOffset: 0,
         },
       ],
+    },
+    use: {
+      mode: "target",
+      action: "drinkPotion",
+      allowedTargets: ["player", "tile"],
+      range: 7,
     },
   },
   ratCorpse: {
@@ -329,6 +347,28 @@ const itemsDatabase = {
         {
           atlasCol: 0,
           atlasRow: 5,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  fireRune: {
+    itemId: "fireRune",
+    name: "Fire rune",
+    desc: "A rune engraved with fire magic, ready to unleash a burning spell.",
+    type: "rune",
+    suffix: "a",
+    weight: 5,
+    stackable: false,
+    blockMovement: false,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 25,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
@@ -887,6 +927,14 @@ const getItemData = (itemId) => {
     console.log(`itemId: ${itemId} n'existe pas dans itemsDatabase`);
     return null;
   }
+};
+
+const getItemUseData = (item) => {
+  const itemData = getItemData(item.itemId);
+  if (!itemData || !itemData.use) {
+    return null;
+  }
+  return itemData.use;
 };
 
 /* ---------- ITEMS - VALIDATION GAMEPLAY ---------- */
@@ -2029,12 +2077,7 @@ const renderEquipmentSlots = () => {
     if (item) {
       equipmentElement.classList.add("equipment-slot-filled");
       equipmentElement.classList.remove("equipment-slot-empty");
-    }
-    if (!item) {
-      equipmentElement.classList.remove("equipment-slot-filled");
-      equipmentElement.classList.add("equipment-slot-empty");
-    }
-    if (isContainerItem(item)) {
+
       equipmentElement.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2045,8 +2088,16 @@ const renderEquipmentSlots = () => {
         if (!itemData) {
           return;
         }
-        openContainer(item, itemData.name, "equipment", null);
+        const source = {
+          type: "equipment",
+          slotName: slotName,
+        };
+        handleUseItemFromSource(source);
       });
+    }
+    if (!item) {
+      equipmentElement.classList.remove("equipment-slot-filled");
+      equipmentElement.classList.add("equipment-slot-empty");
     }
   });
 };
@@ -2107,57 +2158,42 @@ const renderContainerSlots = (containerBody, containerItem) => {
   if (!containerItem || !containerBody) {
     return;
   }
+
   containerBody.innerHTML = ``;
+
   const dataItem = getItemData(containerItem.itemId);
   if (!dataItem) {
     return null;
   }
   const slotGrid = document.createElement("div");
   slotGrid.classList.add("container-slot-grid");
-
   for (let i = 0; i < dataItem.capacity; i++) {
     const slotItem = containerItem.content[i];
     const slot = document.createElement("div");
     slot.classList.add("container-slot");
     slot.setAttribute("data-container-slot-index", i);
     slot.setAttribute("data-container-uid", containerItem.uid);
+
     if (slotItem) {
       renderItemIcon(slot, slotItem, 40);
-      if (isContainerItem(slotItem)) {
-        let parentWrapper = null;
+      slot.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (shouldBlockContextMenuAction()) {
+          return;
+        }
+        const source = {
+          type: "container",
+          containerUid: containerItem.uid,
+          slotIndex: i,
+        };
 
-        openedContainers.forEach((container) => {
-          if (container.item.uid === containerItem.uid) {
-            parentWrapper = container;
-          }
-        });
-        slot.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (shouldBlockContextMenuAction()) {
-            return;
-          }
-          const itemData = getItemData(slotItem.itemId);
-
-          if (itemData && parentWrapper) {
-            let alreadyOpen = false;
-            openedContainers.forEach((container) => {
-              if (container.item.uid === slotItem.uid) {
-                alreadyOpen = true;
-              }
-            });
-            if (alreadyOpen) {
-              openContainer(slotItem, itemData.name, "container", parentWrapper);
-              return;
-            }
-            closeContainer(parentWrapper.item);
-            openContainer(slotItem, itemData.name, "container", parentWrapper);
-          }
-        });
-      }
+        handleUseItemFromSource(source);
+      });
     }
     slotGrid.appendChild(slot);
   }
+
   containerBody.appendChild(slotGrid);
 };
 
@@ -2292,6 +2328,96 @@ const toggleContainerMinimized = (containerItem) => {
   openedContainer.isMinimized = !openedContainer.isMinimized;
   renderContainerDock();
 };
+
+/* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
+
+const cancelItemUse = () => {
+  itemUseState.isUsingItem = false;
+  itemUseState.source = null;
+  itemUseState.item = null;
+  itemUseState.useData = null;
+  itemUseState.startedAt = null;
+};
+
+const startItemUse = (source, item, useData) => {
+  if (!source || !item || !useData) {
+    cancelItemUse();
+    return;
+  }
+  itemUseState.isUsingItem = true;
+  itemUseState.source = source;
+  itemUseState.item = item;
+  itemUseState.useData = useData;
+  itemUseState.startedAt = Date.now();
+};
+
+const isUsingItem = () => {
+  return itemUseState.isUsingItem;
+};
+
+const handleOpenContainerUse = (source, item, itemData, context = {}) => {
+  let parentWrapper = null;
+  if (source.type === "equipment") {
+    openContainer(item, itemData.name, "equipment", null);
+    return;
+  } else if (source.type === "world") {
+    openContainer(item, itemData.name, "world", null);
+    return;
+  } else if (source.type === "container") {
+    openedContainers.forEach((container) => {
+      if (container.item.uid === source.containerUid) {
+        parentWrapper = container;
+      }
+    });
+
+    if (!parentWrapper) {
+      return;
+    }
+    let alreadyOpen = false;
+    if (itemData) {
+      let alreadyOpen = false;
+
+      openedContainers.forEach((container) => {
+        if (container.item.uid === item.uid) {
+          alreadyOpen = true;
+        }
+      });
+
+      if (alreadyOpen) {
+        openContainer(item, itemData.name, "container", parentWrapper);
+        return;
+      }
+
+      closeContainer(parentWrapper.item);
+      openContainer(item, itemData.name, "container", parentWrapper);
+    }
+  }
+};
+
+const handleUseItemFromSource = (source) => {
+  const item = getDragSourceItem(source);
+  if (!item) {
+    return;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData) {
+    return;
+  }
+  const useData = getItemUseData(item);
+  if (!useData) {
+    if (isContainerItem(item)) {
+      handleOpenContainerUse(source, item, itemData);
+      return;
+    }
+  }
+  if (useData.mode === "direct") {
+    executeDirectItemUse(item);
+  }
+  if (useData.mode === "target") {
+    startItemUse(source, item, useData);
+  }
+};
+
 /* ----------UI - COMBAT MODE ---------- */
 
 const setPlayerCombatMode = (combatMode) => {
@@ -2310,7 +2436,6 @@ const refreshCombatModeButtons = () => {
     if (buttonStance === combatMode) {
       stanceButton.classList.add("stance-button-active");
     }
-    
   });
 };
 
@@ -2403,7 +2528,7 @@ const showLookFloatingText = (lookInfo) => {
   const isNearbyWorldItem = lookInfo.sourceType === "world" && isNearPlayer(lookInfo.target, 1);
 
   if (lookInfo.weight !== undefined && lookInfo.quantity && (isCarriedItem || isNearbyWorldItem)) {
-    offsetY = 150;
+    offsetY = 100;
     let suffixName = lookInfo.suffix;
     let name = lookInfo.name;
     let suffixWeight = "It weighs";
@@ -2414,7 +2539,7 @@ const showLookFloatingText = (lookInfo) => {
     }
     text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
   } else {
-    offsetY = 130;
+    offsetY = 115;
     text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
   }
   showFloatingTextAboveTarget(text, offsetY, playerState);
@@ -2457,6 +2582,7 @@ const showFloatingTextAbovePlayer = (text, type) => {
     textElement.remove();
   }, 1300);
 };
+
 //#endregion  -----  UI  -----
 
 /* ==================================================== */
@@ -3896,9 +4022,7 @@ renderMap(gameMap);
 playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
 playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
-playerState.equipment.backpack.content[2] = createItemInstance("woodenShield", 1);
-playerState.equipment.backpack.content[3] = createItemInstance("sword", 1);
-playerState.equipment.backpack.content[4] = createItemInstance("leatherArmor", 1);
+playerState.equipment.backpack.content[2] = createItemInstance("fireRune", 1);
 
 updatePlayerCarriedWeight();
 updatePlayerInventory();
