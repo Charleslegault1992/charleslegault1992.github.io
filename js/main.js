@@ -443,9 +443,9 @@ const monstersDatabase = {
       },
       {
         itemId: "cheese",
-        chance: 100,
+        chance: 30,
         minQuantity: 1,
-        maxQuantity: 100,
+        maxQuantity: 1,
       },
     ],
   },
