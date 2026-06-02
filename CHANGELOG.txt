@@ -1,4 +1,12 @@
-0.293 - Opion look et algorithme pour combat
+0.294 - Rendre les items utilisables et ajout satiété + regen de vie
+    - Ajout de itemUseState et migration des eventlistener("contextmenu") dans un handler main
+    - Les items peuvent etre utiliser de 2 facons, direct ou target
+    - Ajout de sprite "food/vial/fluid/blood" dans item-sheet.png
+    - Implementation des runes
+
+
+
+0.293 - Option look et algorithme pour combat
     - Ajout de l'option look avec un combo de clique gauche + clique droit
     - Changement de l'attitude du drag pour quil commence seulement au mouvement
     - Ajout fonciton pour afficher message au dessus du joueur
@@ -8,6 +16,7 @@
     - Mise en place de l'algorithme pour envoyer et recevoir des degats
     - Changement dans les databases pour pillier avec le nouvelle algorithme
     - Ajustement dans le UI et ajout des stances Full Attack / Balanced / Full Defense
+    - Stance 100% fonctionnel
 
 0.292 - Drag UI
     - Ajout du vrai système drag/drop central avec dragState
@@ -48,11 +57,11 @@
     -Camera, lumiere, mouvement ajustes
     -Atlas items 66x66 / sprites 64x64 / padding 1px
     -Items multi-part avec render.parts
-    -Rendu items via items-sheet.png, pu d’images separees pour le monde
+    -Rendu items via items-sheet.png, plus d’images separees pour le monde
 
 0.287 - Rendre les items Data-Driven avec une base de donnees local
     -Creation de la base de donne itemsDatabase
-    -Enlever les donnes fix de l'objet pour les liees dans la database local
+    -Enlever les donnes fixe de l'objet pour les liees dans la database local
     -Correction des fonctions des items pour utilisees les donnes de la database local
     -Separation des fonctions des items en plus petites fonctions pour que chacunes d'entres elles aient un usage unique;
     -Ajout de plusieur verification des items pour eviter les bugs

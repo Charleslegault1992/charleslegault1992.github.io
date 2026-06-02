@@ -1,5 +1,6 @@
 /* ==================================================== */
 //#region     -----  BASE - ELEMENTS HTML  -----
+
 /* ==================================================== */
 const panneauGauche = document.querySelector(".jeux-gauche");
 const panneauDroite = document.querySelector(".jeux-droite");
@@ -99,8 +100,8 @@ const itemsDatabase = {
     desc: "An apple.",
     type: "food",
     suffix: "an",
-    weight: 10,
-    stackable: false,
+    weight: 2,
+    stackable: true,
     blockMovement: false,
     use: {
       mode: "direct",
@@ -111,7 +112,33 @@ const itemsDatabase = {
       parts: [
         {
           atlasCol: 0,
-          atlasRow: 0,
+          atlasRow: 29,
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  cheese: {
+    itemId: "cheese",
+    name: "Cheese",
+    desc: "A piece of cheese.",
+    type: "food",
+    suffix: "a",
+    weight: 3,
+    stackable: true,
+    blockMovement: false,
+    use: {
+      mode: "direct",
+      action: "eat",
+    },
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 20,
+          atlasRow: 29,
           offsetX: 0,
           offsetY: 0,
           zOffset: 0,
@@ -172,8 +199,6 @@ const itemsDatabase = {
     use: {
       mode: "target",
       action: "drinkPotion",
-      allowedTargets: ["player", "tile"],
-      range: 7,
     },
   },
   ratCorpse: {
@@ -363,6 +388,10 @@ const itemsDatabase = {
     weight: 5,
     stackable: false,
     blockMovement: false,
+    use: {
+      mode: "target",
+      action: "attackRune",
+    },
     render: {
       atlas: "items",
       parts: [
@@ -413,10 +442,10 @@ const monstersDatabase = {
         maxQuantity: 4,
       },
       {
-        itemId: "apple",
-        chance: 30,
+        itemId: "cheese",
+        chance: 100,
         minQuantity: 1,
-        maxQuantity: 1,
+        maxQuantity: 100,
       },
     ],
   },
@@ -1122,6 +1151,11 @@ const createWorldItemHitbox = (item) => {
   hitbox.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (dragState.isDragging) {
+      inputState.shouldBlockNextContextMenu = true;
+      cancelItemDrag();
+      return;
+    }
     if (shouldBlockContextMenuAction()) {
       return;
     }
@@ -1136,7 +1170,11 @@ const createWorldItemHitbox = (item) => {
       return;
     }
 
-    openContainer(item, itemData.name, "world", null);
+    const source = {
+      type: "world",
+      worldItemUid: item.uid,
+    };
+    handleUseItemFromSource(source);
   });
   return hitbox;
 };
@@ -2081,6 +2119,11 @@ const renderEquipmentSlots = () => {
       equipmentElement.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (dragState.isDragging) {
+          inputState.shouldBlockNextContextMenu = true;
+          cancelItemDrag();
+          return;
+        }
         if (shouldBlockContextMenuAction()) {
           return;
         }
@@ -2179,6 +2222,11 @@ const renderContainerSlots = (containerBody, containerItem) => {
       slot.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (dragState.isDragging) {
+          inputState.shouldBlockNextContextMenu = true;
+          cancelItemDrag();
+          return;
+        }
         if (shouldBlockContextMenuAction()) {
           return;
         }
@@ -2330,6 +2378,13 @@ const toggleContainerMinimized = (containerItem) => {
 };
 
 /* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
+const addUseCursorClass = () => {
+  boitePrincipale.classList.add("item-use-cursor");
+};
+
+const removeUseCursorClass = () => {
+  boitePrincipale.classList.remove("item-use-cursor");
+};
 
 const cancelItemUse = () => {
   itemUseState.isUsingItem = false;
@@ -2337,6 +2392,7 @@ const cancelItemUse = () => {
   itemUseState.item = null;
   itemUseState.useData = null;
   itemUseState.startedAt = null;
+  removeUseCursorClass();
 };
 
 const startItemUse = (source, item, useData) => {
@@ -2345,6 +2401,7 @@ const startItemUse = (source, item, useData) => {
     return;
   }
   itemUseState.isUsingItem = true;
+  addUseCursorClass();
   itemUseState.source = source;
   itemUseState.item = item;
   itemUseState.useData = useData;
@@ -2403,6 +2460,9 @@ const handleUseItemFromSource = (source) => {
   if (!itemData) {
     return;
   }
+  if (source.type === "world" && !isNearPlayer(item, 1)) {
+    return;
+  }
   const useData = getItemUseData(item);
   if (!useData) {
     if (isContainerItem(item)) {
@@ -2410,11 +2470,78 @@ const handleUseItemFromSource = (source) => {
       return;
     }
   }
+  if (!useData || !useData.mode) {
+    return;
+  }
+
   if (useData.mode === "direct") {
-    executeDirectItemUse(item);
+    executeDirectItemUse(item, source);
   }
   if (useData.mode === "target") {
     startItemUse(source, item, useData);
+  }
+};
+
+const handleDrinkPotionUse = (source, item, useData, target) => {
+  if (target.player) {
+    console.log("Le joueur boie la potion.");
+    consumeOneItemFromSource(source, item);
+  } else if (target.tile) {
+    console.log("La potion est verser par terre");
+    consumeOneItemFromSource(source, item);
+  }
+  cancelItemUse();
+};
+
+const handleRuneUse = (source, item, useData, target) => {
+  if (target.monster) {
+    console.log(`attaque avec ${item.itemId} sur ${target.monster.monsterId}`);
+    refreshItemUiAfterDrag();
+  }
+  cancelItemUse();
+};
+
+const completeItemUseFromEvent = (e) => {
+  const target = getPointerTargetFromEvent(e);
+  const item = itemUseState.item;
+  const useData = itemUseState.useData;
+  const source = itemUseState.source;
+  if (source.type === "world" && !isNearPlayer(item, 1)) {
+    cancelItemUse();
+    return;
+  }
+  if (useData.action === "drinkPotion") {
+    handleDrinkPotionUse(source, item, useData, target);
+  }
+  if (useData.action === "attackRune") {
+    handleRuneUse(source, item, useData, target);
+  }
+};
+/* ---------- ITEM USE - ACTIONS DIRECTES ---------- */
+
+const consumeOneItemFromSource = (source, item) => {
+  if (!source || !item) {
+    return;
+  }
+  if (!item.quantity || item.quantity <= 1) {
+    removeItemFromDragSource(source);
+    refreshItemUiAfterDrag();
+  } else if (item.quantity > 1) {
+    item.quantity -= 1;
+    refreshItemUiAfterDrag();
+  }
+};
+
+const executeDirectItemUse = (item, source) => {
+  if (!item) {
+    return;
+  }
+  const useData = getItemUseData(item);
+  if (!useData || !useData.action) {
+    return;
+  }
+  if (useData.action === "eat") {
+    consumeOneItemFromSource(source, item);
   }
 };
 
@@ -2980,6 +3107,7 @@ const getPointerTargetFromEvent = (e) => {
     return {
       itemSlotInfo: itemSlotInfo,
       item,
+      player: null,
       monster: null,
       tile: null,
       pointerInsideMap: false,
@@ -2992,14 +3120,19 @@ const getPointerTargetFromEvent = (e) => {
   const pointerInsideMap = mousePosition.isInsideMap;
   let tile = null;
   let monster = null;
+  let player = null;
   if (pointerInsideMap) {
     tile = { row, col, x, y };
     monster = findMonsterAtPosition(x, y);
+    if (isPlayerAtPosition(x, y)) {
+      player = playerState;
+    }
   }
 
   return {
     itemSlotInfo: itemSlotInfo,
     item,
+    player,
     monster: monster,
     tile,
     pointerInsideMap,
@@ -3051,7 +3184,7 @@ const handleItemUiMouseMove = (e) => {
 };
 
 const handleItemUiMouseUp = (e) => {
-  if (!dragState.isDragging) {
+  if (e.button !== 0 || !dragState.isDragging) {
     return;
   }
 
@@ -3093,6 +3226,26 @@ document.addEventListener("mousedown", (e) => {
   if (inputState.isLookComboTriggered) {
     e.preventDefault();
     handleLookCombo();
+    return;
+  }
+
+  if (dragState.isDragging && e.button === 2) {
+    e.preventDefault();
+    inputState.shouldBlockNextContextMenu = true;
+    cancelItemDrag();
+    return;
+  }
+  if (itemUseState.isUsingItem) {
+    if (inputState.isLookComboTriggered || inputState.isRightClickDown || dragState.isDragging) {
+      inputState.shouldBlockNextContextMenu = true;
+      cancelItemUse();
+      return;
+    }
+    if (inputState.isLeftClickDown) {
+      completeItemUseFromEvent(e);
+      return;
+    }
+
     return;
   }
   handleItemUiMouseDown(e);
@@ -4021,8 +4174,9 @@ renderMap(gameMap);
 
 playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
-playerState.equipment.backpack.content[1] = createItemInstance("goldCoin", 1);
-playerState.equipment.backpack.content[2] = createItemInstance("fireRune", 1);
+playerState.equipment.backpack.content[1] = createItemInstance("healthPotion", 1);
+playerState.equipment.backpack.content[2] = createItemInstance("goldCoin", 1);
+playerState.equipment.backpack.content[3] = createItemInstance("fireRune", 1);
 
 updatePlayerCarriedWeight();
 updatePlayerInventory();

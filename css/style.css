@@ -1,10 +1,4 @@
 /* ==================================================== */
-/* #region     ----- FICHIER - PLAN RAPIDE CSS ----- */
-/* ==================================================== */
-/* 01 VARIABLES CSS | 02 GLOBAL | 03 NAVBAR | 04 LAYOUT PRINCIPAL | 05 ZONE DE JEU | 06 CHAT | 07 PANNEAUX UI | 08 EQUIPMENT | 09 CONTAINER DOCK | 10 TILES ET MAP | 11 ENTITES DU MONDE | 12 BARS ET NOMS */
-/* #endregion  ----- FICHIER - PLAN RAPIDE CSS ----- */
-
-/* ==================================================== */
 /* #region     ----- VARIABLES CSS ----- */
 /* ==================================================== */
 
@@ -292,6 +286,15 @@ main {
 /* #endregion  ----- PANNEAUX UI ----- */
 
 /* ==================================================== */
+/* #region     ----- CURSEUR ----- */
+/* ==================================================== */
+.item-use-cursor {
+ cursor:crosshair;
+}
+
+/* #endregion  ----- CURSEUR ----- */
+
+/* ==================================================== */
 /* #region     ----- UI - TEXTE FLOTTANT ----- */
 /* ==================================================== */
 
@@ -324,22 +327,22 @@ main {
 @keyframes floating-text-animation {
   0% {
     opacity: 0;
-    transform:  translateY(4px);
+    transform: translateY(4px);
   }
 
   12% {
     opacity: 1;
-    transform:  translateY(0);
+    transform: translateY(0);
   }
 
   80% {
     opacity: 1;
-    transform:  translateY(0);
+    transform: translateY(0);
   }
 
   100% {
     opacity: 0;
-    transform:  translateY(-8px);
+    transform: translateY(-8px);
   }
 }
 
