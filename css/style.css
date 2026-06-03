@@ -401,6 +401,10 @@ main {
   color: #48ff6a;
 }
 
+.floating-combat-text-fire {
+  color: #ce7234;
+}
+
 @keyframes combatTextFloat {
   0% {
     opacity: 0;

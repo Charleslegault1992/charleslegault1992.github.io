@@ -106,6 +106,7 @@ const itemsDatabase = {
     use: {
       mode: "direct",
       action: "eat",
+      sanity: 4,
     },
     render: {
       atlas: "items",
@@ -132,6 +133,7 @@ const itemsDatabase = {
     use: {
       mode: "direct",
       action: "eat",
+      sanity: 8,
     },
     render: {
       atlas: "items",
@@ -199,6 +201,7 @@ const itemsDatabase = {
     use: {
       mode: "target",
       action: "drinkPotion",
+      heal: 25,
     },
   },
   ratCorpse: {
@@ -391,6 +394,8 @@ const itemsDatabase = {
     use: {
       mode: "target",
       action: "attackRune",
+      damage: 6,
+      charges: 5,
     },
     render: {
       atlas: "items",
@@ -1101,6 +1106,11 @@ const createItemInstance = (itemId, quantity, content = []) => {
     quantity,
     uid: nextItemInstanceId++,
   };
+
+  if (itemData.use && "charges" in itemData.use) {
+    itemInstance.charges = itemData.use.charges;
+  }
+
   if (itemData.container) {
     itemInstance.content = content;
   }
@@ -2377,6 +2387,18 @@ const toggleContainerMinimized = (containerItem) => {
   renderContainerDock();
 };
 
+const consumeOneChargeFromRune = (item, source) => {
+  if (!item.charges) {
+    return;
+  }
+  if (item.charges >= 1) {
+    item.charges -= 1;
+  }
+  if (item.charges <= 0) {
+    removeItemFromDragSource(source);
+  }
+};
+
 /* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
 const addUseCursorClass = () => {
   boitePrincipale.classList.add("item-use-cursor");
@@ -2484,18 +2506,35 @@ const handleUseItemFromSource = (source) => {
 
 const handleDrinkPotionUse = (source, item, useData, target) => {
   if (target.player) {
-    console.log("Le joueur boie la potion.");
+    if (playerState.hp >= playerState.maxHp) {
+      cancelItemUse();
+      return;
+    }
+    let healAmount = 0;
+    if (playerState.hp + useData.heal > playerState.maxHp) {
+      healAmount = playerState.maxHp - playerState.hp;
+      playerState.hp = playerState.maxHp;
+    } else {
+      healAmount = useData.heal;
+      playerState.hp += healAmount;
+    }
+    showFloatingTextAbovePlayer(healAmount, "heal");
     consumeOneItemFromSource(source, item);
+    hpRefresh();
+    updatePlayerStats();
   } else if (target.tile) {
     console.log("La potion est verser par terre");
     consumeOneItemFromSource(source, item);
   }
+
   cancelItemUse();
 };
 
 const handleRuneUse = (source, item, useData, target) => {
   if (target.monster) {
-    console.log(`attaque avec ${item.itemId} sur ${target.monster.monsterId}`);
+    const attackResult = calculateRuneAttackResult(useData);
+    applyDamageToMonster(target.monster, attackResult);
+    consumeOneChargeFromRune(item, source);
     refreshItemUiAfterDrag();
   }
   cancelItemUse();
@@ -3900,6 +3939,34 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
       textType: "damage",
     };
   }
+};
+
+const calculateRuneAttackResult = (useData) => {
+  const runeDamage = useData.damage;
+  const magicLevel = playerState.magicSkill;
+  const level = playerState.level;
+  const minDamage = runeDamage + magicLevel * 0.35 + level * 0.1;
+  const maxDamage = runeDamage + magicLevel * 0.85 + level * 0.25;
+  const finalDamage = Math.floor(getRandomFloat(minDamage, maxDamage));
+  return {
+    finalDamage,
+    text: finalDamage,
+    textType: "fire",
+  };
+};
+
+const applyDamageToMonster = (monster, attackResult) => {
+  let damageAmount = 0;
+  if (monster.hp - attackResult.finalDamage <= 0) {
+    damageAmount = monster.hp;
+    monster.hp = 0;
+    deadMonster(monster);
+  } else {
+    damageAmount = attackResult.finalDamage;
+    monster.hp -= damageAmount;
+    MonsterHpRefresh(monster);
+  }
+  showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
 };
 
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
