@@ -202,6 +202,7 @@ const itemsDatabase = {
       mode: "target",
       action: "drinkPotion",
       heal: 25,
+      range: 1,
     },
   },
   ratCorpse: {
@@ -396,6 +397,7 @@ const itemsDatabase = {
       action: "attackRune",
       damage: 6,
       charges: 5,
+      range: 7,
     },
     render: {
       atlas: "items",
@@ -2522,7 +2524,7 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
     consumeOneItemFromSource(source, item);
     hpRefresh();
     updatePlayerStats();
-  } else if (target.tile) {
+  } else if (target.tile && isNearPlayer(target.tile, useData.range)) {
     console.log("La potion est verser par terre");
     consumeOneItemFromSource(source, item);
   }
@@ -2531,7 +2533,7 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 };
 
 const handleRuneUse = (source, item, useData, target) => {
-  if (target.monster) {
+  if (target.monster && isNearPlayer(target.monster, useData.range)) {
     const attackResult = calculateRuneAttackResult(useData);
     applyDamageToMonster(target.monster, attackResult);
     consumeOneChargeFromRune(item, source);
@@ -2542,6 +2544,11 @@ const handleRuneUse = (source, item, useData, target) => {
 
 const completeItemUseFromEvent = (e) => {
   const target = getPointerTargetFromEvent(e);
+  if (!target.pointerInsideMap) {
+    cancelItemUse();
+    return;
+  }
+
   const item = itemUseState.item;
   const useData = itemUseState.useData;
   const source = itemUseState.source;
@@ -3302,7 +3309,7 @@ document.addEventListener("mouseup", (e) => {
 /* ==================================================== */
 /* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
 
-const MonsterHpRefresh = (monster) => {
+const monsterHpRefresh = (monster) => {
   const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
   if (monsterHp) {
     const monsterData = getMonsterData(monster.monsterId);
@@ -3956,37 +3963,41 @@ const calculateRuneAttackResult = (useData) => {
 };
 
 const applyDamageToMonster = (monster, attackResult) => {
+  if (!monster || monster.hp <= 0) {
+    return;
+  }
+  const monsterData = getMonsterData(monster.monsterId);
+  if (!monsterData) {
+    return;
+  }
   let damageAmount = 0;
   if (monster.hp - attackResult.finalDamage <= 0) {
     damageAmount = monster.hp;
-    monster.hp = 0;
-    deadMonster(monster);
   } else {
     damageAmount = attackResult.finalDamage;
-    monster.hp -= damageAmount;
-    MonsterHpRefresh(monster);
   }
-  showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
+  if (Number.isFinite(damageAmount) && damageAmount > 0) {
+    monster.hp -= damageAmount;
+    showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
+    monsterHpRefresh(monster);
+    if (monster.hp <= 0) {
+      monster.hp = 0;
+      deadMonster(monster);
+      playerState.experience += monsterData.experience;
+      updatePlayerExperience();
+    }
+  }
 };
 
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
 const attackMonster = (monster) => {
-  const monsterData = getMonsterData(monster.monsterId);
   const attackResult = calculatePlayerAttackResult(monster);
   if (attackResult.finalDamage > 0) {
-    monster.hp -= attackResult.finalDamage;
-  }
-  showFloatingTextAboveMonster(monster, attackResult.text, attackResult.textType);
-  if (monster.hp <= 0) {
-    monster.hp = 0;
-    MonsterHpRefresh(monster);
-    deadMonster(monster);
-    playerState.experience += monsterData.experience;
-    updatePlayerExperience();
+    applyDamageToMonster(monster, attackResult);
     return;
   }
-  MonsterHpRefresh(monster);
+  showFloatingTextAboveMonster(monster, attackResult.text, attackResult.textType);
 };
 
 const updateCombat = () => {
