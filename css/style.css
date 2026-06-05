@@ -289,7 +289,7 @@ main {
 /* #region     ----- CURSEUR ----- */
 /* ==================================================== */
 .item-use-cursor {
- cursor:crosshair;
+  cursor: crosshair;
 }
 
 /* #endregion  ----- CURSEUR ----- */
@@ -713,13 +713,13 @@ main {
   width: 40px;
   height: 40px;
   position: relative;
-  background-image: url("../images/ui/equipmentSlot.png");
+  background-image: url("../images/ui/containerSlot.png");
   background-repeat: no-repeat;
-  background-size: auto;
+  background-size: 100% 100%;
   image-rendering: pixelated;
   overflow: hidden;
   outline: 2px solid rgba(145, 145, 145, 0.5);
-  border-radius: 1px;
+  border-radius: 2px;
   box-sizing: border-box;
   flex-shrink: 0;
   margin-bottom: 2px;

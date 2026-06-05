@@ -88,6 +88,16 @@ const itemUseState = {
   useData: null,
   startedAt: null,
 };
+
+const useCooldown = {
+  magic: 2000,
+  item: 1000,
+};
+
+const nextUseCooldown = {
+  magic: 0,
+  item: 0,
+};
 //#endregion  -----  BASE - CONSTANTES ET VARIABLES  -----
 
 /* ==================================================== */
@@ -203,6 +213,7 @@ const itemsDatabase = {
       action: "drinkPotion",
       heal: 25,
       range: 1,
+      cooldownGroup: "item",
     },
   },
   ratCorpse: {
@@ -398,6 +409,7 @@ const itemsDatabase = {
       damage: 6,
       charges: 5,
       range: 7,
+      cooldownGroup: "magic",
     },
     render: {
       atlas: "items",
@@ -2400,6 +2412,28 @@ const consumeOneChargeFromRune = (item, source) => {
     removeItemFromDragSource(source);
   }
 };
+/* ---------- ITEM USE - COOLDOWN ---------- */
+const getUseCooldownGroup = (useData) => {
+  if (!useData.cooldownGroup) {
+    return null;
+  }
+  return useData.cooldownGroup;
+};
+
+const isUseCooldownReady = (cooldownGroup) => {
+  if (cooldownGroup === null) {
+    return true;
+  }
+
+  return nextUseCooldown[cooldownGroup] <= Date.now();
+};
+
+const startUseCooldown = (cooldownGroup) => {
+  if (cooldownGroup === null) {
+    return;
+  }
+  nextUseCooldown[cooldownGroup] = useCooldown[cooldownGroup] + Date.now();
+};
 
 /* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
 const addUseCursorClass = () => {
@@ -2507,6 +2541,11 @@ const handleUseItemFromSource = (source) => {
 };
 
 const handleDrinkPotionUse = (source, item, useData, target) => {
+  const cooldownGroup = getUseCooldownGroup(useData);
+  if (!isUseCooldownReady(cooldownGroup)) {
+    cancelItemUse();
+    return;
+  }
   if (target.player) {
     if (playerState.hp >= playerState.maxHp) {
       cancelItemUse();
@@ -2520,6 +2559,7 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
       healAmount = useData.heal;
       playerState.hp += healAmount;
     }
+    startUseCooldown(cooldownGroup);
     showFloatingTextAbovePlayer(healAmount, "heal");
     consumeOneItemFromSource(source, item);
     hpRefresh();
@@ -2533,9 +2573,15 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 };
 
 const handleRuneUse = (source, item, useData, target) => {
+  const cooldownGroup = getUseCooldownGroup(useData);
+  if (!isUseCooldownReady(cooldownGroup)) {
+    cancelItemUse();
+    return;
+  }
   if (target.monster && isNearPlayer(target.monster, useData.range)) {
     const attackResult = calculateRuneAttackResult(useData);
     applyDamageToMonster(target.monster, attackResult);
+    startUseCooldown(cooldownGroup);
     consumeOneChargeFromRune(item, source);
     refreshItemUiAfterDrag();
   }
@@ -2700,17 +2746,26 @@ const showLookFloatingText = (lookInfo) => {
   const isCarriedItem = lookInfo.sourceType === "equipment" || lookInfo.sourceType === "container";
   const isNearbyWorldItem = lookInfo.sourceType === "world" && isNearPlayer(lookInfo.target, 1);
 
-  if (lookInfo.weight !== undefined && lookInfo.quantity && (isCarriedItem || isNearbyWorldItem)) {
+  if (lookInfo.weight !== undefined && (isCarriedItem || isNearbyWorldItem)) {
     offsetY = 100;
     let suffixName = lookInfo.suffix;
     let name = lookInfo.name;
     let suffixWeight = "It weighs";
-    if (lookInfo.quantity > 1) {
+
+    if (lookInfo.quantity && lookInfo.quantity > 1) {
       suffixName = lookInfo.quantity;
       name += "s";
       suffixWeight = "They weigh";
     }
-    text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
+    if (lookInfo.charges) {
+      let charges = `It has ${lookInfo.charges} charge`;
+      if (lookInfo.charges > 1) {
+        charges += "s";
+      }
+      text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${charges}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
+    } else {
+      text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
+    }
   } else {
     offsetY = 115;
     text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
@@ -3027,6 +3082,7 @@ const lookAtPointerTarget = (target) => {
       weight: getItemTotalWeight(target.item),
       target: target.item,
       sourceType: target.itemSlotInfo.address.type,
+      charges: target.item.charges,
     };
     return lookInfo;
   } else if (target.tile) {
@@ -4253,6 +4309,8 @@ renderMap(gameMap);
 playerState.equipment.backpack = createItemInstance("bag", 1);
 playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
 playerState.equipment.backpack.content[1] = createItemInstance("healthPotion", 1);
+playerState.equipment.backpack.content[4] = createItemInstance("healthPotion", 1);
+playerState.equipment.backpack.content[5] = createItemInstance("healthPotion", 1);
 playerState.equipment.backpack.content[2] = createItemInstance("goldCoin", 1);
 playerState.equipment.backpack.content[3] = createItemInstance("fireRune", 1);
 

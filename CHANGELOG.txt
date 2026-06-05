@@ -3,8 +3,10 @@
     - Les items peuvent etre utiliser de 2 facons, direct ou target
     - Ajout de sprite "food/vial/fluid/blood" dans item-sheet.png
     - Implementation des runes
-
-
+    - Ajout des runes charges
+    - Ajout du systeme d'attaque avec les runes
+    - Ajout du systeme d'utilisation des potions
+    - Ajout de cooldown commun pour spells/runes et cooldown commun pour items.
 
 0.293 - Option look et algorithme pour combat
     - Ajout de l'option look avec un combo de clique gauche + clique droit
