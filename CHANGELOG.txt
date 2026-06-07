@@ -7,6 +7,12 @@
     - Ajout du systeme d'attaque avec les runes
     - Ajout du systeme d'utilisation des potions
     - Ajout de cooldown commun pour spells/runes et cooldown commun pour items.
+    - Ajout d'un 4ieme walking frame pour le joueur
+    - Refactor du systeme d'adresse des items vers UID (L'item lui-meme n'est plus transmis dans l'adresse)
+    - Ajout du corps du joueur avec drop du backpack a la mort
+    - Ajout du decay sur les crops monstre/joueurs.
+    - Finalisation du decay avec 3 stages de decompositions donc une perte du contenu au 2ieme stage et la suppression au 3ieme.
+    - Ajout de plusieurs fonction tool pour ajouter/supprimer/refresh par uid
 
 0.293 - Option look et algorithme pour combat
     - Ajout de l'option look avec un combo de clique gauche + clique droit

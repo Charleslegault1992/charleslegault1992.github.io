@@ -202,7 +202,7 @@ main {
 /* #endregion  ----- CHAT ----- */
 
 /* ==================================================== */
-/* #region     ----- PANNEAUX UI ----- */
+/* #region     ----- LAYOUT - PANNEAUX LATERAUX ----- */
 /* ==================================================== */
 
 .jeux-gauche {
@@ -283,19 +283,19 @@ main {
   font-weight: bold;
 }
 
-/* #endregion  ----- PANNEAUX UI ----- */
+/* #endregion  ----- LAYOUT - PANNEAUX LATERAUX ----- */
 
 /* ==================================================== */
-/* #region     ----- CURSEUR ----- */
+/* #region     ----- INTERACTIONS - CURSEUR ----- */
 /* ==================================================== */
 .item-use-cursor {
   cursor: crosshair;
 }
 
-/* #endregion  ----- CURSEUR ----- */
+/* #endregion  ----- INTERACTIONS - CURSEUR ----- */
 
 /* ==================================================== */
-/* #region     ----- UI - TEXTE FLOTTANT ----- */
+/* #region     ----- UI - TEXTES FLOTTANTS ----- */
 /* ==================================================== */
 
 .floating-text-wrapper {
@@ -424,10 +424,32 @@ main {
   }
 }
 
-/* #endregion  ----- UI - TEXTE FLOTTANT ----- */
+/* #endregion  ----- UI - TEXTES FLOTTANTS ----- */
 
 /* ==================================================== */
-/* #region     ----- UI - EQUIPMENT / INVENTAIRE ----- */
+/* #region     ----- ITEMS - ICONES UI ----- */
+/* ==================================================== */
+
+.item-icon-part {
+  position: absolute;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.item-quantity {
+  font-size: 11px;
+  font-weight: 400;
+  position: absolute;
+  bottom: -18px;
+  right: 1px;
+  pointer-events: none;
+  text-shadow: 0 0 2px rgb(0, 0, 0);
+}
+
+/* #endregion  ----- ITEMS - ICONES UI ----- */
+
+/* ==================================================== */
+/* #region     ----- UI - EQUIPEMENT ET STANCES ----- */
 /* ==================================================== */
 
 .equipment-area {
@@ -505,22 +527,6 @@ main {
   font-weight: 700;
   text-align: center;
   text-shadow: 1px 1px 2px black;
-}
-
-.item-icon-part {
-  position: absolute;
-  background-repeat: no-repeat;
-  image-rendering: pixelated;
-  pointer-events: none;
-}
-.item-quantity {
-  font-size: 11px;
-  font-weight: 400;
-  position: absolute;
-  bottom: -18px;
-  right: 1px;
-  pointer-events: none;
-  text-shadow: 0 0 2px rgb(0, 0, 0);
 }
 
 .equipment-panel {
@@ -627,7 +633,7 @@ main {
   box-shadow: inset 0 0 4px rgba(255, 210, 90, 0.25);
 }
 
-/* #endregion  ----- UI - EQUIPMENT / INVENTAIRE ----- */
+/* #endregion  ----- UI - EQUIPEMENT ET STANCES ----- */
 
 /* ==================================================== */
 /* #region     ----- UI - CONTAINER DOCK ----- */
@@ -709,6 +715,9 @@ main {
   padding-bottom: 5px;
   padding-left: 8px;
 }
+
+/* ---------- UI - CONTAINER SLOTS ---------- */
+
 .container-slot {
   width: 40px;
   height: 40px;
@@ -749,14 +758,10 @@ main {
   filter: drop-shadow(0 0 2px #ffffffa8);
 }
 
-.world-item-selected {
-  filter: drop-shadow(0 0 1px #ffffffa8) drop-shadow(0 0 2px #ffffff78) drop-shadow(0 0 6px #ffffff33);
-}
-
 /* #endregion  ----- UI - CONTAINER DOCK ----- */
 
 /* ==================================================== */
-/* #region     ----- TILES ET MAP ----- */
+/* #region     ----- MONDE - TILES ET MAP ----- */
 /* ==================================================== */
 
 .tile {
@@ -780,10 +785,10 @@ main {
   background-repeat: no-repeat;
 }
 
-/* #endregion  ----- TILES ET MAP ----- */
+/* #endregion  ----- MONDE - TILES ET MAP ----- */
 
 /* ==================================================== */
-/* #region     ----- ENTITES DU MONDE ----- */
+/* #region     ----- MONDE - ENTITES ET SELECTION ----- */
 /* ==================================================== */
 
 .tile,
@@ -800,7 +805,7 @@ main {
   transition:
     left 0.18s linear,
     top 0.18s linear;
-  background-size: 192px 512px;
+  background-size: 256px 512px;
   background-image: url(../images/Joueurs/walkingsheet.png);
   background-repeat: no-repeat;
   image-rendering: pixelated;
@@ -844,10 +849,14 @@ main {
   border-radius: 1px;
 }
 
-/* #endregion  ----- ENTITES DU MONDE ----- */
+.world-item-selected {
+  filter: drop-shadow(0 0 1px #ffffffa8) drop-shadow(0 0 2px #ffffff78) drop-shadow(0 0 6px #ffffff33);
+}
+
+/* #endregion  ----- MONDE - ENTITES ET SELECTION ----- */
 
 /* ==================================================== */
-/* #region     ----- BARS ET NOMS ----- */
+/* #region     ----- ENTITES - BARRES DE VIE ET NOMS ----- */
 /* ==================================================== */
 
 .hp-bar,
@@ -856,9 +865,8 @@ main {
   top: -16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 70%;
-
-  height: 6px;
+  width: 60%;
+  height: 5px;
   background: black;
   pointer-events: none;
 }
@@ -878,7 +886,7 @@ main {
   height: 5px;
   color: rgb(60, 255, 0);
   font-family: Verdana, Geneva, sans-serif;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.7px;
   text-shadow: 1px 1px 2px black;
@@ -888,4 +896,11 @@ main {
   pointer-events: none;
 }
 
-/* #endregion  ----- BARS ET NOMS ----- */
+.php-bar {
+  top: 12px;
+}
+.name {
+  top: -4px;
+}
+
+/* #endregion  ----- ENTITES - BARRES DE VIE ET NOMS ----- */
