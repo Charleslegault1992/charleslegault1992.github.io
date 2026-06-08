@@ -3121,12 +3121,12 @@ const showLookFloatingText = (lookInfo) => {
     return;
   }
   let text = "";
-  let offsetY = 130;
+  let offsetY = 100;
   const isCarriedItem = lookInfo.sourceType === "equipmentSlot" || lookInfo.sourceType === "containerSlot";
   const isNearbyWorldItem = lookInfo.sourceType === "worldItem" && isNearPlayer(lookInfo.target, 1);
 
   if (lookInfo.weight !== undefined && (isCarriedItem || isNearbyWorldItem)) {
-    offsetY = 100;
+    offsetY = 70;
     let suffixName = lookInfo.suffix;
     let name = lookInfo.name;
     let suffixWeight = "It weighs";
@@ -3146,7 +3146,7 @@ const showLookFloatingText = (lookInfo) => {
       text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
     }
   } else {
-    offsetY = 115;
+    offsetY = 85;
     text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
   }
   showFloatingTextAboveTarget(text, offsetY, playerState);
