@@ -540,14 +540,14 @@ const DECAY_REFRESH_COOLDOWN_MS = 1000;
 let nextDecayRefresh = 0;
 let corpseDecayCooldown = {
   player: {
-    stage0: 9000,
-    stage1: 9000,
-    stage2: 6000,
+    stage0: 30000,
+    stage1: 30000,
+    stage2: 30000,
   },
   monster: {
-    stage0: 1500,
-    stage1: 1500,
-    stage2: 1800,
+    stage0: 30000,
+    stage1: 30000,
+    stage2: 30000,
   },
 };
 
