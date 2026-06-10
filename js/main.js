@@ -628,7 +628,7 @@ const playerState = {
   level: 0,
   experience: 0,
   gold: 0,
-  damage: 40,
+  damage: 5,
   magicSkill: 0,
   swordSkill: 1,
   maceSkill: 1,
@@ -1656,7 +1656,7 @@ const isValidContainerSlotParent = (parentContainer) => {
 };
 
 const removeItemFromContainerSlot = (source, item) => {
-  const wasRemoved = setContainerSlotItem(itemLocation, null);
+  const wasRemoved = setContainerSlotItem(source, null);
   if (wasRemoved) {
     return item;
   } else {
@@ -2393,7 +2393,7 @@ const removeAllByUid = (uid) => {
   } else if (location.locationType === "equipmentSlot") {
     playerState.equipment[location.equipmentSlotName] = null;
   } else if (location.locationType === "containerSlot") {
-    const wasRemoved = setContainerSlotItem(itemLocation, null);
+    const wasRemoved = setContainerSlotItem(Location, null);
     if (!wasRemoved) {
       return;
     }
