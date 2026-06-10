@@ -204,7 +204,7 @@ const itemsDatabase = {
     type: "consumable",
     suffix: "a",
     weight: 25,
-    stackable: true,
+    stackable: false,
     blockMovement: false,
     render: {
       atlas: "items",
@@ -1665,8 +1665,12 @@ const removeItemFromContainerSlot = (source, item) => {
 };
 
 const removeItemFromEquipmentSlot = (source, item) => {
-  const slotName = source.equipmentSlotName;
-  playerState.equipment[slotName] = null;
+  const wasRemoved = setEquipmentSlotItem(source, null);
+
+  if (!wasRemoved) {
+    return null;
+  }
+
   return item;
 };
 
@@ -1698,23 +1702,33 @@ const removeItemFromDragSource = (source) => {
   }
 };
 
+const setEquipmentSlotItem = (itemLocation, item) => {
+  if (!itemLocation || itemLocation.locationType !== "equipmentSlot" || !itemLocation.equipmentSlotName) {
+    return false;
+  }
+  const equipmentSlotName = itemLocation.equipmentSlotName;
+  if (!(equipmentSlotName in playerState.equipment)) {
+    return false;
+  }
+  playerState.equipment[equipmentSlotName] = item;
+  return true;
+};
+
 /* ---------- DRAG - DESTINATION ---------- */
 
 const placeItemInContainerSlot = (destination, item) => {
-  const parentContainer = getParentContainerFromContainerSlotLocation(destination);
+  const existingItem = getItemFromLocation(destination);
+  const wasPlaced = setContainerSlotItem(destination, item);
 
-  if (!isValidContainerSlotParent(parentContainer)) {
+  if (!wasPlaced) {
     return null;
   }
 
-  if (!parentContainer.content[destination.slotIndex]) {
-    parentContainer.content[destination.slotIndex] = item;
-    return true;
-  } else {
-    const existingItem = parentContainer.content[destination.slotIndex];
-    parentContainer.content[destination.slotIndex] = item;
+  if (existingItem) {
     return existingItem;
   }
+
+  return true;
 };
 
 const placeItemInEquipmentSlot = (destination, item) => {
@@ -1726,29 +1740,25 @@ const placeItemInEquipmentSlot = (destination, item) => {
     return null;
   }
 
-  if (!playerState.equipment[destination.equipmentSlotName]) {
-    playerState.equipment[destination.equipmentSlotName] = item;
-    return true;
-  } else {
-    const existingItem = playerState.equipment[destination.equipmentSlotName];
-    playerState.equipment[destination.equipmentSlotName] = item;
-    return existingItem;
-  }
-};
+  const existingItem = getItemFromLocation(destination);
 
-const placeItemOnWorldTile = (destination, item) => {
-  const tilePosition = getTilePosition(destination);
-  if (
-    !Number.isInteger(destination.x) ||
-    !Number.isInteger(destination.y) ||
-    !isInsideMap(destination.x, destination.y) ||
-    gameMap[tilePosition.row][tilePosition.col] !== FLOOR
-  ) {
+  const wasPlaced = setEquipmentSlotItem(destination, item);
+  if (!wasPlaced) {
     return null;
   }
 
-  item.x = destination.x;
-  item.y = destination.y;
+  if (existingItem) {
+    return existingItem;
+  }
+
+  return true;
+};
+
+const placeItemOnWorldTile = (destination, item) => {
+  const wasPositioned = setWorldItemPosition(destination, item);
+  if (!wasPositioned) {
+    return false;
+  }
   addGroundItem(item);
   return true;
 };
@@ -1794,6 +1804,24 @@ const isItemInsideContainer = (containerItem, searchedItemUid) => {
   return false;
 };
 
+const setWorldItemPosition = (destination, item) => {
+  if (!item || !destination) {
+    return false;
+  }
+  const tilePosition = getTilePosition(destination);
+  if (
+    !Number.isInteger(destination.x) ||
+    !Number.isInteger(destination.y) ||
+    !isInsideMap(destination.x, destination.y) ||
+    gameMap[tilePosition.row][tilePosition.col] !== FLOOR
+  ) {
+    return false;
+  }
+
+  item.x = destination.x;
+  item.y = destination.y;
+  return true;
+};
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshInventoryUi = () => {
   renderContainerDock();
@@ -1851,6 +1879,17 @@ const getParentContainerFromContainerSlotLocation = (itemLocation) => {
   }
   const parentContainer = getItemFromLocation(parentContainerLocation);
   return parentContainer;
+};
+
+const rollbackDraggedItem = (rollbackDestination, item) => {
+  if (!rollbackDestination || !item) {
+    return false;
+  }
+  const wasRollbackPlaced = placeItemInDragDestination(rollbackDestination, item);
+  if (!wasRollbackPlaced) {
+    return false;
+  }
+  return true;
 };
 
 const setContainerSlotItem = (itemLocation, item) => {
@@ -1936,7 +1975,11 @@ const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationIte
           }
           const result = placeItemInDragDestination(tempDestination, removedItem);
           if (!result) {
-            placeItemInDragDestination(rollbackDestination, removedItem);
+            const wasRollbackPlaced = rollbackDraggedItem(rollbackDestination, removedItem);
+            if (!wasRollbackPlaced) {
+              cancelItemDrag();
+              return true;
+            }
           }
         }
       }
@@ -2127,11 +2170,19 @@ const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
       return true;
     } else {
       if (source.locationType === "worldItem") {
-        placeItemInDragDestination(oldSource, removedItem);
+        const wasRollbackPlaced = rollbackDraggedItem(oldSource, removedItem);
+        if (!wasRollbackPlaced) {
+          cancelItemDrag();
+          return true;
+        }
         refreshItemUiAfterDrag();
         return true;
       } else {
-        placeItemInDragDestination(source, removedItem);
+        const wasRollbackPlaced = rollbackDraggedItem(source, removedItem);
+        if (!wasRollbackPlaced) {
+          cancelItemDrag();
+          return true;
+        }
         refreshItemUiAfterDrag();
         return true;
       }
@@ -2391,9 +2442,13 @@ const removeAllByUid = (uid) => {
       return;
     }
   } else if (location.locationType === "equipmentSlot") {
-    playerState.equipment[location.equipmentSlotName] = null;
+    const wasRemoved = setEquipmentSlotItem(location, null);
+
+    if (!wasRemoved) {
+      return;
+    }
   } else if (location.locationType === "containerSlot") {
-    const wasRemoved = setContainerSlotItem(Location, null);
+    const wasRemoved = setContainerSlotItem(location, null);
     if (!wasRemoved) {
       return;
     }
@@ -2840,15 +2895,20 @@ const toggleContainerMinimized = (containerItem) => {
 /* ==================================================== */
 
 const consumeOneChargeFromRune = (item, source) => {
-  if (!item.charges) {
-    return;
+  if (!item || !source || !item.charges) {
+    return false;
   }
   if (item.charges >= 1) {
     item.charges -= 1;
   }
   if (item.charges <= 0) {
-    removeItemFromDragSource(source);
+    const wasRemoved = removeItemFromDragSource(source);
+    if (!wasRemoved) {
+      return false;
+    }
   }
+  refreshItemUiAfterDrag();
+  return true;
 };
 /* ---------- ITEM USE - COOLDOWN ---------- */
 const getUseCooldownGroup = (useData) => {
@@ -2908,8 +2968,16 @@ const isUsingItem = () => {
   return itemUseState.isUsingItem;
 };
 
+const findOpenedContainerWrapperByUid = (containerUid) => {
+  for (const container of openedContainers) {
+    if (container.item.uid === containerUid) {
+      return container;
+    }
+  }
+  return null;
+};
+
 const handleOpenContainerUse = (source, item, itemData, context = {}) => {
-  let parentWrapper = null;
   if (source.locationType === "equipmentSlot") {
     openContainer(item, itemData.name, "equipment", null);
     return;
@@ -2917,28 +2985,19 @@ const handleOpenContainerUse = (source, item, itemData, context = {}) => {
     openContainer(item, itemData.name, "world", null);
     return;
   } else if (source.locationType === "containerSlot") {
-    openedContainers.forEach((container) => {
-      if (container.item.uid === source.parentContainerUid) {
-        parentWrapper = container;
-      }
-    });
-
+    const parentWrapper = findOpenedContainerWrapperByUid(source.parentContainerUid);
     if (!parentWrapper) {
       return;
     }
-    let alreadyOpen = false;
-    if (itemData) {
-      openedContainers.forEach((container) => {
-        if (container.item.uid === item.uid) {
-          alreadyOpen = true;
-        }
-      });
 
-      if (alreadyOpen) {
-        openContainer(item, itemData.name, "container", parentWrapper);
-        return;
-      }
+    if (!itemData) {
+      return;
+    }
 
+    if (findOpenedContainerItemByUid(item.uid)) {
+      openContainer(item, itemData.name, "container", parentWrapper);
+      return;
+    } else {
       closeContainer(parentWrapper.item);
       openContainer(item, itemData.name, "container", parentWrapper);
     }
@@ -2990,14 +3049,16 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
     let healAmount = 0;
     if (playerState.hp + useData.heal > playerState.maxHp) {
       healAmount = playerState.maxHp - playerState.hp;
-      playerState.hp = playerState.maxHp;
     } else {
       healAmount = useData.heal;
-      playerState.hp += healAmount;
     }
+    if (!consumeOneItemFromSource(source, item)) {
+      cancelItemUse();
+      return;
+    }
+    playerState.hp += healAmount;
     startUseCooldown(cooldownGroup);
     showFloatingTextAbovePlayer(healAmount, "heal");
-    consumeOneItemFromSource(source, item);
     refreshPlayerVitalsUi();
   } else if (target.tile && isNearPlayer(target.tile, useData.range)) {
     console.log("La potion est verser par terre");
@@ -3014,11 +3075,13 @@ const handleRuneUse = (source, item, useData, target) => {
     return;
   }
   if (target.monster && isNearPlayer(target.monster, useData.range)) {
+    if (!consumeOneChargeFromRune(item, source)) {
+      cancelItemUse();
+      return;
+    }
     const attackResult = calculateRuneAttackResult(useData);
     applyDamageToMonster(target.monster, attackResult);
     startUseCooldown(cooldownGroup);
-    consumeOneChargeFromRune(item, source);
-    refreshItemUiAfterDrag();
   }
   cancelItemUse();
 };
@@ -3048,15 +3111,21 @@ const completeItemUseFromEvent = (e) => {
 
 const consumeOneItemFromSource = (source, item) => {
   if (!source || !item) {
-    return;
+    return false;
   }
   if (!item.quantity || item.quantity <= 1) {
-    removeItemFromDragSource(source);
+    const removedItem = removeItemFromDragSource(source);
+    if (!removedItem) {
+      return false;
+    }
     refreshItemUiAfterDrag();
+    return true;
   } else if (item.quantity > 1) {
     item.quantity -= 1;
     refreshItemUiAfterDrag();
+    return true;
   }
+  return false;
 };
 
 const executeDirectItemUse = (item, source) => {
