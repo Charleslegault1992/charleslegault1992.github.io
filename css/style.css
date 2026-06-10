@@ -791,20 +791,10 @@ main {
 /* #region     ----- MONDE - ENTITES ET SELECTION ----- */
 /* ==================================================== */
 
-.tile,
-.world-item-part {
-  transition:
-    left 0.18s linear,
-    top 0.18s linear;
-}
-
 #player {
   position: absolute;
   width: 64px;
   height: 128px;
-  transition:
-    left 0.18s linear,
-    top 0.18s linear;
   background-size: 256px 512px;
   background-image: url(../images/Joueurs/walkingsheet.png);
   background-repeat: no-repeat;
@@ -830,9 +820,6 @@ main {
 .monster {
   position: absolute;
   overflow: visible;
-  transition:
-    left 0.23s linear,
-    top 0.23s linear;
 }
 
 .monster-sprite {

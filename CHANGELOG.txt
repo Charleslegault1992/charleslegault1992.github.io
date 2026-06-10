@@ -1,4 +1,10 @@
-0.294 - Rendre les items utilisables et ajout satiété + regen de vie
+0.295 - Switch sur la transition des monstres/player/items du CSS a une interpolation data-only
+    -Ajout d'une interpolation data-only sur le player/monstres/items
+    -Diviser les fonctions pour separer la logique et le rendu pour une future integration de pixiJS
+    -Refactor des fonctions pour enlever de la redondance
+
+    
+0.294 - Rendre les items utilisables + decomposition des corps + refactor system d'adresse des items 
     - Ajout de itemUseState et migration des eventlistener("contextmenu") dans un handler main
     - Les items peuvent etre utiliser de 2 facons, direct ou target
     - Ajout de sprite "food/vial/fluid/blood" dans item-sheet.png
