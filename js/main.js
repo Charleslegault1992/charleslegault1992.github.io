@@ -694,6 +694,17 @@ const updatePlayerPosition = () => {
 
 /* ---------- JOUEUR - VIE ET MORT ---------- */
 
+const resetPlayerPositionToSpawn = () => {
+  playerState.x = playerSpawnX;
+  playerState.y = playerSpawnY;
+  playerState.renderX = playerSpawnX;
+  playerState.renderY = playerSpawnY;
+  playerState.oldX = playerSpawnX;
+  playerState.oldY = playerSpawnY;
+  playerState.moveStartTime = 0;
+  playerState.moveDuration = 0;
+};
+
 const hpRefresh = () => {
   const playerHp = document.querySelector(".php-red");
   if (playerHp) {
@@ -702,7 +713,14 @@ const hpRefresh = () => {
   }
 };
 
-const playerDead = () => {
+const applyPlayerDeathExperiencePenalty = () => {
+  playerState.experience = Math.floor(playerState.experience * 0.9);
+  if (playerState.experience < 0) {
+    playerState.experience = 0;
+  }
+};
+
+const dropPlayerCorpse = () => {
   const bag = getEquipmentSlotItem("backpack");
   if (bag) {
     closeContainer(bag);
@@ -711,16 +729,21 @@ const playerDead = () => {
   } else {
     addGroundItem(createGroundItem("playerCorpse", 1, playerState.x, playerState.y));
   }
+};
 
-  refreshItemUiAfterDrag();
-
-  playerState.experience = Math.floor(playerState.experience * 0.9);
-  if (playerState.experience < 0) {
-    playerState.experience = 0;
+const restoreHp = (creature) => {
+  if (!creature || !("hp" in creature) || !("maxHp" in creature)) {
+    return;
   }
-  playerState.hp = playerState.maxHp;
-  playerState.x = playerSpawnX;
-  playerState.y = playerSpawnY;
+  creature.hp = creature.maxHp;
+};
+
+const playerDead = () => {
+  dropPlayerCorpse();
+  refreshItemUiAfterDrag();
+  applyPlayerDeathExperiencePenalty();
+  restoreHp(playerState);
+  resetPlayerPositionToSpawn();
   resetAfterDeath();
 };
 
@@ -732,6 +755,7 @@ const resetAfterDeath = () => {
   updateWorldPosition();
   updatePlayerExperience();
   refreshPlayerVitalsUi();
+  closeAllContainer();
 };
 
 //#endregion  -----  PLAYER  -----
@@ -1424,7 +1448,51 @@ const refreshGroundItemRender = (item) => {
 };
 
 /* ---------- ITEMS - DECAY ---------- */
+const getCorpseDecayProfile = (item) => {
+  const itemData = getItemData(item.itemId);
+  if (!itemData || !itemData.decayType) {
+    return null;
+  }
+  const decayType = itemData.decayType;
+  if (!(decayType in corpseDecayCooldown)) {
+    return null;
+  }
+  if (!corpseDecayCooldown[decayType]) {
+    return null;
+  }
+  return corpseDecayCooldown[decayType];
+};
 
+const applyCorpseDecayStageOne = (item, profile, now) => {
+  if (!item || !profile || !("decayStage" in item) || item.decayStage !== 0) {
+    return false;
+  }
+  item.decayStage = 1;
+  item.nextDecayAt = now + profile.stage1;
+  refreshAllByUid(item.uid);
+  return true;
+};
+
+const applyCorpseDecayStageTwo = (item, profile, now) => {
+  if (!item || !profile || !("decayStage" in item) || item.decayStage !== 1) {
+    return false;
+  }
+  item.decayStage = 2;
+  item.nextDecayAt = now + profile.stage2;
+  closeContainer(item);
+  cancelItemDrag();
+  cancelItemUse();
+  refreshAllByUid(item.uid);
+  return true;
+};
+
+const applyCorpseDecayRemoval = (item) => {
+  if (!item) {
+    return false;
+  }
+  removeAllByUid(item.uid);
+  return true;
+};
 const updateCorpseDecay = () => {
   if (nextDecayRefresh < Date.now()) {
     nextDecayRefresh = Date.now() + DECAY_REFRESH_COOLDOWN_MS;
@@ -1437,28 +1505,18 @@ const updateCorpseDecay = () => {
         if (now < item.nextDecayAt) {
           continue;
         }
-        const itemData = getItemData(item.itemId);
-        if (!itemData || !itemData.decayType) {
+
+        const profile = getCorpseDecayProfile(item);
+        if (!profile) {
           continue;
         }
-        const decayType = itemData.decayType;
-        if (!(decayType in corpseDecayCooldown)) {
-          continue;
-        }
-        const profile = corpseDecayCooldown[decayType];
 
         if (item.decayStage === 0) {
-          item.decayStage = 1;
-          item.nextDecayAt = now + profile.stage1;
-          refreshAllByUid(item.uid);
+          applyCorpseDecayStageOne(item, profile, now);
         } else if (item.decayStage === 1) {
-          item.decayStage = 2;
-          item.nextDecayAt = now + profile.stage2;
-          closeContainer(item);
-          cancelItemDrag();
-          refreshAllByUid(item.uid);
+          applyCorpseDecayStageTwo(item, profile, now);
         } else if (item.decayStage === 2) {
-          removeAllByUid(item.uid);
+          applyCorpseDecayRemoval(item);
         }
       }
     }
@@ -1553,6 +1611,7 @@ const cancelItemDrag = () => {
   });
   resetDragState();
   resetDragStatePending();
+  resetInputComboState();
 };
 
 const resetDragStatePending = () => {
@@ -1824,9 +1883,9 @@ const setWorldItemPosition = (destination, item) => {
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshInventoryUi = () => {
-  renderContainerDock();
-  updatePlayerInventory();
   updatePlayerCarriedWeight();
+  updatePlayerInventory();
+  renderContainerDock();
 };
 
 const refreshItemUiAfterDrag = () => {
@@ -1863,7 +1922,11 @@ const findFirstEmptyContainerSlot = (containerItem) => {
 
 const closeFarOpenedContainers = () => {
   openedContainers.forEach((container) => {
-    if (container.sourceType === "world" && !isNearPlayer(container.item, 1)) {
+    const rootWrapper = getOpenedContainerRootWrapper(container);
+    if (!rootWrapper) {
+      return;
+    }
+    if (rootWrapper.sourceType === "world" && !isNearPlayer(rootWrapper.item, 1)) {
       closeContainer(container.item);
     }
   });
@@ -1902,11 +1965,11 @@ const setContainerSlotItem = (itemLocation, item) => {
 };
 
 const updateOpenedContainerSourceType = (item, sourceType) => {
-  openedContainers.forEach((container) => {
-    if (container.item.uid === item.uid) {
-      container.sourceType = sourceType;
-    }
-  });
+  const openedContainerWrapper = findOpenedContainerWrapperByUid(item.uid);
+  if (!openedContainerWrapper || !openedContainerWrapper.sourceType) {
+    return;
+  }
+  openedContainerWrapper.sourceType = sourceType;
 };
 
 const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationItem) => {
@@ -2783,9 +2846,7 @@ const renderContainerDock = () => {
 
         const parentWrapper = container.parent;
         closeContainer(container.item);
-        const parentAlreadyOpen = openedContainers.find((container) => {
-          return container.item.uid === parentWrapper.item.uid;
-        });
+        const parentAlreadyOpen = findOpenedContainerWrapperByUid(parentWrapper.item.uid);
         if (parentAlreadyOpen) {
           parentAlreadyOpen.isMinimized = false;
           renderContainerDock();
@@ -2825,10 +2886,15 @@ const renderContainerDock = () => {
   });
 };
 
+const closeAllContainer = () => {
+  if (openedContainers.length > 0) {
+    openedContainers.length = 0;
+  }
+  refreshInventoryUi();
+};
+
 const closeContainer = (containerItem) => {
-  const index = openedContainers.findIndex((openedContainer) => {
-    return containerItem.uid === openedContainer.item.uid;
-  });
+  const index = findOpenedContainerIndexByUid(containerItem.uid);
   if (index === -1) {
     return;
   }
@@ -2837,17 +2903,23 @@ const closeContainer = (containerItem) => {
 };
 
 const openContainer = (containerItem, title, source, parent) => {
-  if (
-    !isContainerItem(containerItem) ||
-    (source === "world" && !isNearPlayer(containerItem, 1)) ||
-    !isOpenableContainerItem(containerItem)
-  ) {
+  if (!isContainerItem(containerItem) || !isOpenableContainerItem(containerItem)) {
     return;
   }
 
-  const alreadyOpen = openedContainers.some((openedContainer) => {
-    return containerItem.uid === openedContainer.item.uid;
-  });
+  if (source === "world") {
+    let rootItem = null;
+    if (parent) {
+      rootItem = getOpenedContainerRootWrapper(parent).item;
+    } else {
+      rootItem = containerItem;
+    }
+    if (!isNearPlayer(rootItem, 1)) {
+      return;
+    }
+  }
+
+  const alreadyOpen = findOpenedContainerWrapperByUid(containerItem.uid);
   if (alreadyOpen) {
     closeContainer(containerItem);
     return;
@@ -2869,19 +2941,21 @@ const openContainer = (containerItem, title, source, parent) => {
 };
 
 const findOpenedContainerItemByUid = (containerUid) => {
-  const openedContainer = openedContainers.find((openedContainer) => {
-    return openedContainer.item.uid === containerUid;
-  });
+  const openedContainer = findOpenedContainerWrapperByUid(containerUid);
   if (!openedContainer) {
     return null;
   }
   return openedContainer.item;
 };
 
-const toggleContainerMinimized = (containerItem) => {
-  const openedContainer = openedContainers.find((openedContainer) => {
-    return openedContainer.item.uid === containerItem.uid;
+const findOpenedContainerIndexByUid = (containerUid) => {
+  return openedContainers.findIndex((container) => {
+    return container.item.uid === containerUid;
   });
+};
+
+const toggleContainerMinimized = (containerItem) => {
+  const openedContainer = findOpenedContainerWrapperByUid(containerItem.uid);
   if (!openedContainer) {
     return;
   }
@@ -2949,6 +3023,7 @@ const cancelItemUse = () => {
   itemUseState.useData = null;
   itemUseState.startedAt = null;
   removeUseCursorClass();
+  resetInputComboState();
 };
 
 const startItemUse = (source, item, useData) => {
@@ -2966,6 +3041,17 @@ const startItemUse = (source, item, useData) => {
 
 const isUsingItem = () => {
   return itemUseState.isUsingItem;
+};
+
+const getOpenedContainerRootWrapper = (containerWrapper) => {
+  if (!containerWrapper) {
+    return null;
+  }
+  let rootWrapper = containerWrapper;
+  while (rootWrapper.parent) {
+    rootWrapper = rootWrapper.parent;
+  }
+  return rootWrapper;
 };
 
 const findOpenedContainerWrapperByUid = (containerUid) => {
@@ -2995,11 +3081,11 @@ const handleOpenContainerUse = (source, item, itemData, context = {}) => {
     }
 
     if (findOpenedContainerItemByUid(item.uid)) {
-      openContainer(item, itemData.name, "container", parentWrapper);
+      openContainer(item, itemData.name, parentWrapper.sourceType, parentWrapper);
       return;
     } else {
       closeContainer(parentWrapper.item);
-      openContainer(item, itemData.name, "container", parentWrapper);
+      openContainer(item, itemData.name, parentWrapper.sourceType, parentWrapper);
     }
   }
 };
@@ -3212,10 +3298,45 @@ const updatePlayerStats = () => {
                             </div>`;
 };
 
+const getExperienceRequiredForLevel = (level) => {
+  if (!Number.isFinite(level)) {
+    return 0;
+  }
+  return Math.floor(80 * level + 8 * level ** 2 + 12 * level ** 1.5);
+};
+
+const getLevelFromExperience = (experience) => {
+  if (!Number.isFinite(experience)) {
+    return 0;
+  }
+  let level = 0;
+  while (getExperienceRequiredForLevel(level + 1) <= experience) {
+    level++;
+  }
+  return level;
+};
+
+const getExperienceProgressForLevel = (experience, level) => {
+  if (!Number.isFinite(level) || !Number.isFinite(experience)) {
+    return 0;
+  }
+  const currentLevelExperienceRequired = getExperienceRequiredForLevel(level);
+  return experience - currentLevelExperienceRequired;
+};
+
+const getExperienceRequiredForNextLevel = (experience, level) => {
+  if (!Number.isFinite(level) || !Number.isFinite(experience)) {
+    return 0;
+  }
+  const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
+  return nextLevelExperienceRequired - experience;
+};
+
 const updatePlayerExperience = () => {
-  const EXP_PER_LEVEL = 100;
-  playerState.level = Math.floor(playerState.experience / EXP_PER_LEVEL);
-  const currentLevelExp = playerState.experience % EXP_PER_LEVEL;
+  const experience = playerState.experience;
+  const level = getLevelFromExperience(experience);
+  playerState.level = level;
+  const currentLevelExp = getExperienceProgressForLevel(experience, level);
   updatePlayerStats();
 };
 
@@ -3536,6 +3657,12 @@ const shouldBlockContextMenuAction = () => {
   } else {
     return false;
   }
+};
+
+const resetInputComboState = () => {
+  inputState.isLookComboTriggered = false;
+  inputState.shouldBlockNextContextMenu = false;
+  inputState.lastDetectedTarget = null;
 };
 
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
@@ -4280,23 +4407,35 @@ const clearMonsterSelection = () => {
 
 const createMonsterCorpse = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
+  if (!monsterData || !monsterData.corpseItemId) {
+    return;
+  }
   const lootContent = generateMonsterLoot(monsterData);
+
   addGroundItem(createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, lootContent));
 };
 
-const isMonsterdead = (monster) => {
-  if (monster.hp > 0) {
-    return false;
-  } else {
-    return true;
+const isMonsterDead = (monster) => {
+  return monster.hp <= 0;
+};
+const clearSelectedMonsterIfNeeded = (monster) => {
+  if (!monster || selectedMonsterId === null) {
+    return;
+  }
+  if (selectedMonsterId === monster.uid) {
+    selectedMonsterId = null;
   }
 };
 
 const handleMonsterDeath = (monster) => {
-  monster.hp = 0;
+  setMonsterDeadState(monster);
   createMonsterCorpse(monster);
   removeMonster(monster.uid);
-  selectedMonsterId = null;
+  clearSelectedMonsterIfNeeded(monster);
+};
+
+const setMonsterDeadState = (monster) => {
+  monster.hp = 0;
 };
 
 const findNearMonster = (monsterList) => {
@@ -4823,38 +4962,70 @@ const calculateRuneAttackResult = (useData) => {
   };
 };
 
-const applyExperienceToPlayer = (monster) => {
+const getExperienceRewardFromMonster = (monster) => {
+  if (!monster) {
+    return 0;
+  }
   const monsterData = getMonsterData(monster.monsterId);
   if (!monsterData) {
-    return;
+    return 0;
   }
   if (!("experience" in monsterData)) {
-    return;
+    return 0;
   }
-  playerState.experience += monsterData.experience;
+  return monsterData.experience;
+};
+
+const applyExperienceToPlayer = (experience) => {
+  if (!Number.isFinite(experience) || experience <= 0) {
+    return false;
+  }
+
+  playerState.experience += experience;
+  return true;
+};
+
+const applyExperienceToPlayerFromMonster = (monster) => {
+  if (!monster) {
+    return false;
+  }
+  const monsterExperienceReward = getExperienceRewardFromMonster(monster);
+  if (monsterExperienceReward <= 0) {
+    return false;
+  }
+  return applyExperienceToPlayer(monsterExperienceReward);
+};
+
+const getDamageAppliedToMonster = (monster, attackResult) => {
+  if (!monster || !attackResult) {
+    return 0;
+  }
+  return clamp(attackResult.finalDamage, 0, monster.hp);
 };
 
 const applyDamageToMonster = (monster, attackResult) => {
   if (!monster || monster.hp <= 0) {
     return;
   }
+  const damageAmount = getDamageAppliedToMonster(monster, attackResult);
 
-  let damageAmount = 0;
-  if (monster.hp - attackResult.finalDamage <= 0) {
-    damageAmount = monster.hp;
-  } else {
-    damageAmount = attackResult.finalDamage;
-  }
   if (Number.isFinite(damageAmount) && damageAmount > 0) {
     monster.hp -= damageAmount;
     showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
     monsterHpRefresh(monster);
-
-    if (isMonsterdead(monster)) {
-      handleMonsterDeath(monster);
-      applyExperienceToPlayer(monster);
-      updatePlayerExperience();
+    if (isMonsterDead(monster)) {
+      handleMonsterKilledByPlayer(monster);
     }
+  }
+};
+
+const handleMonsterKilledByPlayer = (monster) => {
+  if (!monster) {
+    return;
+  }
+  handleMonsterDeath(monster);
+  if (applyExperienceToPlayerFromMonster(monster)) {
+    updatePlayerExperience();
   }
 };
 

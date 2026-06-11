@@ -2,6 +2,7 @@
     -Ajout d'une interpolation data-only sur le player/monstres/items
     -Diviser les fonctions pour separer la logique et le rendu pour une future integration de pixiJS
     -Refactor des fonctions pour enlever de la redondance
+    -Ajout de la formule pour calculer l'experiences requises pour monter de niveau
 
     
 0.294 - Rendre les items utilisables + decomposition des corps + refactor system d'adresse des items 
