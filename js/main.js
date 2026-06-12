@@ -290,7 +290,7 @@ const itemsDatabase = {
       weaponType: "sword",
       attack: 6,
       defense: 3,
-      skillName: "swordSkill",
+      skillName: "sword",
       range: 1,
     },
     render: {
@@ -629,12 +629,32 @@ const playerState = {
   experience: 0,
   gold: 0,
   damage: 5,
-  magicSkill: 0,
-  swordSkill: 1,
-  maceSkill: 1,
-  axeSkill: 1,
-  distanceSkill: 1,
-  shieldSkill: 1,
+  skills: {
+    magic: {
+      level: 0,
+      experience: 0,
+    },
+    sword: {
+      level: 1,
+      experience: 0,
+    },
+    mace: {
+      level: 1,
+      experience: 0,
+    },
+    axe: {
+      level: 1,
+      experience: 0,
+    },
+    distance: {
+      level: 1,
+      experience: 0,
+    },
+    shielding: {
+      level: 1,
+      experience: 0,
+    },
+  },
   carriedWeight: 0,
   capacity: 350,
   speed: 1,
@@ -646,7 +666,7 @@ const playerState = {
     necklace: null,
     helmet: null,
     armor: null,
-    shield: null,
+    shielding: null,
     weapon: null,
     legs: null,
     ammo: null,
@@ -723,7 +743,7 @@ const applyPlayerDeathExperiencePenalty = () => {
 const dropPlayerCorpse = () => {
   const bag = getEquipmentSlotItem("backpack");
   if (bag) {
-    closeContainer(bag);
+    closeContainerAndChildren(bag);
     playerState.equipment.backpack = null;
     addGroundItem(createGroundItem("playerCorpse", 1, playerState.x, playerState.y, [bag]));
   } else {
@@ -1479,7 +1499,7 @@ const applyCorpseDecayStageTwo = (item, profile, now) => {
   }
   item.decayStage = 2;
   item.nextDecayAt = now + profile.stage2;
-  closeContainer(item);
+  closeContainerAndChildren(item);
   cancelItemDrag();
   cancelItemUse();
   refreshAllByUid(item.uid);
@@ -1920,16 +1940,25 @@ const findFirstEmptyContainerSlot = (containerItem) => {
   return null;
 };
 
+const shouldCloseOpenedContainerByDistance = (containerWrapper) => {
+  if (!containerWrapper) {
+    return false;
+  }
+  return containerWrapper.sourceType === "world" && !isNearPlayer(containerWrapper.item, 1);
+};
+
 const closeFarOpenedContainers = () => {
-  openedContainers.forEach((container) => {
+  for (let index = openedContainers.length - 1; index >= 0; index--) {
+    const container = openedContainers[index];
+
     const rootWrapper = getOpenedContainerRootWrapper(container);
     if (!rootWrapper) {
-      return;
+      continue;
     }
-    if (rootWrapper.sourceType === "world" && !isNearPlayer(rootWrapper.item, 1)) {
-      closeContainer(container.item);
+    if (shouldCloseOpenedContainerByDistance(rootWrapper)) {
+      closeContainerAndChildren(container.item);
     }
-  });
+  }
 };
 
 const getParentContainerFromContainerSlotLocation = (itemLocation) => {
@@ -1966,7 +1995,7 @@ const setContainerSlotItem = (itemLocation, item) => {
 
 const updateOpenedContainerSourceType = (item, sourceType) => {
   const openedContainerWrapper = findOpenedContainerWrapperByUid(item.uid);
-  if (!openedContainerWrapper || !openedContainerWrapper.sourceType) {
+  if (!openedContainerWrapper) {
     return;
   }
   openedContainerWrapper.sourceType = sourceType;
@@ -2476,6 +2505,38 @@ const refreshAllByUid = (uid) => {
   refreshInventoryUi();
 };
 
+const isOpenedContainerChildOf = (openedWindow, containerToClose) => {
+  if (!openedWindow || !containerToClose) {
+    return false;
+  }
+  let openedWindowParent = openedWindow.parent;
+  while (openedWindowParent) {
+    if (openedWindowParent.item.uid === containerToClose.uid) {
+      return true;
+    }
+
+    openedWindowParent = openedWindowParent.parent;
+  }
+  return false;
+};
+
+const closeContainerAndChildren = (containerToClose) => {
+  if (!containerToClose) {
+    return;
+  }
+  let wasClosed = false;
+  for (let index = openedContainers.length - 1; index >= 0; index--) {
+    const wrapper = openedContainers[index];
+    if (wrapper.item.uid === containerToClose.uid || isOpenedContainerChildOf(wrapper, containerToClose)) {
+      openedContainers.splice(index, 1);
+      wasClosed = true;
+    }
+  }
+  if (wasClosed) {
+    renderContainerDock();
+  }
+};
+
 const removeAllByUid = (uid) => {
   const location = findItemLocationByUid(uid);
   if (!location) {
@@ -2487,7 +2548,7 @@ const removeAllByUid = (uid) => {
   }
 
   if (isContainerItem(item)) {
-    closeContainer(item);
+    closeContainerAndChildren(item);
   }
 
   if ("decayStage" in item) {
@@ -2571,6 +2632,7 @@ const completeItemDrag = (destination) => {
   }
 
   if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
+    refreshItemUiAfterDrag();
     return;
   }
 
@@ -2580,18 +2642,22 @@ const completeItemDrag = (destination) => {
   }
 
   if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
+    refreshItemUiAfterDrag();
     return;
   }
 
   if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
+    refreshItemUiAfterDrag();
     return;
   }
 
   if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
+    refreshItemUiAfterDrag();
     return;
   }
 
   if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
+    refreshItemUiAfterDrag();
     return;
   }
   cancelItemDrag();
@@ -3279,23 +3345,246 @@ const refreshPlayerVitalsUi = () => {
   hpRefresh();
 };
 
+const playerStatsUi = {
+  root: null,
+  rows: {
+    name: null,
+    level: null,
+    hp: null,
+    experience: null,
+    gold: null,
+    magic: null,
+    sword: null,
+    mace: null,
+    axe: null,
+    distance: null,
+    shielding: null,
+  },
+};
+
+const updateSkillStatRow = (skillKey) => {
+  const row = playerStatsUi.rows[skillKey];
+  const skill = playerState.skills[skillKey];
+  if (!row || !skill) {
+    return;
+  }
+  row.valueElement.textContent = skill.level;
+  setProgressBarValue(row.progressBarRefs, 0);
+};
+
+const createProgressBarRefs = () => {
+  const progressBarElement = document.createElement("div");
+  progressBarElement.classList.add("stat-progress-bar");
+  const progressFillElement = document.createElement("div");
+  progressFillElement.classList.add("stat-progress-fill");
+  progressBarElement.appendChild(progressFillElement);
+  return { root: progressBarElement, fill: progressFillElement };
+};
+
+const setProgressBarValue = (progressBarRefs, progressRatio) => {
+  if (!progressBarRefs || !Number.isFinite(progressRatio) || !("fill" in progressBarRefs)) {
+    return;
+  }
+  const safeRatio = clamp(progressRatio, 0, 1);
+  const ratioPercent = safeRatio * 100;
+  progressBarRefs.fill.style.width = `${ratioPercent}%`;
+};
+
+const createProgressTooltipElement = () => {
+  const toolTipElement = document.createElement("div");
+  toolTipElement.classList.add("tooltip");
+  return toolTipElement;
+};
+
+const createValueElement = (statKey) => {
+  if (!statKey) {
+    return null;
+  }
+  const valueElement = document.createElement("div");
+  valueElement.classList.add("stat-value");
+  return valueElement;
+};
+
+const createLabelElement = (label) => {
+  if (!label) {
+    return null;
+  }
+  const labelElement = document.createElement("div");
+  labelElement.classList.add("stat-label");
+  labelElement.textContent = label;
+  return labelElement;
+};
+
+const createStatWrapperElement = (statKey) => {
+  if (!statKey) {
+    return null;
+  }
+  const statWrapper = document.createElement("div");
+  statWrapper.setAttribute("data-stat-key", statKey);
+  statWrapper.classList.add("stat-wrapper");
+  return statWrapper;
+};
+
+const setProgressTooltipText = (tooltipElement, tooltipText) => {
+  if (!tooltipElement) {
+    return;
+  }
+  const tooltipTextString = String(tooltipText);
+  tooltipElement.textContent = tooltipTextString;
+};
+
+const createProgressStatRowElement = (statKey, label) => {
+  if (!statKey || !label) {
+    return null;
+  }
+  const statWrapper = createStatWrapperElement(statKey);
+  const labelElement = createLabelElement(label);
+  const valueElement = createValueElement(statKey);
+  const progressBarRefs = createProgressBarRefs();
+  const tooltipElement = createProgressTooltipElement();
+
+  if (!statWrapper || !labelElement || !valueElement || !progressBarRefs || !tooltipElement) {
+    return null;
+  }
+
+  statWrapper.append(labelElement, valueElement, progressBarRefs.root, tooltipElement);
+  playerStatsUi.rows[statKey] = {
+    statWrapper,
+    labelElement,
+    valueElement,
+    progressBarRefs,
+    tooltipElement,
+  };
+  return statWrapper;
+};
+
+const createSimpleStatRowElement = (statKey, label) => {
+  if (!statKey || !label) {
+    return null;
+  }
+  const statWrapper = createStatWrapperElement(statKey);
+  const labelElement = createLabelElement(label);
+  const valueElement = createValueElement(statKey);
+
+  if (!statWrapper || !labelElement || !valueElement) {
+    return null;
+  }
+
+  statWrapper.append(labelElement, valueElement);
+  playerStatsUi.rows[statKey] = {
+    statWrapper,
+    labelElement,
+    valueElement,
+  };
+  return statWrapper;
+};
+
+const createPlayerStatsUi = () => {
+  const statsWrapperElement = document.createElement("div");
+  statsWrapperElement.classList.add("boite-boite");
+  const titleElement = document.createElement("div");
+  titleElement.classList.add("boite-jeux-titre");
+  titleElement.textContent = "Stats";
+  const separatorElement = document.createElement("div");
+  separatorElement.classList.add("separateur-panneau");
+  const nameElement = createSimpleStatRowElement("name", "Name:");
+  const hpElement = createSimpleStatRowElement("hp", "Hp:");
+  const goldElement = createSimpleStatRowElement("gold", "Gold:");
+  const experienceElement = createSimpleStatRowElement("experience", "Experience:");
+  const levelElement = createProgressStatRowElement("level", "Level:");
+  const magicElement = createProgressStatRowElement("magic", "Magic:");
+  const swordElement = createProgressStatRowElement("sword", "Sword Fighting:");
+  const maceElement = createProgressStatRowElement("mace", "Mace Fighting:");
+  const axeElement = createProgressStatRowElement("axe", "Axe Fighting:");
+  const distanceElement = createProgressStatRowElement("distance", "Distance:");
+  const shieldingElement = createProgressStatRowElement("shielding", "Shielding:");
+  if (
+    !nameElement ||
+    !hpElement ||
+    !goldElement ||
+    !experienceElement ||
+    !levelElement ||
+    !magicElement ||
+    !swordElement ||
+    !maceElement ||
+    !axeElement ||
+    !distanceElement ||
+    !shieldingElement
+  ) {
+    return;
+  }
+  statsWrapperElement.append(
+    titleElement,
+    separatorElement,
+    nameElement,
+    hpElement,
+    goldElement,
+    experienceElement,
+    levelElement,
+    magicElement,
+    swordElement,
+    maceElement,
+    axeElement,
+    distanceElement,
+    shieldingElement,
+  );
+  playerStats.innerHTML = "";
+  playerStats.appendChild(statsWrapperElement);
+  playerStatsUi.root = statsWrapperElement;
+};
+
+const updatePlayerStatsUi = () => {
+  const progressData = getPlayerExperienceProgressData();
+  if (!progressData) {
+    return;
+  }
+  const rows = playerStatsUi.rows;
+  if (!rows.name || !rows.hp || !rows.gold || !rows.experience || !rows.level) {
+    return;
+  }
+
+  rows.name.valueElement.textContent = playerState.name;
+  rows.hp.valueElement.textContent = `${playerState.hp}/${playerState.maxHp}`;
+  rows.gold.valueElement.textContent = playerState.gold;
+  rows.experience.valueElement.textContent = playerState.experience;
+  rows.level.valueElement.textContent = progressData.level;
+  const level = rows.level;
+  setProgressBarValue(level.progressBarRefs, progressData.progressRatio);
+  setProgressTooltipText(level.tooltipElement, `${progressData.experienceNeededForNextLevel} Xp left to go.`);
+  for (const skillKey of Object.keys(playerState.skills)) {
+    updateSkillStatRow(skillKey);
+  }
+};
+
 const updatePlayerStats = () => {
-  playerStats.innerHTML = `<div class="boite-boite">
-                              <div class="boite-jeux-titre">Stats</div>
-                              <div class="separateur-panneau"></div>
-                              <div class="boite-row"><span>Name:</span><span>${playerState.name}</span></div>
-                              <div class="boite-row"><span>Level:</span><span>${playerState.level}</span></div>
-                              <div class="boite-row"><span>HP:</span><span>${playerState.hp}/${playerState.maxHp}</span></div>
-                              <div class="boite-row"><span>EXP:</span><span>${playerState.experience}</span></div>
-                              <div class="boite-row"><span>Gold:</span><span>${playerState.gold}</span></div>
-                              <div class="boite-row"><span>Magic Level:</span><span>${playerState.magicSkill}</span></div>
-                              <div class="boite-row"><span>Sword Fighting:</span><span>${playerState.swordSkill}</span></div>
-                              <div class="boite-row"><span>Mace Fighting:</span><span>${playerState.maceSkill}</span></div>
-                              <div class="boite-row"><span>Axe Fighting:</span><span>${playerState.axeSkill}</span></div>
-                              <div class="boite-row"><span>Distance:</span><span>${playerState.distanceSkill}</span></div>
-                              <div class="boite-row"><span>Shielding:</span><span>${playerState.shieldSkill}</span></div>
-                              
-                            </div>`;
+  if (!playerStatsUi.root) {
+    createPlayerStatsUi();
+  }
+  updatePlayerStatsUi();
+};
+
+const getPlayerExperienceProgressData = () => {
+  const experience = playerState.experience;
+  const level = getLevelFromExperience(experience);
+  const currentLevelExperienceRequired = getExperienceRequiredForLevel(level);
+  const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
+  const experienceInCurrentLevel = getExperienceProgressForLevel(experience, level);
+  const experienceNeededForNextLevel = getExperienceRequiredForNextLevel(experience, level);
+  const totalLevelExperience = nextLevelExperienceRequired - currentLevelExperienceRequired;
+  let progressRatio = 0;
+  if (totalLevelExperience > 0) {
+    progressRatio = clamp(experienceInCurrentLevel / totalLevelExperience, 0, 1);
+  }
+  return {
+    experience,
+    level,
+    currentLevelExperienceRequired,
+    nextLevelExperienceRequired,
+    experienceInCurrentLevel,
+    experienceNeededForNextLevel,
+    totalLevelExperience,
+    progressRatio,
+  };
 };
 
 const getExperienceRequiredForLevel = (level) => {
@@ -3333,10 +3622,11 @@ const getExperienceRequiredForNextLevel = (experience, level) => {
 };
 
 const updatePlayerExperience = () => {
-  const experience = playerState.experience;
-  const level = getLevelFromExperience(experience);
-  playerState.level = level;
-  const currentLevelExp = getExperienceProgressForLevel(experience, level);
+  const progressData = getPlayerExperienceProgressData();
+  if (!progressData) {
+    return;
+  }
+  playerState.level = progressData.level;
   updatePlayerStats();
 };
 
@@ -4730,10 +5020,10 @@ const getPlayerAttackSkill = () => {
     return 1;
   }
   const skillName = combatData.skillName;
-  if (!(skillName in playerState)) {
+  if (!(skillName in playerState.skills)) {
     return 1;
   }
-  return playerState[skillName];
+  return playerState.skills[skillName].level;
 };
 
 const getPlayerTotalArmor = () => {
@@ -4877,9 +5167,9 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   const combatModeData = getCombatModeData();
   const playerArmor = getPlayerTotalArmor();
   const playerShieldDefense = getPlayerShieldDefense();
-  const shieldSkill = playerState.shieldSkill;
+  const shielding = playerState.skills.shielding.level;
   //!!!!! CHANCE MONSTRE HIT !!!!
-  let hitChance = attackerCombatData.hitChance - shieldSkill * 0.4;
+  let hitChance = attackerCombatData.hitChance - shielding * 0.4;
   hitChance = clamp(hitChance, 35, 95);
   const roll = getRandomInt(1, 100);
   if (roll > hitChance)
@@ -4897,7 +5187,7 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   }
   const rawDamage = getRandomFloat(1, attackerAttack);
   let wasBlocked = false;
-  let blockChance = 10 + shieldSkill * 0.8 + playerShieldDefense * 0.8;
+  let blockChance = 10 + shielding * 0.8 + playerShieldDefense * 0.8;
   blockChance *= combatModeData.blockChanceMultiplier;
   blockChance = clamp(blockChance, 5, 70);
   let defensePower = 0;
@@ -4905,7 +5195,7 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   const rollBlock = getRandomInt(1, 100);
   if (rollBlock <= blockChance) {
     wasBlocked = true;
-    defensePower = playerShieldDefense * 0.25 + shieldSkill * 0.1;
+    defensePower = playerShieldDefense * 0.25 + shielding * 0.1;
     defensePower *= combatModeData.defenseMultiplier;
     defenseReduction = getRandomFloat(defensePower * 0.6, defensePower * 1.2);
   }
@@ -4950,7 +5240,7 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
 
 const calculateRuneAttackResult = (useData) => {
   const runeDamage = useData.damage;
-  const magicLevel = playerState.magicSkill;
+  const magicLevel = playerState.skills.magic.level;
   const level = playerState.level;
   const minDamage = runeDamage + magicLevel * 0.35 + level * 0.1;
   const maxDamage = runeDamage + magicLevel * 0.85 + level * 0.25;

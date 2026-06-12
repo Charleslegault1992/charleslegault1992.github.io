@@ -202,6 +202,34 @@ main {
 /* #endregion  ----- CHAT ----- */
 
 /* ==================================================== */
+/* #region     ----- STATS ----- */
+/* ==================================================== */
+
+  .tooltip {
+    display:none;
+  }
+  .stat-value{
+
+  }
+   .stat-label{
+    
+  }
+   .stat-wrapper{
+    
+  }
+  .stat-progress-bar{
+    width: 100%;
+    background-color: #000;
+    height: 5px;
+
+  }
+  .stat-progress-fill{
+    background-color: #48ff6a;
+  }
+
+/* #endregion  ----- STATS ----- */
+
+/* ==================================================== */
 /* #region     ----- LAYOUT - PANNEAUX LATERAUX ----- */
 /* ==================================================== */
 
