@@ -644,6 +644,10 @@ const playerState = {
       level: 0,
       experience: 0,
     },
+    fist: {
+      level: 1,
+      experience: 100,
+    },
     sword: {
       level: 1,
       experience: 100,
@@ -3419,6 +3423,7 @@ const playerStatsUi = {
     experience: null,
     gold: null,
     magic: null,
+    fist: null,
     sword: null,
     mace: null,
     axe: null,
@@ -3564,6 +3569,7 @@ const createPlayerStatsUi = () => {
   const experienceElement = createSimpleStatRowElement("experience", "Experience:");
   const levelElement = createProgressStatRowElement("level", "Level:");
   const magicElement = createProgressStatRowElement("magic", "Magic:");
+  const fistElement = createProgressStatRowElement("fist", "Fist Fighting:");
   const swordElement = createProgressStatRowElement("sword", "Sword Fighting:");
   const maceElement = createProgressStatRowElement("mace", "Mace Fighting:");
   const axeElement = createProgressStatRowElement("axe", "Axe Fighting:");
@@ -3576,6 +3582,7 @@ const createPlayerStatsUi = () => {
     !experienceElement ||
     !levelElement ||
     !magicElement ||
+    !fistElement ||
     !swordElement ||
     !maceElement ||
     !axeElement ||
@@ -3593,6 +3600,7 @@ const createPlayerStatsUi = () => {
     experienceElement,
     levelElement,
     magicElement,
+    fistElement,
     swordElement,
     maceElement,
     axeElement,
@@ -5181,16 +5189,22 @@ const getPlayerWeaponAttack = () => {
   return weaponCombatData.attack;
 };
 
-const getPlayerAttackSkill = () => {
+const getPlayerAttackSkillKey = () => {
   const combatData = getEquippedWeaponCombatData();
-  if (!combatData || !combatData.skillName) {
+
+  if (combatData && combatData.skillName) {
+    return combatData.skillName;
+  } else {
+    return "fist";
+  }
+};
+
+const getPlayerAttackSkill = () => {
+  const skillKey = getPlayerAttackSkillKey();
+  if (!(skillKey in playerState.skills)) {
     return 1;
   }
-  const skillName = combatData.skillName;
-  if (!(skillName in playerState.skills)) {
-    return 1;
-  }
-  return playerState.skills[skillName].level;
+  return playerState.skills[skillKey].level;
 };
 
 const getPlayerTotalArmor = () => {
@@ -5508,12 +5522,9 @@ const handleMonsterKilledByPlayer = (monster) => {
 
 const attackMonster = (monster) => {
   const attackResult = calculatePlayerAttackResult(monster);
-  const combatData = getEquippedWeaponCombatData();
-  if (combatData && combatData.skillName) {
-    const skillKey = combatData.skillName;
-    const now = Date.now();
-    applySkillExperienceFromAttack(attackResult, skillKey, now);
-  }
+  const skillKey = getPlayerAttackSkillKey();
+  const now = Date.now();
+  applySkillExperienceFromAttack(attackResult, skillKey, now);
 
   if (attackResult.finalDamage > 0) {
     applyDamageToMonster(monster, attackResult);
@@ -5542,6 +5553,7 @@ const updateCombat = () => {
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
 
+/* ==================================================== */
 //#region     -----  EVENEMENTS DU JEU  -----
 /* ==================================================== */
 /* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */

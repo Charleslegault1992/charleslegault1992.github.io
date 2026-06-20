@@ -35,6 +35,7 @@ body {
 }
 
 .navbar {
+  display: none;
   background-image: url("../images/ui/navbar.png");
   background-size: 100% 100%;
   background-repeat: no-repeat;
@@ -252,7 +253,7 @@ main {
   image-rendering: pixelated;
   overflow: hidden;
   height: 100%;
-  width: 275px;
+  width: 248px;
   flex-shrink: 0;
   align-items: flex-start;
   position: absolute;
@@ -276,7 +277,7 @@ main {
 
 .separateur-panneau {
   width: 100%;
-  margin: 0 auto;
+  margin: 0 auto 5px;
   height: 1px;
   background-color: rgba(191, 191, 191, 0.6);
 }
@@ -286,14 +287,14 @@ main {
   font-family: Verdana, Geneva, sans-serif;
   text-shadow: 0 0px 2px rgb(0, 0, 0);
   font-size: 10px;
-  margin: 17px 15px 6px;
+  margin: 10px auto;
   padding: 5px;
   background-image: url("../images/ui/containerBackground.png");
   background-repeat: no-repeat;
   background-size: auto;
   image-rendering: pixelated;
   border-radius: 8px;
-  width: calc(100% - 30px);
+  width: calc(100% - 16px);
   box-sizing: border-box;
   box-shadow: 0px 0px 15px black;
   max-height: calc(100% - 40px);
@@ -548,7 +549,7 @@ main {
   outline: 1px solid rgba(145, 145, 145, 0.5);
   border-radius: 1px;
   padding: 0;
-  margin-left: 9px;
+  margin-left: 4px;
   color: rgb(225, 225, 225);
   font-family: Verdana, Geneva, sans-serif;
   font-size: 8px;
@@ -671,8 +672,8 @@ main {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin: 0px 15px 8px;
-  width: calc(100% - 30px);
+  margin: 0px auto 8px;
+  width: calc(100% - 16px);
   gap: 8px;
   border-radius: 8px;
 
@@ -694,7 +695,7 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.5);
   flex-shrink: 0;
   border-radius: 8px;
-  padding: 0px 5px;
+  padding: 0px 3px;
 }
 
 .container-window-header {
@@ -734,14 +735,12 @@ main {
 .container-window-body {
   display: flex;
   justify-content: center;
-  padding: 4px;
+  padding: 4px 0 5px;
   background-image: url("../images/ui/containerBackground.png");
   background-repeat: no-repeat;
   background-size: auto;
   image-rendering: pixelated;
   overflow: hidden;
-  padding-bottom: 5px;
-  padding-left: 8px;
 }
 
 /* ---------- UI - CONTAINER SLOTS ---------- */
@@ -762,11 +761,10 @@ main {
   margin-bottom: 2px;
 }
 .container-slot-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 4px;
-  width: 100%;
+  display: grid;
+  gap:4px;
+  grid-template-columns: repeat(5, 40px);
+  width: max-content;
   margin: 0 auto;
   box-sizing: border-box;
 }
