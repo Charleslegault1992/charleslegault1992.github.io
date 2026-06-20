@@ -205,27 +205,27 @@ main {
 /* #region     ----- STATS ----- */
 /* ==================================================== */
 
-  .tooltip {
-    display:none;
-  }
-  .stat-value{
-
-  }
-   .stat-label{
-    
-  }
-   .stat-wrapper{
-    
-  }
-  .stat-progress-bar{
-    width: 100%;
-    background-color: #000;
-    height: 5px;
-
-  }
-  .stat-progress-fill{
-    background-color: #48ff6a;
-  }
+.tooltip {
+  display: none;
+}
+.stat-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 6px;
+}
+.stat-progress-bar {
+  flex: 0 0 100%;
+  width: 100%;
+  background-color: #000;
+  height: 5px;
+}
+.stat-progress-fill {
+  height: 100%;
+  background-color: #48ff6a;
+  border-radius: 10px;
+}
 
 /* #endregion  ----- STATS ----- */
 

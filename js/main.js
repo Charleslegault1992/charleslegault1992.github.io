@@ -583,6 +583,11 @@ let PLAYER_MOVE_COOLDOWN_MS = 200;
 let nextPlayerMoveTime = 0;
 let nextPlayerAttackTime = 0;
 
+const SKILL_TRAINING_COOLDOWN_MS = 45000;
+const SHIELDING_BLOCK_COOLDOWN_MS = 2000;
+const SHIELDING_MAX_BLOCKS_PER_COOLDOWN = 2;
+const SKILL_EXPERIENCE_GAIN_PER_TRY = 25;
+
 /* ---------- TIMING - MONSTRES ---------- */
 
 const MONSTER_ATTACK_COOLDOWN_MS = 1500;
@@ -629,6 +634,11 @@ const playerState = {
   experience: 0,
   gold: 0,
   damage: 5,
+  skillTraining: {
+    lastEffectiveHitAt: 0,
+    shieldingBlockCount: 0,
+    shieldingBlockCooldownStartedAt: 0,
+  },
   skills: {
     magic: {
       level: 0,
@@ -636,23 +646,23 @@ const playerState = {
     },
     sword: {
       level: 1,
-      experience: 0,
+      experience: 100,
     },
     mace: {
       level: 1,
-      experience: 0,
+      experience: 100,
     },
     axe: {
       level: 1,
-      experience: 0,
+      experience: 100,
     },
     distance: {
       level: 1,
-      experience: 0,
+      experience: 100,
     },
     shielding: {
       level: 1,
-      experience: 0,
+      experience: 100,
     },
   },
   carriedWeight: 0,
@@ -666,7 +676,7 @@ const playerState = {
     necklace: null,
     helmet: null,
     armor: null,
-    shielding: null,
+    shield: null,
     weapon: null,
     legs: null,
     ammo: null,
@@ -710,6 +720,61 @@ const updatePlayerPosition = () => {
   player.style.left = `${playerState.renderX - camera.x}px`;
   player.style.top = `${playerState.renderY - camera.y - TILE_SIZE}px`;
   player.style.zIndex = playerState.y;
+};
+
+/* ---------- JOUEUR - SKILLS / EXPERIENCE ---------- */
+const refreshSkillTrainingTimer = (now) => {
+  if (!Number.isInteger(now)) {
+    return;
+  }
+  playerState.skillTraining.lastEffectiveHitAt = now;
+};
+
+const isSkillTrainingTimerActive = (now) => {
+  if (!Number.isInteger(now)) {
+    return false;
+  }
+
+  const lastEffectiveHitAt = playerState.skillTraining.lastEffectiveHitAt;
+  if (!lastEffectiveHitAt) {
+    return false;
+  }
+
+  return now - lastEffectiveHitAt <= SKILL_TRAINING_COOLDOWN_MS;
+};
+
+const resetShieldingBlockCooldownIfNeeded = (now) => {
+  if (playerState.skillTraining.shieldingBlockCooldownStartedAt === 0) {
+    playerState.skillTraining.shieldingBlockCooldownStartedAt = now;
+    return;
+  }
+  if (playerState.skillTraining.shieldingBlockCooldownStartedAt + SHIELDING_BLOCK_COOLDOWN_MS <= now) {
+    playerState.skillTraining.shieldingBlockCount = 0;
+    playerState.skillTraining.shieldingBlockCooldownStartedAt = now;
+  }
+};
+
+const canUseShieldingBlock = (now) => {
+  resetShieldingBlockCooldownIfNeeded(now);
+  if (playerState.skillTraining.shieldingBlockCount >= SHIELDING_MAX_BLOCKS_PER_COOLDOWN) {
+    return false;
+  } else {
+    return true;
+  }
+};
+
+const recordShieldingBlock = (now) => {
+  resetShieldingBlockCooldownIfNeeded(now);
+  playerState.skillTraining.shieldingBlockCount += 1;
+};
+
+const applyShieldingExperienceFromBlockAttempt = (now) => {
+  if (!isSkillTrainingTimerActive(now)) {
+    return false;
+  }
+
+  applyExperienceToPlayerSkill("shielding", SKILL_EXPERIENCE_GAIN_PER_TRY);
+  return true;
 };
 
 /* ---------- JOUEUR - VIE ET MORT ---------- */
@@ -3363,13 +3428,19 @@ const playerStatsUi = {
 };
 
 const updateSkillStatRow = (skillKey) => {
-  const row = playerStatsUi.rows[skillKey];
-  const skill = playerState.skills[skillKey];
-  if (!row || !skill) {
+  if (!skillKey) {
     return;
   }
-  row.valueElement.textContent = skill.level;
-  setProgressBarValue(row.progressBarRefs, 0);
+  const row = playerStatsUi.rows[skillKey];
+  const skill = playerState.skills[skillKey];
+  const skillProgressData = getSkillProgressData(skillKey);
+  if (!row || !skill || !Number.isInteger(skill.experience) || !skillProgressData) {
+    return;
+  }
+
+  row.valueElement.textContent = skillProgressData.level;
+  setProgressBarValue(row.progressBarRefs, skillProgressData.progressRatio);
+  setProgressTooltipText(row.tooltipElement, `${skillProgressData.experienceNeededForNextLevel} XP left to go.`);
 };
 
 const createProgressBarRefs = () => {
@@ -3619,6 +3690,75 @@ const getExperienceRequiredForNextLevel = (experience, level) => {
   }
   const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
   return nextLevelExperienceRequired - experience;
+};
+
+const getSkillExperienceRequiredForLevel = (skillLevel) => {
+  if (!Number.isFinite(skillLevel)) {
+    return 0;
+  }
+  return Math.floor(80 * skillLevel + 8 * skillLevel ** 2 + 12 * skillLevel ** 1.5);
+};
+
+const getSkillLevelFromExperience = (skillExperience, baseLevel = 0) => {
+  if (!Number.isFinite(skillExperience)) {
+    return 0;
+  }
+  let level = baseLevel;
+  while (getSkillExperienceRequiredForLevel(level + 1) <= skillExperience) {
+    level++;
+  }
+  return level;
+};
+
+const getSkillProgressData = (skillKey) => {
+  const skill = playerState.skills[skillKey] || null;
+  if (!skill) {
+    return null;
+  }
+  const experience = skill.experience;
+  const level = getSkillLevelFromExperience(experience);
+  const currentLevelExperienceRequired = getSkillExperienceRequiredForLevel(level);
+  const nextLevelExperienceRequired = getSkillExperienceRequiredForLevel(level + 1);
+  const experienceInCurrentLevel = experience - currentLevelExperienceRequired;
+  const experienceNeededForNextLevel = nextLevelExperienceRequired - experience;
+  const totalLevelExperience = nextLevelExperienceRequired - currentLevelExperienceRequired;
+  let progressRatio = 0;
+  if (totalLevelExperience > 0) {
+    progressRatio = clamp(experienceInCurrentLevel / totalLevelExperience, 0, 1);
+  }
+  return {
+    experience,
+    level,
+    currentLevelExperienceRequired,
+    nextLevelExperienceRequired,
+    experienceInCurrentLevel,
+    experienceNeededForNextLevel,
+    totalLevelExperience,
+    progressRatio,
+  };
+};
+
+const updatePlayerSkillLevel = (skillKey) => {
+  if (!skillKey || !(skillKey in playerState.skills)) {
+    return;
+  }
+  playerState.skills[skillKey].level = getSkillLevelFromExperience(playerState.skills[skillKey].experience);
+  updateSkillStatRow(skillKey);
+};
+
+const updateAllPlayerSkillLevels = () => {
+  for (const [skillKey, skill] of Object.entries(playerState.skills)) {
+    skill.level = getSkillLevelFromExperience(skill.experience);
+    updateSkillStatRow(skillKey);
+  }
+};
+
+const applyExperienceToPlayerSkill = (skillKey, experienceAmount) => {
+  if (!skillKey || experienceAmount <= 0 || !(skillKey in playerState.skills)) {
+    return;
+  }
+  playerState.skills[skillKey].experience += experienceAmount;
+  updatePlayerSkillLevel(skillKey);
 };
 
 const updatePlayerExperience = () => {
@@ -4986,6 +5126,33 @@ const getCombatModeData = () => {
   }
 };
 
+const getSkillExperienceGainFromAttack = (attackResult, skillKey, now) => {
+  if (!skillKey || !(skillKey in playerState.skills) || !attackResult || !attackResult.didHit) {
+    return 0;
+  }
+  const baseGain = SKILL_EXPERIENCE_GAIN_PER_TRY;
+  const finalExp = baseGain;
+
+  if (attackResult.finalDamage > 0) {
+    refreshSkillTrainingTimer(now);
+    return finalExp;
+  } else {
+    if (isSkillTrainingTimerActive(now)) {
+      return finalExp;
+    }
+  }
+  return 0;
+};
+
+const applySkillExperienceFromAttack = (attackResult, skillKey, now) => {
+  const finalExp = getSkillExperienceGainFromAttack(attackResult, skillKey, now);
+  if (!finalExp) {
+    return false;
+  }
+  applyExperienceToPlayerSkill(skillKey, finalExp);
+  return true;
+};
+
 const getEquippedWeapon = () => {
   if (!playerState.equipment.weapon) {
     return null;
@@ -5163,7 +5330,19 @@ const calculatePlayerAttackResult = (target) => {
   }
 };
 
+const hasPlayerBlockSource = () => {
+  if (playerState.equipment.shield) {
+    return true;
+  }
+  const weaponCombatData = getEquippedWeaponCombatData();
+  if (weaponCombatData && Number.isFinite(weaponCombatData.defense)) {
+    return true;
+  }
+  return false;
+};
+
 const calculateDamageTakenByPlayer = (attackerCombatData) => {
+  const now = Date.now();
   const combatModeData = getCombatModeData();
   const playerArmor = getPlayerTotalArmor();
   const playerShieldDefense = getPlayerShieldDefense();
@@ -5192,12 +5371,18 @@ const calculateDamageTakenByPlayer = (attackerCombatData) => {
   blockChance = clamp(blockChance, 5, 70);
   let defensePower = 0;
   let defenseReduction = 0;
-  const rollBlock = getRandomInt(1, 100);
-  if (rollBlock <= blockChance) {
-    wasBlocked = true;
-    defensePower = playerShieldDefense * 0.25 + shielding * 0.1;
-    defensePower *= combatModeData.defenseMultiplier;
-    defenseReduction = getRandomFloat(defensePower * 0.6, defensePower * 1.2);
+  if (hasPlayerBlockSource() && canUseShieldingBlock(now)) {
+    recordShieldingBlock(now);
+    if (playerState.equipment.shield) {
+      applyShieldingExperienceFromBlockAttempt(now);
+    }
+    const rollBlock = getRandomInt(1, 100);
+    if (rollBlock <= blockChance) {
+      wasBlocked = true;
+      defensePower = playerShieldDefense * 0.25 + shielding * 0.1;
+      defensePower *= combatModeData.defenseMultiplier;
+      defenseReduction = getRandomFloat(defensePower * 0.6, defensePower * 1.2);
+    }
   }
   const damageAfterDefense = rawDamage - defenseReduction;
   if (damageAfterDefense <= 0) {
@@ -5323,6 +5508,13 @@ const handleMonsterKilledByPlayer = (monster) => {
 
 const attackMonster = (monster) => {
   const attackResult = calculatePlayerAttackResult(monster);
+  const combatData = getEquippedWeaponCombatData();
+  if (combatData && combatData.skillName) {
+    const skillKey = combatData.skillName;
+    const now = Date.now();
+    applySkillExperienceFromAttack(attackResult, skillKey, now);
+  }
+
   if (attackResult.finalDamage > 0) {
     applyDamageToMonster(monster, attackResult);
     return;
@@ -5433,6 +5625,8 @@ const setupTestPlayerInventory = () => {
   playerState.equipment.backpack.content[5] = createItemInstance("healthPotion", 1);
   playerState.equipment.backpack.content[2] = createItemInstance("goldCoin", 1);
   playerState.equipment.backpack.content[3] = createItemInstance("fireRune", 1);
+  playerState.equipment.weapon = createItemInstance("sword", 1);
+  playerState.equipment.shield = createItemInstance("woodenShield", 1);
 };
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
