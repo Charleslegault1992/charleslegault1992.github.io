@@ -9,6 +9,7 @@
     -Ajout attribut du joueur mana/maxMana
     -Ajout des classes avec leurs multiplicateurs respectif
     -Ajout du systeme de chat avec tabs
+    -Systeme de chat avec tabs maintenant fonctionnel
 
     
 0.294 - Rendre les items utilisables + decomposition des corps + refactor system d'adresse des items 

@@ -16,6 +16,7 @@ const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
 const chat = document.querySelector("#chat");
 const chatTabs = document.querySelector("#chat-tabs");
+const chatInput = document.querySelector("#chat-input");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
 //#endregion  -----  BASE - ELEMENTS HTML  -----
@@ -629,8 +630,8 @@ const playerState = {
   moveStartTime: 0,
   moveDuration: 0,
   name: "Charles",
-  hp: 30,
-  maxHp: 30,
+  hp: 100,
+  maxHp: 100,
   mana: 0,
   maxMana: 0,
   level: 0,
@@ -901,7 +902,7 @@ const getPlayerClassData = () => {
 
 const getPlayerBaseStats = () => {
   return {
-    maxHp: 30,
+    maxHp: 100,
     maxMana: 0,
     capacity: 350,
   };
@@ -4299,6 +4300,9 @@ const resetInputComboState = () => {
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
 document.addEventListener("keydown", (e) => {
+  if (isTextInputFocused()) {
+    return;
+  }
   e.preventDefault();
   if (e.repeat) {
     return;
@@ -4311,14 +4315,23 @@ document.addEventListener("keydown", (e) => {
     keysPressed.up = true;
   } else if (e.key === "ArrowDown" || e.key === "s") {
     keysPressed.down = true;
-  } else {
-    return;
+  } else if (e.key === "Enter") {
+    if (!isChatInputFocused()) {
+      e.preventDefault();
+      focusChatInput();
+      return;
+    } else {
+      return;
+    }
   }
 });
 
 /* ---------- INPUTS - TOUCHE RELACHEE ---------- */
 
 document.addEventListener("keyup", (e) => {
+  if (isTextInputFocused()) {
+    return;
+  }
   e.preventDefault();
   if (e.key === "ArrowRight" || e.key === "d") {
     keysPressed.right = false;
@@ -4404,6 +4417,9 @@ const handleLookCombo = () => {
 };
 
 /* ---------- INPUTS - DRAG ITEM UI ---------- */
+const isTextInputFocused = () => {
+  return document.activeElement === chatInput;
+};
 
 const getContainerSourceFromSlotElement = (slotElement) => {
   if (!slotElement) {
@@ -5768,6 +5784,7 @@ const chatMessages = {
 const chatUi = {
   root: chat,
   tabsRoot: chatTabs,
+  input: chatInput,
 };
 
 let activeChatChannelId = "local";
@@ -5962,8 +5979,31 @@ const refreshChatUi = () => {
   renderActiveChatMessages();
 };
 
-//#endregion  -----  CHAT / MESSAGE  -----
+const clearChatInput = () => {
+  chatUi.input.value = "";
+};
 
+const handleChatInputSubmit = () => {
+  const text = chatUi.input.value;
+  if (sendPlayerChatMessage(text)) {
+    clearChatInput();
+  }
+};
+
+/* ---------- CHAT / MESSAGE ---------- */
+const focusChatInput = () => {
+  chatUi.input.focus();
+};
+
+const blurChatInput = () => {
+  chatUi.input.blur();
+};
+
+const isChatInputFocused = () => {
+  return document.activeElement === chatUi.input;
+};
+
+//#endregion  -----  CHAT / MESSAGE  -----
 /* ==================================================== */
 //#region     -----  EVENEMENTS DU JEU  -----
 /* ==================================================== */
@@ -5978,12 +6018,29 @@ boiteJeux.addEventListener("contextmenu", (e) => {
 });
 boiteJeux.addEventListener("mousedown", (e) => {
   e.preventDefault();
+  if (isChatInputFocused()) {
+    blurChatInput();
+  }
 });
 boiteJeux.addEventListener("mouseup", (e) => {
   e.preventDefault();
 });
 boiteJeux.addEventListener("click", (e) => {
   e.preventDefault();
+});
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    e.stopPropagation();
+    handleChatInputSubmit();
+    blurChatInput();
+    return;
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    blurChatInput();
+    return;
+  }
 });
 
 document.addEventListener("mouseup", (e) => {
