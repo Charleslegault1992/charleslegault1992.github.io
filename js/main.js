@@ -1,6 +1,5 @@
 /* ==================================================== */
 //#region     -----  BASE - ELEMENTS HTML  -----
-
 /* ==================================================== */
 const panneauGauche = document.querySelector(".jeux-gauche");
 const panneauDroite = document.querySelector(".jeux-droite");
@@ -15,6 +14,8 @@ const boiteJeux = document.querySelector("#boite-jeux");
 const nav = document.querySelector(".navbar");
 const entete = document.querySelector(".entete-jeux");
 const boiteChat = document.querySelector("#boite-chat");
+const chat = document.querySelector("#chat");
+const chatTabs = document.querySelector("#chat-tabs");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
 //#endregion  -----  BASE - ELEMENTS HTML  -----
@@ -630,8 +631,11 @@ const playerState = {
   name: "Charles",
   hp: 30,
   maxHp: 30,
+  mana: 0,
+  maxMana: 0,
   level: 0,
   experience: 0,
+  classId: "noClass",
   gold: 0,
   damage: 5,
   skillTraining: {
@@ -727,6 +731,13 @@ const updatePlayerPosition = () => {
 };
 
 /* ---------- JOUEUR - SKILLS / EXPERIENCE ---------- */
+const normalizeSkillExperienceGain = (experienceGain) => {
+  if (!Number.isFinite(experienceGain) || experienceGain <= 0) {
+    return 0;
+  }
+  return Math.max(Math.round(experienceGain), 1);
+};
+
 const refreshSkillTrainingTimer = (now) => {
   if (!Number.isInteger(now)) {
     return;
@@ -776,9 +787,171 @@ const applyShieldingExperienceFromBlockAttempt = (now) => {
   if (!isSkillTrainingTimerActive(now)) {
     return false;
   }
-
-  applyExperienceToPlayerSkill("shielding", SKILL_EXPERIENCE_GAIN_PER_TRY);
+  const baseExp = SKILL_EXPERIENCE_GAIN_PER_TRY;
+  const expMultiplier = getSkillExperienceGainMultiplier("shielding");
+  const finalExp = normalizeSkillExperienceGain(baseExp * expMultiplier);
+  applyExperienceToPlayerSkill("shielding", finalExp);
   return true;
+};
+
+/* ---------- JOUEUR - CLASSES ---------- */
+const playerClassesDatabase = {
+  noClass: {
+    classId: "noClass",
+    name: "Classless",
+    skillExperienceMultipliers: {
+      fist: 0.5,
+      sword: 0.5,
+      mace: 0.5,
+      axe: 0.5,
+      distance: 0.5,
+      shielding: 0.5,
+      magic: 0.25,
+    },
+    levelUpGains: {
+      hp: 5,
+      mana: 5,
+      capacity: 10,
+    },
+  },
+  knight: {
+    classId: "knight",
+    name: "Knight",
+    skillExperienceMultipliers: {
+      fist: 1,
+      sword: 1.35,
+      mace: 1.35,
+      axe: 1.35,
+      distance: 0.7,
+      shielding: 1.35,
+      magic: 0.25,
+    },
+    levelUpGains: {
+      hp: 15,
+      mana: 5,
+      capacity: 25,
+    },
+  },
+
+  archer: {
+    classId: "archer",
+    name: "Archer",
+    skillExperienceMultipliers: {
+      fist: 1,
+      sword: 0.7,
+      mace: 0.7,
+      axe: 0.7,
+      distance: 1.35,
+      shielding: 0.85,
+      magic: 0.25,
+    },
+    levelUpGains: {
+      hp: 10,
+      mana: 7,
+      capacity: 20,
+    },
+  },
+
+  mage: {
+    classId: "mage",
+    name: "Mage",
+    skillExperienceMultipliers: {
+      fist: 1,
+      sword: 0.5,
+      mace: 0.5,
+      axe: 0.5,
+      distance: 0.5,
+      shielding: 0.5,
+      magic: 1.45,
+    },
+    levelUpGains: {
+      hp: 5,
+      mana: 30,
+      capacity: 10,
+    },
+  },
+
+  priest: {
+    classId: "priest",
+    name: "Priest",
+    skillExperienceMultipliers: {
+      fist: 1,
+      sword: 0.5,
+      mace: 0.7,
+      axe: 0.5,
+      distance: 0.5,
+      shielding: 0.6,
+      magic: 1.35,
+    },
+    levelUpGains: {
+      hp: 7,
+      mana: 30,
+      capacity: 10,
+    },
+  },
+};
+
+const getPlayerClassData = () => {
+  const classId = playerState.classId;
+  if (classId in playerClassesDatabase) {
+    return playerClassesDatabase[classId];
+  }
+  return playerClassesDatabase.noClass;
+};
+
+const getPlayerBaseStats = () => {
+  return {
+    maxHp: 30,
+    maxMana: 0,
+    capacity: 350,
+  };
+};
+
+const getPlayerDerivedStats = () => {
+  const baseStats = getPlayerBaseStats();
+  const classData = getPlayerClassData();
+  if (!classData || !baseStats) {
+    return baseStats;
+  }
+  const level = playerState.level;
+  const maxHp = baseStats.maxHp + level * classData.levelUpGains.hp;
+  const maxMana = baseStats.maxMana + level * classData.levelUpGains.mana;
+  const capacity = baseStats.capacity + level * classData.levelUpGains.capacity;
+
+  return {
+    maxHp,
+    maxMana,
+    capacity,
+  };
+};
+
+const syncPlayerDerivedStats = () => {
+  const playerDerivedStats = getPlayerDerivedStats();
+  if (!playerDerivedStats) {
+    return;
+  }
+  playerState.maxHp = playerDerivedStats.maxHp;
+  playerState.maxMana = playerDerivedStats.maxMana;
+  playerState.capacity = playerDerivedStats.capacity;
+  if (playerState.hp > playerState.maxHp) {
+    playerState.hp = playerState.maxHp;
+  }
+  if (playerState.mana > playerState.maxMana) {
+    playerState.mana = playerState.maxMana;
+  }
+};
+
+const getSkillExperienceGainMultiplier = (skillKey) => {
+  const classData = getPlayerClassData();
+  if (
+    !classData ||
+    !("skillExperienceMultipliers" in classData) ||
+    !(skillKey in classData.skillExperienceMultipliers)
+  ) {
+    return 0.2;
+    console.log("Bugs de config exp multi");
+  }
+  return classData.skillExperienceMultipliers[skillKey];
 };
 
 /* ---------- JOUEUR - VIE ET MORT ---------- */
@@ -1094,6 +1267,20 @@ const clamp = (value, min, max) => {
     return max;
   }
   return value;
+};
+
+const isEmpty = (valeur) => {
+  if (valeur == null) return true;
+
+  if (typeof valeur === "string" || Array.isArray(valeur)) {
+    return valeur.length === 0;
+  }
+
+  if (typeof valeur === "object") {
+    return Object.keys(valeur).length === 0;
+  }
+
+  return false;
 };
 
 /* ---------- OUTILS - ATLAS ET COULEURS ---------- */
@@ -3420,6 +3607,7 @@ const playerStatsUi = {
     name: null,
     level: null,
     hp: null,
+    mana: null,
     experience: null,
     gold: null,
     magic: null,
@@ -3565,6 +3753,7 @@ const createPlayerStatsUi = () => {
   separatorElement.classList.add("separateur-panneau");
   const nameElement = createSimpleStatRowElement("name", "Name:");
   const hpElement = createSimpleStatRowElement("hp", "Hp:");
+  const manaElement = createSimpleStatRowElement("mana", "Mana:");
   const goldElement = createSimpleStatRowElement("gold", "Gold:");
   const experienceElement = createSimpleStatRowElement("experience", "Experience:");
   const levelElement = createProgressStatRowElement("level", "Level:");
@@ -3578,6 +3767,7 @@ const createPlayerStatsUi = () => {
   if (
     !nameElement ||
     !hpElement ||
+    !manaElement ||
     !goldElement ||
     !experienceElement ||
     !levelElement ||
@@ -3596,6 +3786,7 @@ const createPlayerStatsUi = () => {
     separatorElement,
     nameElement,
     hpElement,
+    manaElement,
     goldElement,
     experienceElement,
     levelElement,
@@ -3618,12 +3809,13 @@ const updatePlayerStatsUi = () => {
     return;
   }
   const rows = playerStatsUi.rows;
-  if (!rows.name || !rows.hp || !rows.gold || !rows.experience || !rows.level) {
+  if (!rows.name || !rows.hp || !rows.mana || !rows.gold || !rows.experience || !rows.level) {
     return;
   }
 
   rows.name.valueElement.textContent = playerState.name;
   rows.hp.valueElement.textContent = `${playerState.hp}/${playerState.maxHp}`;
+  rows.mana.valueElement.textContent = `${playerState.mana}/${playerState.maxMana}`;
   rows.gold.valueElement.textContent = playerState.gold;
   rows.experience.valueElement.textContent = playerState.experience;
   rows.level.valueElement.textContent = progressData.level;
@@ -3775,6 +3967,7 @@ const updatePlayerExperience = () => {
     return;
   }
   playerState.level = progressData.level;
+  syncPlayerDerivedStats();
   updatePlayerStats();
 };
 
@@ -5139,7 +5332,8 @@ const getSkillExperienceGainFromAttack = (attackResult, skillKey, now) => {
     return 0;
   }
   const baseGain = SKILL_EXPERIENCE_GAIN_PER_TRY;
-  const finalExp = baseGain;
+  const expMultiplier = getSkillExperienceGainMultiplier(skillKey);
+  const finalExp = normalizeSkillExperienceGain(baseGain * expMultiplier);
 
   if (attackResult.finalDamage > 0) {
     refreshSkillTrainingTimer(now);
@@ -5554,6 +5748,223 @@ const updateCombat = () => {
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
 
 /* ==================================================== */
+//#region     -----  CHAT / MESSAGE  -----
+/* ==================================================== */
+/* ---------- CHAT / MESSAGE ---------- */
+const chatChannels = {
+  local: { channelId: "local", label: "Local", canSendMessage: true, maxMessages: 100 },
+  global: { channelId: "global", label: "Global", canSendMessage: true, maxMessages: 100 },
+  trade: { channelId: "trade", label: "Trade", canSendMessage: true, maxMessages: 100 },
+  logs: { channelId: "logs", label: "Logs", canSendMessage: false, maxMessages: 100 },
+};
+
+const chatMessages = {
+  local: [],
+  global: [],
+  trade: [],
+  logs: [],
+};
+
+const chatUi = {
+  root: chat,
+  tabsRoot: chatTabs,
+};
+
+let activeChatChannelId = "local";
+
+const getChatChannelData = (channelId) => {
+  if (!channelId || !isValidChatChannel(channelId)) {
+    return null;
+  }
+  return chatChannels[channelId];
+};
+
+const isValidChatChannel = (channelId) => {
+  return channelId in chatChannels;
+};
+
+const setActiveChatChannel = (channelId) => {
+  if (!channelId || !isValidChatChannel(channelId)) {
+    return;
+  }
+  activeChatChannelId = channelId;
+};
+
+const createChatMessage = (channelId, messageType, text, speakerData = null) => {
+  const now = Date.now();
+  if (!speakerData) {
+    return {
+      channelId,
+      messageType,
+      text,
+      speakerName: null,
+      speakerLevel: null,
+      createdAt: now,
+    };
+  } else {
+    return {
+      channelId,
+      messageType,
+      text,
+      speakerName: speakerData.name,
+      speakerLevel: speakerData.level,
+      createdAt: now,
+    };
+  }
+};
+
+const addChatMessage = (channelId, messageType, text, speakerData = null) => {
+  if (!channelId || !isValidChatChannel(channelId) || isEmpty(text)) {
+    return null;
+  }
+  const chatMessage = createChatMessage(channelId, messageType, text, speakerData);
+  if (!chatMessage) {
+    return null;
+  }
+  const channelData = getChatChannelData(channelId);
+  if (!channelData) {
+    return null;
+  }
+  const chatMessageTab = getChatMessagesForChannel(channelId);
+  if (!chatMessageTab) {
+    return null;
+  }
+  chatMessageTab.push(chatMessage);
+  while (chatMessageTab.length > channelData.maxMessages) {
+    chatMessageTab.shift();
+  }
+  return chatMessage;
+};
+
+const getChatMessagesForChannel = (channelId) => {
+  if (!channelId || !(channelId in chatMessages)) {
+    return [];
+  }
+  return chatMessages[channelId];
+};
+
+const formatChatMessageTime = (chatMessage) => {
+  if (!chatMessage || !("createdAt" in chatMessage)) {
+    return "XX:XX";
+  }
+  const timestamp = chatMessage.createdAt;
+  if (!Number.isFinite(timestamp)) {
+    return "XX:XX";
+  }
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+const formatChatSpeakerLabel = (chatMessage) => {
+  if (!chatMessage || !("speakerName" in chatMessage) || !chatMessage.speakerName) {
+    return "";
+  }
+  if (!("speakerLevel" in chatMessage) || !Number.isFinite(chatMessage.speakerLevel)) {
+    return `${chatMessage.speakerName}`;
+  }
+  return `${chatMessage.speakerName} [${chatMessage.speakerLevel}]:`;
+};
+
+const formatChatMessageText = (chatMessage) => {
+  const messageTime = formatChatMessageTime(chatMessage);
+  const speakerLabel = formatChatSpeakerLabel(chatMessage);
+  let text = "";
+  if ("text" in chatMessage && !isEmpty(chatMessage.text)) {
+    text = chatMessage.text;
+  }
+  return `${messageTime} ${speakerLabel} ${text}`;
+};
+
+const createChatMessageElement = (chatMessage) => {
+  if (!chatMessage || !("messageType" in chatMessage)) {
+    return null;
+  }
+  const text = formatChatMessageText(chatMessage);
+  const chatElement = document.createElement("div");
+  chatElement.classList.add("chat-message");
+  chatElement.classList.add(`chat-message-${chatMessage.messageType}`);
+  chatElement.textContent = text;
+  return chatElement;
+};
+
+const renderActiveChatMessages = () => {
+  chatUi.root.textContent = "";
+  const messages = getChatMessagesForChannel(activeChatChannelId);
+  for (const message of messages) {
+    const messageElement = createChatMessageElement(message);
+    if (messageElement) {
+      chatUi.root.appendChild(messageElement);
+    }
+  }
+  chatUi.root.scrollTop = chatUi.root.scrollHeight;
+};
+
+const getActiveChatChannelData = () => {
+  const activeChatChannelData = getChatChannelData(activeChatChannelId);
+  if (activeChatChannelData) {
+    return activeChatChannelData;
+  }
+  return null;
+};
+
+const canSendMessageInActiveChatChannel = () => {
+  const activeChatChannelData = getActiveChatChannelData();
+  if (!activeChatChannelData || !("canSendMessage" in activeChatChannelData)) {
+    return false;
+  }
+  return activeChatChannelData.canSendMessage === true;
+};
+
+const sendPlayerChatMessage = (text) => {
+  if (!text || !canSendMessageInActiveChatChannel()) {
+    return false;
+  }
+  const message = addChatMessage(activeChatChannelId, "player", text, playerState);
+  if (!message) {
+    return false;
+  }
+  renderActiveChatMessages();
+  return true;
+};
+
+const createChatTabButtonElement = (channelData) => {
+  if (!channelData) {
+    return null;
+  }
+  const bouton = document.createElement("div");
+  bouton.classList.add("chat-tab-bouton");
+  bouton.textContent = channelData.label;
+  if (channelData.channelId === activeChatChannelId) {
+    bouton.classList.add("chat-tab-bouton-active");
+  }
+  bouton.addEventListener("click", (e) => {
+    setActiveChatChannel(channelData.channelId);
+    refreshChatUi();
+  });
+  return bouton;
+};
+
+const renderChatTabs = () => {
+  chatUi.tabsRoot.textContent = "";
+  for (const tab of Object.values(chatChannels)) {
+    const tabElement = createChatTabButtonElement(tab);
+    if (!tabElement) {
+      continue;
+    }
+    chatUi.tabsRoot.appendChild(tabElement);
+  }
+};
+
+const refreshChatUi = () => {
+  renderChatTabs();
+  renderActiveChatMessages();
+};
+
+//#endregion  -----  CHAT / MESSAGE  -----
+
+/* ==================================================== */
 //#region     -----  EVENEMENTS DU JEU  -----
 /* ==================================================== */
 /* ---------- EVENEMENTS - SOURIS ET MENU CONTEXTE ---------- */
@@ -5643,10 +6054,12 @@ const setupTestPlayerInventory = () => {
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
 const initializePlayerUi = () => {
+  refreshChatUi();
   updateGameScale();
   showPlayerName(playerState.name);
   updatePlayerSprite();
   refreshInventoryUi();
+  syncPlayerDerivedStats();
   refreshPlayerVitalsUi();
 };
 

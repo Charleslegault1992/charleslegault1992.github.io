@@ -6,6 +6,10 @@
     -Stabilisation et enforcement de plusieurs fonctions
     -Ajout du systeme de skill
     -Ajout des elements UI pour voir la progression des skills
+    -Ajout attribut du joueur mana/maxMana
+    -Ajout des classes avec leurs multiplicateurs respectif
+    -Ajout du systeme de chat avec tabs
+
     
 0.294 - Rendre les items utilisables + decomposition des corps + refactor system d'adresse des items 
     - Ajout de itemUseState et migration des eventlistener("contextmenu") dans un handler main
