@@ -5,6 +5,7 @@
 :root {
   --game-scale: 2;
   --hp-color: rgb(60, 255, 0);
+  --floating-text-duration: 2000ms;
 }
 
 /* #endregion  ----- VARIABLES CSS ----- */
@@ -273,6 +274,10 @@ main {
   word-break: break-word;
 }
 
+.chat-message-combat {
+  color: #c98f5a;
+}
+
 .chat-message-player {
   color: #d8d8d8;
 }
@@ -296,7 +301,7 @@ main {
   bottom: 5px;
   z-index: 2;
   height: 18px;
-  border: 1px solid #2f2a22;;
+  border: 1px solid #2f2a22;
   background-color: rgba(12, 11, 10, 0.95);
   color: #d2c8b8;
   padding: 1px 6px;
@@ -447,7 +452,6 @@ main {
   max-width: 260px;
   padding: 4px 8px;
 
-  color: #6de920;
   font-size: 12px;
   font-family: Arial, sans-serif;
   line-height: 1.35;
@@ -459,7 +463,20 @@ main {
     1px -1px 0 #000,
     -1px -1px 0 #000;
 
-  animation: floating-text-animation 2s ease-out forwards;
+  animation: floating-text-animation var(--floating-text-duration, 2s) ease-out forwards;
+}
+
+.floating-text-look {
+  color: #6de920;
+}
+.floating-text-speech {
+  color: yellow;
+}
+.floating-text-level {
+  color: white;
+}
+.floating-text-skill {
+  color: white;
 }
 
 @keyframes floating-text-animation {

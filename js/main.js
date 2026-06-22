@@ -223,7 +223,7 @@ const itemsDatabase = {
     use: {
       mode: "target",
       action: "drinkPotion",
-      heal: 25,
+      heal: 100,
       range: 1,
       cooldownGroup: "item",
     },
@@ -3943,7 +3943,11 @@ const updatePlayerSkillLevel = (skillKey) => {
   if (!skillKey || !(skillKey in playerState.skills)) {
     return;
   }
-  playerState.skills[skillKey].level = getSkillLevelFromExperience(playerState.skills[skillKey].experience);
+  const skillLevelByExperience = getSkillLevelFromExperience(playerState.skills[skillKey].experience);
+  if (playerState.skills[skillKey].level < skillLevelByExperience) {
+    addSkillLevelUpFeedback(skillKey, skillLevelByExperience);
+  }
+  playerState.skills[skillKey].level = skillLevelByExperience;
   updateSkillStatRow(skillKey);
 };
 
@@ -3967,9 +3971,27 @@ const updatePlayerExperience = () => {
   if (!progressData) {
     return;
   }
+  if (playerState.level < progressData.level) {
+    addLevelUpFeedback(progressData.level);
+  }
   playerState.level = progressData.level;
   syncPlayerDerivedStats();
   updatePlayerStats();
+};
+
+const addLevelUpFeedback = (newLevel) => {
+  if (!Number.isFinite(newLevel)) {
+    return false;
+  }
+  const logMessage = `You advanced to level ${newLevel}.`;
+  addLogMessage(logMessage, "level");
+  showFloatingTextAboveTarget(logMessage, -90, playerState, "level", 4000);
+};
+
+const addSkillLevelUpFeedback = (skillKey, newLevel) => {
+  const logMessage = `Your ${skillKey} skill advanced to level ${newLevel}.`;
+  addLogMessage(logMessage, "level");
+  showFloatingTextAboveTarget(logMessage, -90, playerState, "level", 4000);
 };
 
 /* ---------- UI - SCALE DU JEU ---------- */
@@ -3991,7 +4013,7 @@ const updateGameScale = () => {
 };
 
 /* ---------- UI - TEXTE FLOTTANT ---------- */
-const showFloatingTextAboveTarget = (text, offsetY, target) => {
+const showFloatingTextAboveTarget = (text, offsetY, target, textType = "look", durationMs = 2000) => {
   const wrapper = document.createElement("div");
   wrapper.classList.add("floating-text-wrapper");
   if ("renderX" in target && "renderY" in target) {
@@ -4004,19 +4026,26 @@ const showFloatingTextAboveTarget = (text, offsetY, target) => {
 
   const div = document.createElement("div");
   div.classList.add("floating-text");
+  div.classList.add(`floating-text-${textType}`);
+  div.style.setProperty("--floating-text-duration", durationMs + "ms");
   div.textContent = `${text}`;
 
   wrapper.appendChild(div);
   game.appendChild(wrapper);
   setTimeout(() => {
     wrapper.remove();
-  }, 2000);
+  }, durationMs);
 };
 
 const showLookFloatingText = (lookInfo) => {
   if (!lookInfo) {
     return;
   }
+  if ("customText" in lookInfo){
+    showFloatingTextAboveTarget(lookInfo.customText, 95, lookInfo.target, "look")
+    return;
+  }
+
   let text = "";
   let offsetY = 110;
   const isCarriedItem = lookInfo.sourceType === "equipmentSlot" || lookInfo.sourceType === "containerSlot";
@@ -4374,6 +4403,12 @@ const lookAtPointerTarget = (target) => {
       target: target.monster,
     };
     return lookInfo;
+  } else if (target.player) {
+    lookInfo = {
+      customText: getPlayerLookDescription(),
+      target: playerState,
+    };
+    return lookInfo;
   } else if (target.item) {
     const itemData = getItemData(target.item.itemId);
     if (!itemData) {
@@ -4400,6 +4435,19 @@ const lookAtPointerTarget = (target) => {
     return lookInfo;
   } else {
     return null;
+  }
+};
+
+const getPlayerLookDescription = () => {
+  const level = playerState.level;
+  const classData = getPlayerClassData();
+  if (!Number.isFinite(level) || !classData) {
+    return null;
+  }
+  if (!("classId" in playerState) || playerState.classId === "noClass") {
+    return `You see yourself. You are level ${level}.`;
+  } else {
+    return `You see yourself. You are a ${classData.name} level ${level}.`;
   }
 };
 
@@ -5143,6 +5191,8 @@ const updateMonsterCombat = () => {
       const attackResult = calculateDamageTakenByPlayer(monsterData.combat);
       if (attackResult.finalDamage > 0) {
         playerState.hp -= attackResult.finalDamage;
+        const logMessage = `You took ${attackResult.finalDamage} damage from ${monsterData.name}.`;
+        addLogMessage(logMessage, "combat");
       }
       showFloatingTextAbovePlayer(attackResult.text, attackResult.textType);
       refreshPlayerVitalsUi();
@@ -5706,10 +5756,17 @@ const applyDamageToMonster = (monster, attackResult) => {
   if (!monster || monster.hp <= 0) {
     return;
   }
+  const monsterData = getMonsterData(monster.monsterId);
+  if (!monsterData) {
+    return;
+  }
   const damageAmount = getDamageAppliedToMonster(monster, attackResult);
 
   if (Number.isFinite(damageAmount) && damageAmount > 0) {
     monster.hp -= damageAmount;
+
+    const logMessage = `You dealt ${damageAmount} damage to ${monsterData.name}.`;
+    addLogMessage(logMessage, "combat");
     showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
     monsterHpRefresh(monster);
     if (isMonsterDead(monster)) {
@@ -5942,6 +5999,10 @@ const sendPlayerChatMessage = (text) => {
   if (!message) {
     return false;
   }
+  if (activeChatChannelId === "local") {
+    const floatingText = `${message.speakerName} :\n${text}`;
+    showFloatingTextAboveTarget(floatingText, 60, playerState, "speech", 4000);
+  }
   renderActiveChatMessages();
   return true;
 };
@@ -6003,7 +6064,22 @@ const isChatInputFocused = () => {
   return document.activeElement === chatUi.input;
 };
 
+const addLogMessage = (text, messageType) => {
+  if (!text) {
+    return false;
+  }
+  const message = addChatMessage("logs", messageType, text);
+  if (!message) {
+    return false;
+  }
+  if (activeChatChannelId === "logs") {
+    renderActiveChatMessages();
+  }
+  return true;
+};
+
 //#endregion  -----  CHAT / MESSAGE  -----
+
 /* ==================================================== */
 //#region     -----  EVENEMENTS DU JEU  -----
 /* ==================================================== */
