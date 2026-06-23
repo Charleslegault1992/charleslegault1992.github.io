@@ -950,7 +950,6 @@ const getSkillExperienceGainMultiplier = (skillKey) => {
     !(skillKey in classData.skillExperienceMultipliers)
   ) {
     return 0.2;
-    console.log("Bugs de config exp multi");
   }
   return classData.skillExperienceMultipliers[skillKey];
 };
@@ -4013,46 +4012,224 @@ const updateGameScale = () => {
 };
 
 /* ---------- UI - TEXTE FLOTTANT ---------- */
-const showFloatingTextAboveTarget = (text, offsetY, target, textType = "look", durationMs = 2000) => {
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("floating-text-wrapper");
-  if ("renderX" in target && "renderY" in target) {
-    wrapper.style.left = `${target.renderX - camera.x + TILE_SIZE / 2}px`;
-    wrapper.style.top = `${target.renderY - camera.y - offsetY}px`;
-  } else {
-    wrapper.style.left = `${target.x - camera.x + TILE_SIZE / 2}px`;
-    wrapper.style.top = `${target.y - camera.y - offsetY}px`;
-  }
+const floatingTextState = {
+  queuesByTargetKey: new Map(),
+};
 
+const getFloatingTextTargetKey = (target) => {
+  if (!target) {
+    return null;
+  }
+  if (target === playerState) {
+    return "player:self";
+  }
+  if ("uid" in target) {
+    return "entity:" + target.uid;
+  }
+  if ("x" in target && "y" in target) {
+    return "position:" + target.x + ":" + target.y;
+  }
+  return null;
+};
+
+const getFloatingTextQueueForTarget = (target) => {
+  const targetKey = getFloatingTextTargetKey(target);
+  if (!targetKey) {
+    return null;
+  }
+  if (floatingTextState.queuesByTargetKey.has(targetKey)) {
+    return floatingTextState.queuesByTargetKey.get(targetKey);
+  } else {
+    const queue = {
+      target: target,
+      queuesByType: new Map(),
+      wrappersByType: new Map(),
+    };
+    floatingTextState.queuesByTargetKey.set(targetKey, queue);
+    return queue;
+  }
+};
+
+const getFloatingTextQueueForType = (targetQueue, textType) => {
+  if (!targetQueue || !textType) {
+    return null;
+  }
+  if (targetQueue.queuesByType.has(textType)) {
+    return targetQueue.queuesByType.get(textType);
+  } else {
+    const textQueue = [];
+    targetQueue.queuesByType.set(textType, textQueue);
+    return textQueue;
+  }
+};
+
+const getFloatingTextWrapperForType = (targetQueue, textType) => {
+  if (!targetQueue || !textType) {
+    return null;
+  }
+  if (targetQueue.wrappersByType.has(textType)) {
+    return targetQueue.wrappersByType.get(textType);
+  } else {
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("floating-text-wrapper");
+    wrapper.style.display = "none";
+    game.appendChild(wrapper);
+    targetQueue.wrappersByType.set(textType, wrapper);
+    return wrapper;
+  }
+};
+
+const createFloatingTextEntry = (text, offsetY, textType, durationMs) => {
+  if (!text || !textType || isEmpty(text)) {
+    return null;
+  }
+  let verifiedDurationMs = durationMs;
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    verifiedDurationMs = 2000;
+  }
+  let verifiedOffsetY = offsetY;
+  if (!Number.isFinite(offsetY)) {
+    verifiedOffsetY = 95;
+  }
+  const createdAt = Date.now();
+  const expiresAt = createdAt + verifiedDurationMs;
+  return {
+    text,
+    offsetY: verifiedOffsetY,
+    textType,
+    durationMs: verifiedDurationMs,
+    createdAt,
+    expiresAt,
+  };
+};
+
+const getFloatingTextScreenPosition = (target, offsetY) => {
+  let left = 0;
+  let top = 0;
+  if (target) {
+    if ("renderX" in target && "renderY" in target) {
+      left = target.renderX - camera.x + TILE_SIZE / 2;
+      top = target.renderY - camera.y - offsetY;
+    } else {
+      left = target.x - camera.x + TILE_SIZE / 2;
+      top = target.y - camera.y - offsetY;
+    }
+  }
+  return {
+    left,
+    top,
+  };
+};
+
+const createFloatingTextElement = (entry) => {
   const div = document.createElement("div");
   div.classList.add("floating-text");
-  div.classList.add(`floating-text-${textType}`);
-  div.style.setProperty("--floating-text-duration", durationMs + "ms");
-  div.textContent = `${text}`;
+  div.classList.add(`floating-text-${entry.textType}`);
+  div.style.setProperty("--floating-text-duration", entry.durationMs + "ms");
+  div.textContent = `${entry.text}`;
+  return div;
+};
 
-  wrapper.appendChild(div);
-  game.appendChild(wrapper);
+const getFloatingTextQueueHeaderText = (targetQueue, textType) => {
+  if (!textType || !targetQueue || textType !== "speech") {
+    return "";
+  }
+  if (targetQueue.target === playerState) {
+    return `${playerState.name}:`;
+  }
+  return "";
+};
+
+const renderFloatingTextQueue = (targetQueue, textType) => {
+  const textQueue = getFloatingTextQueueForType(targetQueue, textType);
+  const wrapper = getFloatingTextWrapperForType(targetQueue, textType);
+  if (!wrapper) {
+    return;
+  }
+  if (isEmpty(textQueue)) {
+    wrapper.textContent = "";
+    wrapper.style.display = "none";
+    return;
+  }
+
+  const topLeftPosition = getFloatingTextScreenPosition(targetQueue.target, textQueue[0].offsetY);
+
+  wrapper.style.left = `${topLeftPosition.left}px`;
+  wrapper.style.top = `${topLeftPosition.top}px`;
+  wrapper.textContent = "";
+  const headerText = getFloatingTextQueueHeaderText(targetQueue, textType);
+  if (!isEmpty(headerText)) {
+    const headerElement = document.createElement("div");
+    headerElement.classList.add("floating-text-header");
+    headerElement.textContent = headerText;
+    wrapper.appendChild(headerElement);
+  }
+
+  for (const entry of textQueue) {
+    const textElement = createFloatingTextElement(entry);
+    if (textElement) {
+      wrapper.appendChild(textElement);
+    }
+  }
+  wrapper.style.display = "block";
+};
+
+const removeExpiredFloatingTextEntries = (targetQueue, textType, now) => {
+  const textQueue = getFloatingTextQueueForType(targetQueue, textType);
+  if (!textQueue) {
+    return;
+  }
+  for (let i = textQueue.length - 1; i >= 0; i--) {
+    const entry = textQueue[i];
+    if (entry.expiresAt <= now) {
+      textQueue.splice(i, 1);
+    }
+  }
+  renderFloatingTextQueue(targetQueue, textType);
+};
+
+const showFloatingTextAboveTarget = (text, offsetY, target, textType = "look", durationMs = 2000) => {
+  const targetQueue = getFloatingTextQueueForTarget(target);
+  if (!targetQueue) {
+    return;
+  }
+  const textQueue = getFloatingTextQueueForType(targetQueue, textType);
+  if (!textQueue) {
+    return;
+  }
+  const entry = createFloatingTextEntry(text, offsetY, textType, durationMs);
+  if (!entry) {
+    return;
+  }
+  if (textType === "look") {
+    textQueue.length = 0;
+    textQueue.push(entry);
+  } else {
+    textQueue.push(entry);
+  }
+  renderFloatingTextQueue(targetQueue, textType);
   setTimeout(() => {
-    wrapper.remove();
-  }, durationMs);
+    const now = Date.now();
+    removeExpiredFloatingTextEntries(targetQueue, textType, now);
+  }, entry.durationMs);
 };
 
 const showLookFloatingText = (lookInfo) => {
   if (!lookInfo) {
     return;
   }
-  if ("customText" in lookInfo){
-    showFloatingTextAboveTarget(lookInfo.customText, 95, lookInfo.target, "look")
+  if ("customText" in lookInfo) {
+    showFloatingTextAboveTarget(lookInfo.customText, 110, lookInfo.target, "look");
     return;
   }
 
   let text = "";
-  let offsetY = 110;
+  let offsetY = 120;
   const isCarriedItem = lookInfo.sourceType === "equipmentSlot" || lookInfo.sourceType === "containerSlot";
   const isNearbyWorldItem = lookInfo.sourceType === "worldItem" && isNearPlayer(lookInfo.target, 1);
 
   if (lookInfo.weight !== undefined && (isCarriedItem || isNearbyWorldItem)) {
-    offsetY = 80;
+    offsetY = 105;
     let suffixName = lookInfo.suffix;
     let name = lookInfo.name;
     let suffixWeight = "It weighs";
@@ -4072,7 +4249,7 @@ const showLookFloatingText = (lookInfo) => {
       text = `You see ${suffixName} ${name}.\n${lookInfo.desc}\n${suffixWeight} ${lookInfo.weight.toFixed(1)} oz.`;
     }
   } else {
-    offsetY = 95;
+    offsetY = 120;
     text = `You see ${lookInfo.suffix} ${lookInfo.name}.`;
   }
   showFloatingTextAboveTarget(text, offsetY, playerState);
@@ -4198,6 +4375,12 @@ const keysPressed = {
   down: false,
 };
 
+const resetMovementKeys = () => {
+  keysPressed.right = false;
+  keysPressed.left = false;
+  keysPressed.up = false;
+  keysPressed.down = false;
+};
 /* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
 
 const getPlayerMoveCooldown = () => {
@@ -4347,6 +4530,7 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter") {
     if (!isChatInputFocused()) {
       e.preventDefault();
+
       focusChatInput();
       return;
     } else {
@@ -4404,8 +4588,12 @@ const lookAtPointerTarget = (target) => {
     };
     return lookInfo;
   } else if (target.player) {
+    const customText = getPlayerLookDescription();
+    if (isEmpty(customText)) {
+      return null;
+    }
     lookInfo = {
-      customText: getPlayerLookDescription(),
+      customText,
       target: playerState,
     };
     return lookInfo;
@@ -5106,7 +5294,7 @@ const createMonsterCorpse = (monster) => {
     return;
   }
   const lootContent = generateMonsterLoot(monsterData);
-
+  addLootLogMessage(lootContent, monsterData.name);
   addGroundItem(createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, lootContent));
 };
 
@@ -5175,6 +5363,48 @@ const generateMonsterLoot = (monsterData) => {
     }
   });
   return lootContent;
+};
+
+const formatLootItemText = (lootItem) => {
+  if (!lootItem) {
+    return "unknown item";
+  }
+  const itemData = getItemData(lootItem.itemId);
+  if (!itemData) {
+    return "unknown item";
+  }
+  if ("quantity" in lootItem && lootItem.quantity > 1) {
+    return `${lootItem.quantity} ${itemData.name}s`;
+  } else {
+    return `${itemData.name}`;
+  }
+};
+
+const formatLootLogMessage = (lootItems, sourceName = null) => {
+  let logMessage = `Loot `;
+  if (!lootItems || isEmpty(lootItems)) {
+    if (sourceName != null) {
+      return `Loot from ${sourceName}: nothing.`;
+    } else {
+      return `Loot: nothing.`;
+    }
+  }
+  if (sourceName != null) {
+    logMessage += `from ${sourceName}`;
+  }
+  logMessage += `: `;
+
+  const lootItemsList = [];
+  for (const lootItem of lootItems) {
+    lootItemsList.push(formatLootItemText(lootItem));
+  }
+  logMessage += `${lootItemsList.join(", ")}.`;
+  return logMessage;
+};
+
+const addLootLogMessage = (lootItems, sourceName = null) => {
+  const logMessage = formatLootLogMessage(lootItems, sourceName);
+  addLogMessage(logMessage, "loot");
 };
 
 /* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
@@ -5725,6 +5955,17 @@ const getExperienceRewardFromMonster = (monster) => {
   return monsterData.experience;
 };
 
+const addExperienceGainFeedback = (experienceAmount, sourceName = null) => {
+  if (!Number.isFinite(experienceAmount)) {
+    return;
+  }
+  let logMessage = `You gained ${experienceAmount} experience.`;
+  if (sourceName != null) {
+    logMessage = `You gained ${experienceAmount} experience from ${sourceName}.`;
+  }
+  addLogMessage(logMessage, "experience");
+};
+
 const applyExperienceToPlayer = (experience) => {
   if (!Number.isFinite(experience) || experience <= 0) {
     return false;
@@ -5738,11 +5979,19 @@ const applyExperienceToPlayerFromMonster = (monster) => {
   if (!monster) {
     return false;
   }
+  const monsterData = getMonsterData(monster.monsterId);
+  if (!monsterData) {
+    return false;
+  }
   const monsterExperienceReward = getExperienceRewardFromMonster(monster);
   if (monsterExperienceReward <= 0) {
     return false;
   }
-  return applyExperienceToPlayer(monsterExperienceReward);
+  if (applyExperienceToPlayer(monsterExperienceReward)) {
+    addExperienceGainFeedback(monsterExperienceReward, monsterData.name);
+    return true;
+  }
+  return false;
 };
 
 const getDamageAppliedToMonster = (monster, attackResult) => {
@@ -6000,8 +6249,7 @@ const sendPlayerChatMessage = (text) => {
     return false;
   }
   if (activeChatChannelId === "local") {
-    const floatingText = `${message.speakerName} :\n${text}`;
-    showFloatingTextAboveTarget(floatingText, 60, playerState, "speech", 4000);
+    showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
   }
   renderActiveChatMessages();
   return true;
@@ -6053,6 +6301,7 @@ const handleChatInputSubmit = () => {
 
 /* ---------- CHAT / MESSAGE ---------- */
 const focusChatInput = () => {
+  resetMovementKeys();
   chatUi.input.focus();
 };
 

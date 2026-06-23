@@ -1,3 +1,6 @@
+0.296 - Refactor du moteur de jeu et du rendu
+    -
+
 0.295 - Switch sur la transition des monstres/player/items du CSS a une interpolation data-only
     -Ajout d'une interpolation data-only sur le player/monstres/items
     -Diviser les fonctions pour separer la logique et le rendu pour une future integration de pixiJS
@@ -10,7 +13,7 @@
     -Ajout des classes avec leurs multiplicateurs respectif
     -Ajout du systeme de chat avec tabs
     -Systeme de chat avec tabs maintenant fonctionnel
-    -Ajout des logs (level up, dommage recus, dommage rendu)
+    -Ajout des logs (level up, dommage recus, dommage rendu, experience et loot)
     -Ajout du look sur sois-meme
 
     
