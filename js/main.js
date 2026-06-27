@@ -7,7 +7,6 @@ const boitePrincipale = document.querySelector("#boite-principal");
 const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
 const playerContainers = document.querySelector("#player-containers");
-const hpbar = document.querySelector("#player");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
 const boiteJeux = document.querySelector("#boite-jeux");
@@ -19,6 +18,7 @@ const chatTabs = document.querySelector("#chat-tabs");
 const chatInput = document.querySelector("#chat-input");
 const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
+const fpsCounter = document.querySelector("#fps-counter");
 //#endregion  -----  BASE - ELEMENTS HTML  -----
 
 /* ==================================================== */
@@ -46,18 +46,35 @@ const WALL = 1;
 /* ---------- BASE - UID ET SELECTION ---------- */
 
 let nextItemInstanceId = 1;
-let nextMonsterId = 1;
-let selectedMonsterId = null;
+let nextMonsterUid = 1;
+let selectedMonsterUid = null;
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
-
+const monsterElementsByUid = new Map();
+const worldItemElementsByUid = new Map();
+const tileRenderRefs = [];
+const renderState = {
+  lastCameraX: null,
+  lastCameraY: null,
+};
 const worldItems = [];
 const decayingItems = [];
 const monsters = [];
 const openedContainers = [];
 
-/* ---------- BASE - ETAT DRAG ---------- */
+/* ---------- BASE - PLAYER OBJECT REFERENCE ---------- */
+const playerRenderRefs = {
+  root: player,
+  hp: null,
+  floatingText: null,
+};
 
+const initializePlayerRenderRefs = () => {
+  playerRenderRefs.hp = playerRenderRefs.root?.querySelector(".php-red");
+  playerRenderRefs.floatingText = playerRenderRefs.root?.querySelector(".player-floating-text-layer");
+};
+
+/* ---------- BASE - ETAT DRAG ---------- */
 const dragState = {
   isDragging: false,
   item: null,
@@ -73,12 +90,10 @@ const dragState = {
 };
 
 /* ---------- BASE - SPAWN JOUEUR ---------- */
-
 const playerSpawnX = 13 * TILE_SIZE;
 const playerSpawnY = 8 * TILE_SIZE;
 
 /* ---------- BASE - CAMERA ET SOURIS ---------- */
-
 const camera = {
   x: 0,
   y: 0,
@@ -558,7 +573,16 @@ const monstersDatabase = {
 /* ==================================================== */
 /* ---------- TIMING - BOUCLE DE JEU ---------- */
 
-const GAME_LOOP_MS = 10;
+const GAME_LOGIC_STEP_MS = 1000 / 60;
+const MAX_FRAME_DELTA_MS = 250;
+const MAX_LOGIC_STEPS_PER_FRAME = 5;
+
+let previousFrameTime = null;
+let accumulatedLogicTime = 0;
+
+let fpsFrameCount = 0;
+let fpsLastUpdateTime = 0;
+let currentFps = 0;
 
 /* ---------- TIMING - DECAY ---------- */
 
@@ -968,7 +992,7 @@ const resetPlayerPositionToSpawn = () => {
 };
 
 const hpRefresh = () => {
-  const playerHp = document.querySelector(".php-red");
+  const playerHp = playerRenderRefs.hp;
   if (playerHp) {
     playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
     playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
@@ -1010,11 +1034,11 @@ const playerDead = () => {
 };
 
 const resetAfterDeath = () => {
-  selectedMonsterId = null;
+  selectedMonsterUid = null;
   cancelItemDrag();
   cancelItemUse();
   clearMonsterSelection();
-  updateWorldPosition();
+  updateWorldRender();
   updatePlayerExperience();
   refreshPlayerVitalsUi();
   closeAllContainer();
@@ -1193,6 +1217,11 @@ const renderMap = (map) => {
       div.style.left = `${worldX - camera.x}px`;
       div.style.top = `${worldY - camera.y}px`;
       game.appendChild(div);
+      tileRenderRefs.push({
+        element: div,
+        row,
+        col,
+      });
     }
   }
 };
@@ -1214,15 +1243,18 @@ const canMoveTo = (testX, testY) => {
 };
 
 const updateMapPosition = () => {
-  const tiles = document.querySelectorAll(".tile");
-  tiles.forEach((tile) => {
-    const row = Number(tile.getAttribute("data-row"));
-    const col = Number(tile.getAttribute("data-col"));
+  for (const tileRef of tileRenderRefs) {
+    const tile = tileRef?.element ?? null;
+    const row = tileRef?.row ?? null;
+    const col = tileRef?.col ?? null;
+    if (!tile || row === null || col === null) {
+      continue;
+    }
     const worldX = col * TILE_SIZE;
     const worldY = row * TILE_SIZE;
     tile.style.left = `${worldX - camera.x}px`;
     tile.style.top = `${worldY - camera.y}px`;
-  });
+  }
 };
 //#endregion  -----  MAP  -----
 
@@ -1614,15 +1646,36 @@ const renderGroundItemParts = (item) => {
   if (enrichedParts.length <= 0) {
     return;
   }
+  const partElements = [];
   enrichedParts.forEach((enrichedPart, index) => {
     const div = createItemPartElement(item, enrichedPart, index);
     const position = getItemRenderPartPosition(item, enrichedPart);
     applyItemRenderPartPosition(div, position);
+    partElements.push(div);
     game.appendChild(div);
   });
-  game.appendChild(createWorldItemHitbox(item));
+
+  const hitbox = createWorldItemHitbox(item);
+  game.appendChild(hitbox);
+  worldItemElementsByUid.set(item.uid, {
+    parts: partElements,
+    hitbox,
+  });
 };
 
+const findWorldItemRenderRefs = (itemUid) => {
+  return worldItemElementsByUid.get(itemUid) ?? null;
+};
+
+const findWorldItemPartElements = (itemUid) => {
+  const refs = findWorldItemRenderRefs(itemUid);
+  return refs?.parts ?? [];
+};
+
+const findWorldItemHitboxElement = (itemUid) => {
+  const refs = findWorldItemRenderRefs(itemUid);
+  return refs?.hitbox ?? null;
+};
 /* ---------- ITEMS - AFFICHAGE DOM ---------- */
 
 const renderGroundItems = (items) => {
@@ -1661,14 +1714,15 @@ const removeWorldItemFromState = (itemUid) => {
 };
 
 const removeGroundItemRender = (itemUid) => {
-  const itemElements = document.querySelectorAll(`.world-item-part[data-item-uid="${itemUid}"]`);
-  itemElements.forEach((itemElement) => {
-    itemElement.remove();
-  });
-  const itemHitboxElements = document.querySelectorAll(`.hitbox[data-item-uid="${itemUid}"]`);
-  itemHitboxElements.forEach((itemElement) => {
-    itemElement.remove();
-  });
+  const refs = findWorldItemRenderRefs(itemUid);
+  const parts = refs?.parts ?? [];
+
+  for (const part of parts) {
+    part.remove();
+  }
+  refs?.hitbox?.remove();
+
+  worldItemElementsByUid.delete(itemUid);
 };
 
 const removeGroundItem = (itemUid) => {
@@ -1688,8 +1742,8 @@ const updateItemPosition = () => {
     if (!positions || positions.length <= 0) {
       return;
     }
-    const itemElements = document.querySelectorAll(`.world-item-part[data-item-uid="${item.uid}"]`);
-    const itemHitboxElements = document.querySelectorAll(`.hitbox[data-item-uid="${item.uid}"]`);
+    const itemElements = findWorldItemPartElements(item.uid);
+    const itemHitboxElement = findWorldItemHitboxElement(item.uid);
     itemElements.forEach((element) => {
       const partIndex = Number(element.getAttribute("data-part-index"));
       const position = positions[partIndex];
@@ -1698,7 +1752,7 @@ const updateItemPosition = () => {
       }
       applyItemRenderPartPosition(element, position);
     });
-    itemHitboxElements.forEach((element) => {
+    if (itemHitboxElement) {
       const positionHitbox = {
         left: item.x - camera.x,
         top: item.y - camera.y,
@@ -1706,13 +1760,13 @@ const updateItemPosition = () => {
         width: SPRITE_SIZE,
         height: SPRITE_SIZE,
       };
-      applyItemRenderPartPosition(element, positionHitbox);
-    });
+      applyItemRenderPartPosition(itemHitboxElement, positionHitbox);
+    }
   });
 };
 
 const refreshGroundItemRender = (item) => {
-  const itemElements = document.querySelectorAll(`.world-item-part[data-item-uid="${item.uid}"]`);
+  const itemElements = findWorldItemPartElements(item.uid);
   const parts = getItemRenderData(item);
   itemElements.forEach((element) => {
     const partIndex = Number(element.getAttribute("data-part-index"));
@@ -1769,15 +1823,14 @@ const applyCorpseDecayRemoval = (item) => {
   removeAllByUid(item.uid);
   return true;
 };
-const updateCorpseDecay = () => {
-  if (nextDecayRefresh < Date.now()) {
-    nextDecayRefresh = Date.now() + DECAY_REFRESH_COOLDOWN_MS;
+const updateCorpseDecay = (now) => {
+  if (nextDecayRefresh < now) {
+    nextDecayRefresh = now + DECAY_REFRESH_COOLDOWN_MS;
 
     for (let i = decayingItems.length - 1; i >= 0; i--) {
       const item = decayingItems[i];
 
       if ("nextDecayAt" in item) {
-        const now = Date.now();
         if (now < item.nextDecayAt) {
           continue;
         }
@@ -1877,14 +1930,17 @@ const resetDragState = () => {
 
 const cancelItemDrag = () => {
   const draggingSlots = document.querySelectorAll(".container-slot-dragging");
-  const draggingWorld = document.querySelectorAll(".world-item-selected");
-
   draggingSlots.forEach((slot) => {
     slot.classList.remove("container-slot-dragging");
   });
-  draggingWorld.forEach((worldItem) => {
-    worldItem.classList.remove("world-item-selected");
-  });
+
+  for (const refs of worldItemElementsByUid.values()) {
+    const parts = refs?.parts ?? [];
+    for (const part of parts) {
+      part.classList.remove("world-item-selected");
+    }
+  }
+
   resetDragState();
   resetDragStatePending();
   resetInputComboState();
@@ -4256,11 +4312,7 @@ const showLookFloatingText = (lookInfo) => {
 };
 
 const showFloatingTextAboveMonster = (monster, text, type) => {
-  const monsterElement = findMonsterElement(monster.uid);
-  if (!monsterElement) {
-    return;
-  }
-  const monsterTextElement = monsterElement.querySelector(".monster-floating-text-layer");
+  const monsterTextElement = findMonsterFloatingTextElement(monster.uid);
   if (!monsterTextElement) {
     return;
   }
@@ -4275,11 +4327,7 @@ const showFloatingTextAboveMonster = (monster, text, type) => {
 };
 
 const showFloatingTextAbovePlayer = (text, type) => {
-  const playerElement = game.querySelector("#player");
-  if (!playerElement) {
-    return;
-  }
-  const playerTextElement = playerElement.querySelector(".player-floating-text-layer");
+  const playerTextElement = playerRenderRefs.floatingText;
   if (!playerTextElement) {
     return;
   }
@@ -4407,7 +4455,7 @@ const getWantedDirection = () => {
 
 /* ---------- JOUEUR - MISE A JOUR MOUVEMENT ---------- */
 
-const updateMovement = () => {
+const updateMovement = (now) => {
   const direction = getWantedDirection();
   if (!direction) {
     playerState.walkFrame = 1;
@@ -4415,7 +4463,6 @@ const updateMovement = () => {
     return;
   }
 
-  const now = Date.now();
   if (now < nextPlayerMoveTime) {
     return;
   }
@@ -4822,7 +4869,7 @@ const handleItemUiMouseMove = (e) => {
   if (dragState.isDragging === true) {
     if (dragState.pendingSourceLocation.locationType === "worldItem") {
       const itemUid = dragState.pendingSourceLocation.itemUid;
-      const parts = document.querySelectorAll(`.world-item-part[data-item-uid="${itemUid}"]`);
+      const parts = findWorldItemPartElements(itemUid);
       parts.forEach((part) => {
         part.classList.add("world-item-selected");
       });
@@ -5082,7 +5129,7 @@ const findPath = (startTile, targetTile) => {
 /* ---------- MONSTRES - CREATION ET AFFICHAGE ---------- */
 
 const monsterHpRefresh = (monster) => {
-  const monsterHp = document.querySelector(`.hp-red[data-monster-uid="${monster.uid}"]`);
+  const monsterHp = findMonsterHpElement(monster.uid);
   if (monsterHp) {
     const monsterData = getMonsterData(monster.monsterId);
     monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
@@ -5106,7 +5153,7 @@ const createMonster = (monsterId, x, y) => {
     moveStartTime: 0,
     moveDuration: 0,
     hp: monsterData.maxHp,
-    uid: nextMonsterId++,
+    uid: nextMonsterUid++,
     nextMoveTime: 0,
     nextAttackTime: 0,
     path: [],
@@ -5125,7 +5172,7 @@ const renderMonsters = (monstersList) => {
     div.classList.add("monster");
     div.style.width = `${monsterData.drawWidth}px`;
     div.style.height = `${monsterData.drawHeight}px`;
-    if (monster.uid === selectedMonsterId) {
+    if (monster.uid === selectedMonsterUid) {
       div.classList.add("monster-selected");
     }
     const monsterText = document.createElement("div");
@@ -5162,6 +5209,12 @@ const renderMonsters = (monstersList) => {
     div.appendChild(monsterName);
     div.appendChild(hpContainer);
     div.appendChild(monsterSprite);
+    monsterElementsByUid.set(monster.uid, {
+      root: div,
+      sprite: monsterSprite,
+      hp: hpRed,
+      floatingText: monsterText,
+    });
     game.appendChild(div);
     updateMonsterSprite(monster);
   }
@@ -5171,8 +5224,10 @@ const updateMonsterSprite = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
   const col = monsterData.atlasCol + monster.walkFrame;
   const row = monsterData.atlasRow + getDirectionRow(monster.direction);
-  const monsterElement = findMonsterElement(monster.uid);
-  const monsterSpriteElement = monsterElement.querySelector(".monster-sprite");
+  const monsterSpriteElement = findMonsterSpriteElement(monster.uid);
+  if (!monsterSpriteElement) {
+    return;
+  }
   const source = getAtlasSource(col, row, monsterData.spriteSize);
   monsterSpriteElement.style.backgroundPosition = `-${source.sourceX}px -${source.sourceY}px`;
 };
@@ -5206,12 +5261,12 @@ const selectMonster = (monster) => {
     return;
   }
   clearMonsterSelection();
-  if (monster.uid === selectedMonsterId) {
-    selectedMonsterId = null;
+  if (monster.uid === selectedMonsterUid) {
+    selectedMonsterUid = null;
     return;
   }
-  selectedMonsterId = monster.uid;
-  selectMonsterElement(selectedMonsterId);
+  selectedMonsterUid = monster.uid;
+  selectMonsterElement(selectedMonsterUid);
 };
 
 const isPlayerAtPosition = (x, y) => {
@@ -5238,30 +5293,31 @@ const updateMonsterDirectionToPlayer = (monster) => {
   }
 };
 
-const removeMonsterFromState = (monsterId) => {
+const removeMonsterFromState = (monsterUid) => {
   const monsterIndex = monsters.findIndex((monster) => {
-    return monsterId === monster.uid;
+    return monsterUid === monster.uid;
   });
   if (monsterIndex != -1) {
     monsters.splice(monsterIndex, 1);
   }
 };
 
-const removeMonsterRender = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+const removeMonsterRender = (monsterUid) => {
+  const monsterElement = findMonsterElement(monsterUid);
   if (monsterElement) {
     monsterElement.remove();
   }
+  monsterElementsByUid.delete(monsterUid);
 };
-const removeMonster = (monsterId) => {
-  removeMonsterFromState(monsterId);
-  removeMonsterRender(monsterId);
+const removeMonster = (monsterUid) => {
+  removeMonsterFromState(monsterUid);
+  removeMonsterRender(monsterUid);
 };
 const clearMonsters = () => {
-  const monstersElements = document.querySelectorAll(".monster");
-  monstersElements.forEach((monster) => {
-    monster.remove();
-  });
+  for (const refs of monsterElementsByUid.values()) {
+    refs?.root?.remove();
+  }
+  monsterElementsByUid.clear();
 };
 
 const updateMonsterDirection = (selfMonster, tile) => {
@@ -5282,10 +5338,11 @@ const updateMonsterDirection = (selfMonster, tile) => {
 /* ---------- MONSTRES - SELECTION ET MORT ---------- */
 
 const clearMonsterSelection = () => {
-  const monsterSelection = document.querySelectorAll(".monster-selected");
-  monsterSelection.forEach((monster) => {
-    monster.classList.remove("monster-selected");
-  });
+  for (const refs of monsterElementsByUid.values()) {
+    if (refs.root) {
+      refs.root.classList.remove("monster-selected");
+    }
+  }
 };
 
 const createMonsterCorpse = (monster) => {
@@ -5302,11 +5359,11 @@ const isMonsterDead = (monster) => {
   return monster.hp <= 0;
 };
 const clearSelectedMonsterIfNeeded = (monster) => {
-  if (!monster || selectedMonsterId === null) {
+  if (!monster || selectedMonsterUid === null) {
     return;
   }
-  if (selectedMonsterId === monster.uid) {
-    selectedMonsterId = null;
+  if (selectedMonsterUid === monster.uid) {
+    selectedMonsterUid = null;
   }
 };
 
@@ -5328,23 +5385,39 @@ const findNearMonster = (monsterList) => {
   return nearMonsterIndex;
 };
 
-const findMonsterById = (monsterId) => {
+const findMonsterByUid = (monsterUid) => {
   const monster = monsters.find((monster) => {
-    return monsterId === monster.uid;
+    return monsterUid === monster.uid;
   });
   return monster;
 };
 
-const selectMonsterElement = (monsterId) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterId}"]`);
+const selectMonsterElement = (monsterUid) => {
+  const monsterElement = findMonsterElement(monsterUid);
   if (monsterElement) {
     monsterElement.classList.add("monster-selected");
   }
 };
 
 const findMonsterElement = (monsterUid) => {
-  const monsterElement = document.querySelector(`.monster[data-monster-uid="${monsterUid}"]`);
-  return monsterElement;
+  const refs = monsterElementsByUid.get(monsterUid) ?? null;
+
+  return refs?.root ?? null;
+};
+
+const findMonsterSpriteElement = (monsterUid) => {
+  const refs = monsterElementsByUid.get(monsterUid) ?? null;
+  return refs?.sprite ?? null;
+};
+
+const findMonsterHpElement = (monsterUid) => {
+  const refs = monsterElementsByUid.get(monsterUid) ?? null;
+  return refs?.hp ?? null;
+};
+
+const findMonsterFloatingTextElement = (monsterUid) => {
+  const refs = monsterElementsByUid.get(monsterUid) ?? null;
+  return refs?.floatingText ?? null;
 };
 
 const generateMonsterLoot = (monsterData) => {
@@ -5409,16 +5482,15 @@ const addLootLogMessage = (lootItems, sourceName = null) => {
 
 /* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
 
-const updateMonsterCombat = () => {
+const updateMonsterCombat = (now) => {
   monsters.forEach((monster) => {
     if (isNearPlayer(monster)) {
       const monsterData = getMonsterData(monster.monsterId);
-      const now = Date.now();
       if (now < monster.nextAttackTime) {
         return;
       }
       monster.nextAttackTime = now + MONSTER_ATTACK_COOLDOWN_MS;
-      const attackResult = calculateDamageTakenByPlayer(monsterData.combat);
+      const attackResult = calculateDamageTakenByPlayer(monsterData.combat, now);
       if (attackResult.finalDamage > 0) {
         playerState.hp -= attackResult.finalDamage;
         const logMessage = `You took ${attackResult.finalDamage} damage from ${monsterData.name}.`;
@@ -5439,7 +5511,7 @@ const updateMonsterCombat = () => {
 const updateMonsterPosition = () => {
   monsters.forEach((monster) => {
     const monsterData = getMonsterData(monster.monsterId);
-    const monsterElement = document.querySelector(`.monster[data-monster-uid="${monster.uid}"]`);
+    const monsterElement = findMonsterElement(monster.uid);
     if (monsterElement) {
       monsterElement.style.left = `${monster.renderX - camera.x + monsterData.drawOffsetX}px`;
       monsterElement.style.top = `${monster.renderY - camera.y + monsterData.drawOffsetY}px`;
@@ -5448,8 +5520,7 @@ const updateMonsterPosition = () => {
   });
 };
 
-const updateMonsterMovement = () => {
-  const now = Date.now();
+const updateMonsterMovement = (now) => {
   monsters.forEach((monster) => {
     if (!isNearPlayer(monster, 12)) {
       return;
@@ -5529,7 +5600,7 @@ const updateMonsterMovement = () => {
 const renderInitialWorld = () => {
   renderMap(gameMap);
   renderMonsters(monsters);
-  updateWorldPosition();
+  updateWorldRender();
 };
 
 /* ---------- RENDER - INTERPOLATION VISUELLE ---------- */
@@ -5548,9 +5619,7 @@ const updateEntityRenderPosition = (entity, now) => {
   }
 };
 
-const updateRenderPositions = () => {
-  const now = Date.now();
-
+const updateRenderPositions = (now) => {
   updateEntityRenderPosition(playerState, now);
 
   for (const monster of monsters) {
@@ -5568,7 +5637,12 @@ const updateRenderCamera = () => {
 };
 
 const updateRenderMap = () => {
+  if (camera.x === renderState.lastCameraX && camera.y === renderState.lastCameraY) {
+    return;
+  }
   updateMapPosition();
+  renderState.lastCameraX = camera.x;
+  renderState.lastCameraY = camera.y;
 };
 
 const updateRenderWorldItems = () => {
@@ -5584,7 +5658,7 @@ const updateRenderLight = () => {
   updateLight(playerState);
 };
 
-const updateWorldPosition = () => {
+const updateWorldRender = () => {
   updateRenderCamera();
   updateRenderMap();
   updateRenderWorldItems();
@@ -5845,8 +5919,7 @@ const hasPlayerBlockSource = () => {
   return false;
 };
 
-const calculateDamageTakenByPlayer = (attackerCombatData) => {
-  const now = Date.now();
+const calculateDamageTakenByPlayer = (attackerCombatData, now) => {
   const combatModeData = getCombatModeData();
   const playerArmor = getPlayerTotalArmor();
   const playerShieldDefense = getPlayerShieldDefense();
@@ -6036,10 +6109,9 @@ const handleMonsterKilledByPlayer = (monster) => {
 
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
-const attackMonster = (monster) => {
+const attackMonster = (monster, now) => {
   const attackResult = calculatePlayerAttackResult(monster);
   const skillKey = getPlayerAttackSkillKey();
-  const now = Date.now();
   applySkillExperienceFromAttack(attackResult, skillKey, now);
 
   if (attackResult.finalDamage > 0) {
@@ -6049,22 +6121,21 @@ const attackMonster = (monster) => {
   showFloatingTextAboveMonster(monster, attackResult.text, attackResult.textType);
 };
 
-const updateCombat = () => {
-  if (selectedMonsterId === null) {
+const updateCombat = (now) => {
+  if (selectedMonsterUid === null) {
     return;
   }
-  const monster = findMonsterById(selectedMonsterId);
+  const monster = findMonsterByUid(selectedMonsterUid);
   if (!monster) {
     return;
   }
   if (!isNearPlayer(monster)) {
     return;
   }
-  const now = Date.now();
   if (now < nextPlayerAttackTime) {
     return;
   }
-  attackMonster(monster);
+  attackMonster(monster, now);
   nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
@@ -6386,18 +6457,62 @@ document.addEventListener("mouseup", (e) => {
 //#region     -----  BOUCLE DE JEU  -----
 /* ==================================================== */
 /* ---------- BOUCLE DE JEU - UPDATE PRINCIPAL ---------- */
-
-const gameLoop = () => {
-  updateMovement();
-  updateCombat();
-  updateMonsterMovement();
-  updateMonsterCombat();
-  updateCorpseDecay();
-  updateRenderPositions();
-  updateWorldPosition();
+const updateFpsCounter = (frameTime) => {
+  if (!fpsCounter) {
+    return;
+  }
+  fpsFrameCount++;
+  if (fpsLastUpdateTime === 0) {
+    fpsLastUpdateTime = frameTime;
+  }
+  const elapsed = frameTime - fpsLastUpdateTime;
+  if (elapsed >= 1000) {
+    currentFps = Math.round((fpsFrameCount * 1000) / elapsed);
+    fpsCounter.textContent = `FPS: ${currentFps}`;
+    fpsFrameCount = 0;
+    fpsLastUpdateTime = frameTime;
+  }
 };
 
-setInterval(gameLoop, GAME_LOOP_MS);
+const updateGameLogic = (now) => {
+  updateMovement(now);
+  updateCombat(now);
+  updateMonsterMovement(now);
+  updateMonsterCombat(now);
+  updateCorpseDecay(now);
+};
+
+const renderGameFrame = (now) => {
+  updateRenderPositions(now);
+  updateWorldRender();
+};
+
+const gameLoop = (frameTime) => {
+  if (previousFrameTime === null) {
+    previousFrameTime = frameTime;
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+  const frameDelta = Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS);
+  previousFrameTime = frameTime;
+  accumulatedLogicTime += frameDelta;
+  const logicNow = Date.now();
+  let logicSteps = 0;
+  while (accumulatedLogicTime >= GAME_LOGIC_STEP_MS && logicSteps < MAX_LOGIC_STEPS_PER_FRAME) {
+    updateGameLogic(logicNow);
+    accumulatedLogicTime -= GAME_LOGIC_STEP_MS;
+    logicSteps++;
+  }
+  if (logicSteps >= MAX_LOGIC_STEPS_PER_FRAME) {
+    accumulatedLogicTime = 0;
+  }
+  const renderNow = Date.now();
+  renderGameFrame(renderNow);
+  updateFpsCounter(frameTime);
+  requestAnimationFrame(gameLoop);
+};
+
+requestAnimationFrame(gameLoop);
 //#endregion  -----  BOUCLE DE JEU  -----
 
 /* ==================================================== */
@@ -6436,6 +6551,7 @@ const setupTestPlayerInventory = () => {
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
 const initializePlayerUi = () => {
+  initializePlayerRenderRefs();
   refreshChatUi();
   updateGameScale();
   showPlayerName(playerState.name);

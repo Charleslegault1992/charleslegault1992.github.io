@@ -174,6 +174,17 @@ main {
   height: 100%;
 }
 
+#fps-counter {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  z-index: 10000;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: monospace;
+  pointer-events: none;
+}
+
 /* #endregion  ----- ZONE DE JEU ----- */
 
 /* ==================================================== */
