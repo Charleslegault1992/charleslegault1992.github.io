@@ -30,7 +30,7 @@ const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
 let GAME_SCALE = 1;
 const TILE_SIZE = 64;
-const MAX_SURFACE_HEIGHT = TILE_SIZE * 3;
+const MAX_SURFACE_HEIGHT = 160;
 const MAX_STEP_HEIGHT = 40;
 const WORLD_RENDER_LAYER_SIZE = 100;
 const WORLD_RENDER_LAYER_ITEM = 10;
@@ -201,7 +201,7 @@ const itemsDatabase = {
     weight: 80,
     stackable: false,
     blockMovement: false,
-    surfaceHeight: 55,
+    surfaceHeight: 77,
     render: {
       atlas: "items",
       parts: [
@@ -231,7 +231,7 @@ const itemsDatabase = {
     weight: 50,
     stackable: false,
     blockMovement: false,
-    surfaceHeight: 40,
+    surfaceHeight: 38,
     render: {
       atlas: "items",
       parts: [
@@ -1451,6 +1451,12 @@ const getWorldItemStackIndex = (item) => {
 const getWorldRenderZIndex = (worldY, localLayer = 0) => {
   return worldY * WORLD_RENDER_LAYER_SIZE + localLayer;
 };
+
+const canAddItemSurfaceToTile = (item, x, y) => {
+  const currentHeight = getWorldTileSurfaceHeight(x, y);
+  const itemSurfaceHeight = getItemSurfaceHeight(item);
+  return currentHeight + itemSurfaceHeight <= MAX_SURFACE_HEIGHT;
+};
 /* ---------- OUTILS - ATLAS ET COULEURS ---------- */
 
 const getAtlasSource = (col, row, spriteSize) => {
@@ -2396,7 +2402,9 @@ const setWorldItemPosition = (destination, item) => {
   ) {
     return false;
   }
-
+  if (!canAddItemSurfaceToTile(item, destination.x, destination.y)) {
+    return false;
+  }
   return moveItemUidToWorldTileStack(item, destination.x, destination.y);
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
@@ -2621,6 +2629,78 @@ const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationIte
   }
 
   return false;
+};
+
+
+const shouldMoveItemToFreeContainerSlotInsteadOfSwap = (source, sourceItem, destination, destinationItem) => {
+  if (!source || !sourceItem || !destination || !destinationItem) {
+    return false;
+  }
+
+  if (destination.locationType !== "containerSlot") {
+    return false;
+  }
+
+  const sourceIsWorld = source.locationType === "worldItem";
+  const sourceIsUncarriedContainerSlot =
+    source.locationType === "containerSlot" && !isItemLocationCarriedByPlayer(source);
+
+  if (!sourceIsWorld && !sourceIsUncarriedContainerSlot) {
+    return false;
+  }
+
+  const sameItem = sourceItem.itemId === destinationItem.itemId;
+  const itemData = getItemData(sourceItem.itemId);
+  const isStackable = itemData?.stackable === true;
+
+  if (!sameItem) {
+    return true;
+  }
+
+  return !isStackable;
+};
+
+const tryMoveItemToFreeContainerSlotInsteadOfSwapDuringDrag = (source, sourceItem, destination, destinationItem) => {
+  if (!shouldMoveItemToFreeContainerSlotInsteadOfSwap(source, sourceItem, destination, destinationItem)) {
+    return false;
+  }
+
+  const parentContainer = getParentContainerFromContainerSlotLocation(destination);
+  const emptySlot = findFirstEmptyContainerSlot(parentContainer);
+
+  if (emptySlot === null) {
+    return false;
+  }
+
+  let rollbackDestination = source;
+
+  if (source.locationType === "worldItem") {
+    rollbackDestination = {
+      locationType: "worldTile",
+      x: sourceItem.x,
+      y: sourceItem.y,
+    };
+  }
+
+  const removedItem = removeItemFromDragSource(source);
+  if (!removedItem) {
+    cancelItemDrag();
+    return true;
+  }
+
+  const freeDestination = {
+    locationType: "containerSlot",
+    parentContainerUid: destination.parentContainerUid,
+    slotIndex: emptySlot,
+  };
+
+  const wasPlaced = placeItemInDragDestination(freeDestination, removedItem);
+  if (!wasPlaced) {
+    rollbackDraggedItem(rollbackDestination, removedItem);
+  }
+
+  refreshItemUiAfterDrag();
+  return true;
 };
 
 const tryMoveItemToEmptySlotDuringDrag = (source, sourceItem, destination, destinationItem) => {
@@ -3148,6 +3228,11 @@ const completeItemDrag = (destination) => {
   }
 
   if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
+    refreshItemUiAfterDrag();
+    return;
+  }
+
+  if (tryMoveItemToFreeContainerSlotInsteadOfSwapDuringDrag(source, sourceItem, destination, destinationItem)) {
     refreshItemUiAfterDrag();
     return;
   }
@@ -5074,9 +5159,8 @@ const handleItemUiMouseMove = (e) => {
     if (dragState.pendingSourceLocation.locationType === "worldItem") {
       const itemUid = dragState.pendingSourceLocation.itemUid;
       const parts = findWorldItemPartElements(itemUid);
-      parts.forEach((part) => {
-        part.classList.add("world-item-selected");
-      });
+      const logicalPart = parts[0];
+      logicalPart?.classList.add("world-item-selected");
     } else {
       dragState.pendingSlotElement.classList.add("container-slot-dragging");
     }

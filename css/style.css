@@ -178,7 +178,7 @@ main {
   position: absolute;
   top: 4px;
   left: 6px;
-  z-index: 10000;
+  z-index: 10000000;
   color: #ffffff;
   font-size: 12px;
   font-family: monospace;
@@ -464,7 +464,7 @@ main {
 .floating-text-wrapper {
   position: absolute;
   transform: translate(-50%, -100%);
-  z-index: 9999;
+  z-index: 10000000;
   pointer-events: none;
 }
 
