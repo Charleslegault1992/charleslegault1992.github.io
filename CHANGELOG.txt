@@ -6,6 +6,9 @@
     - Passage d'un temps now commun aux updates de logique principales
     - Separation du rendu en renderGameFrame et updateWorldRender
     - Nettoyage des appel de rendu monde pour preparer PixiJS
+    - Ajout du systeme de pile par tile pour garder lordre des items au sol.
+    - Ajout des hauteurs de surface pour empiler les objets et ajuster leur rendu.
+    - Le joueur et les monstres peuvent monter seulement si la hauteur est assez basse, mais peuvent toujours descendre.
 
 0.295 - Switch sur la transition des monstres/player/items du CSS a une interpolation data-only
     -Ajout d'une interpolation data-only sur le player/monstres/items

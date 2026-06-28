@@ -30,6 +30,12 @@ const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
 let GAME_SCALE = 1;
 const TILE_SIZE = 64;
+const MAX_SURFACE_HEIGHT = TILE_SIZE * 3;
+const MAX_STEP_HEIGHT = 40;
+const WORLD_RENDER_LAYER_SIZE = 100;
+const WORLD_RENDER_LAYER_ITEM = 10;
+const WORLD_RENDER_LAYER_CREATURE = 50;
+const WORLD_RENDER_LAYER_EFFECT = 90;
 const PLAYER_SIZE = TILE_SIZE;
 const MOVE_SPEED = TILE_SIZE;
 const MAP_COLS = GAME_WIDTH / TILE_SIZE;
@@ -52,6 +58,7 @@ let selectedMonsterUid = null;
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
 const monsterElementsByUid = new Map();
 const worldItemElementsByUid = new Map();
+const worldTileStacksByKey = new Map();
 const tileRenderRefs = [];
 const renderState = {
   lastCameraX: null,
@@ -193,7 +200,8 @@ const itemsDatabase = {
     suffix: "a",
     weight: 80,
     stackable: false,
-    blockMovement: true,
+    blockMovement: false,
+    surfaceHeight: 55,
     render: {
       atlas: "items",
       parts: [
@@ -209,6 +217,29 @@ const itemsDatabase = {
           atlasRow: 2,
           offsetX: 0,
           offsetY: -SPRITE_SIZE,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+  smallBox: {
+    itemId: "smallBox",
+    name: "Small box",
+    desc: "A small box.",
+    type: "container",
+    suffix: "a",
+    weight: 50,
+    stackable: false,
+    blockMovement: false,
+    surfaceHeight: 40,
+    render: {
+      atlas: "items",
+      parts: [
+        {
+          atlasCol: 5,
+          atlasRow: 2,
+          offsetX: 0,
+          offsetY: 0,
           zOffset: 0,
         },
       ],
@@ -703,7 +734,7 @@ const playerState = {
   speed: 1,
   direction: "down",
   walkFrame: 1,
-  light: 900,
+  light: 750,
   combatMode: "balanced",
   equipment: {
     necklace: null,
@@ -750,9 +781,10 @@ const updatePlayerSprite = () => {
 };
 
 const updatePlayerPosition = () => {
+  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
   player.style.left = `${playerState.renderX - camera.x}px`;
-  player.style.top = `${playerState.renderY - camera.y - TILE_SIZE}px`;
-  player.style.zIndex = playerState.y;
+  player.style.top = `${playerState.renderY - camera.y - TILE_SIZE - surfaceOffsetY}px`;
+  player.style.zIndex = getWorldRenderZIndex(playerState.y, WORLD_RENDER_LAYER_CREATURE);
 };
 
 /* ---------- JOUEUR - SKILLS / EXPERIENCE ---------- */
@@ -1232,14 +1264,21 @@ const isInsideMap = (testX, testY) => {
   return testX >= 0 && testX <= mapWidth - PLAYER_SIZE && testY >= 0 && testY <= mapHeight - PLAYER_SIZE;
 };
 
-const canMoveTo = (testX, testY) => {
+const canStepFromTileToTile = (fromX, fromY, toX, toY) => {
+  const fromHeight = getWorldTileSurfaceHeight(fromX, fromY);
+  const toHeight = getWorldTileSurfaceHeight(toX, toY);
+  const heightDifference = toHeight - fromHeight;
+  return heightDifference <= MAX_STEP_HEIGHT;
+};
+
+const canMoveTo = (fromX, fromY, testX, testY) => {
   if (!isInsideMap(testX, testY)) {
     return false;
   }
   const nextCol = testX / TILE_SIZE;
   const nextRow = testY / TILE_SIZE;
   const nextTile = gameMap[nextRow][nextCol];
-  return nextTile === FLOOR;
+  return nextTile === FLOOR && canStepFromTileToTile(fromX, fromY, testX, testY);
 };
 
 const updateMapPosition = () => {
@@ -1315,6 +1354,103 @@ const isEmpty = (valeur) => {
   return false;
 };
 
+/* ---------- OUTILS - TILE ---------- */
+const getWorldTileStackKey = (x, y) => {
+  return x + ":" + y;
+};
+
+const getWorldTileStack = (x, y) => {
+  const tileStackKey = getWorldTileStackKey(x, y);
+  return worldTileStacksByKey.get(tileStackKey) ?? null;
+};
+
+const getOrCreateWorldTileStack = (x, y) => {
+  const tileStackKey = getWorldTileStackKey(x, y);
+  let tileStack = getWorldTileStack(x, y);
+  if (tileStack) {
+    return tileStack;
+  }
+  tileStack = {
+    x,
+    y,
+    itemUids: [],
+  };
+  worldTileStacksByKey.set(tileStackKey, tileStack);
+  return tileStack;
+};
+
+const addItemUidToWorldTileStack = (item) => {
+  if (!isValidWorldItem(item)) {
+    return false;
+  }
+  const tileStack = getOrCreateWorldTileStack(item.x, item.y);
+  if (!tileStack.itemUids.includes(item.uid)) {
+    tileStack.itemUids.push(item.uid);
+  }
+  return true;
+};
+
+const removeItemUidFromWorldTileStack = (item) => {
+  if (!isValidWorldItem(item)) {
+    return false;
+  }
+  const tileStack = getWorldTileStack(item.x, item.y);
+  if (!tileStack?.itemUids?.includes(item.uid)) {
+    return false;
+  }
+  const index = tileStack.itemUids.indexOf(item.uid);
+  tileStack.itemUids.splice(index, 1);
+  if (tileStack.itemUids.length <= 0) {
+    const tileStackKey = getWorldTileStackKey(item.x, item.y);
+    worldTileStacksByKey.delete(tileStackKey);
+  }
+  return true;
+};
+
+const moveItemUidToWorldTileStack = (item, nextX, nextY) => {
+  if (!item || !item.uid || !Number.isInteger(nextX) || !Number.isInteger(nextY)) {
+    return false;
+  }
+  removeItemUidFromWorldTileStack(item);
+  item.x = nextX;
+  item.y = nextY;
+  addItemUidToWorldTileStack(item);
+  return true;
+};
+
+const isWorldItemTopOfTileStack = (item) => {
+  if (!isValidWorldItem(item)) {
+    return false;
+  }
+  const tileStack = getWorldTileStack(item.x, item.y);
+  if (!tileStack) {
+    return false;
+  }
+  const topItemUid = tileStack.itemUids[tileStack.itemUids.length - 1];
+  return topItemUid === item.uid;
+};
+
+const getWorldItemStackIndex = (item) => {
+  if (!isValidWorldItem(item)) {
+    return 0;
+  }
+
+  const tileStack = getWorldTileStack(item.x, item.y);
+  if (!tileStack) {
+    return 0;
+  }
+
+  const index = tileStack.itemUids.indexOf(item.uid);
+  if (index === -1) {
+    return 0;
+  }
+
+  return index;
+};
+
+const getWorldRenderZIndex = (worldY, localLayer = 0) => {
+  return worldY * WORLD_RENDER_LAYER_SIZE + localLayer;
+};
 /* ---------- OUTILS - ATLAS ET COULEURS ---------- */
 
 const getAtlasSource = (col, row, spriteSize) => {
@@ -1476,11 +1612,60 @@ const getItemRenderData = (item) => {
   return enrichedParts;
 };
 
+const getItemSurfaceHeight = (item) => {
+  if (!item) {
+    return 0;
+  }
+  const itemData = getItemData(item.itemId);
+  return itemData?.surfaceHeight ?? 0;
+};
+
+const getEntitySurfaceOffsetY = (entity) => {
+  if (!entity || !Number.isFinite(entity.x) || !Number.isFinite(entity.y)) {
+    return 0;
+  }
+  return getWorldTileSurfaceHeight(entity.x, entity.y);
+};
+
+const getWorldTileSurfaceHeight = (x, y) => {
+  const tileStack = getWorldTileStack(x, y);
+  if (!tileStack) {
+    return 0;
+  }
+  let totalSurfaceHeight = 0;
+  for (const itemUid of tileStack.itemUids) {
+    const item = findWorldItemByUid(itemUid);
+    totalSurfaceHeight += getItemSurfaceHeight(item);
+  }
+  return Math.min(totalSurfaceHeight, MAX_SURFACE_HEIGHT);
+};
+
+const getWorldItemStackOffsetY = (item) => {
+  if (!isValidWorldItem(item)) {
+    return 0;
+  }
+  const tileStack = getWorldTileStack(item.x, item.y);
+  if (!tileStack) {
+    return 0;
+  }
+  let itemSurfaceHeight = 0;
+  for (const itemUid of tileStack.itemUids) {
+    if (itemUid === item.uid) {
+      break;
+    }
+    const stackItem = findWorldItemByUid(itemUid);
+    itemSurfaceHeight += getItemSurfaceHeight(stackItem);
+  }
+  return Math.min(itemSurfaceHeight, MAX_SURFACE_HEIGHT);
+};
+
 const getItemRenderPartPosition = (item, part) => {
+  const stackOffsetY = getWorldItemStackOffsetY(item);
+  const stackIndex = getWorldItemStackIndex(item);
   return {
     left: item.x - camera.x + part.offsetX,
-    top: item.y - camera.y + part.offsetY,
-    zIndex: item.y + part.zOffset - 1,
+    top: item.y - camera.y + part.offsetY - stackOffsetY,
+    zIndex: getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
     width: SPRITE_SIZE,
     height: SPRITE_SIZE,
   };
@@ -1605,7 +1790,7 @@ const createWorldItemHitbox = (item) => {
   hitbox.style.height = `${TILE_SIZE}px`;
   hitbox.style.left = `${item.x - camera.x}px`;
   hitbox.style.top = `${item.y - camera.y}px`;
-  hitbox.style.zIndex = `${item.y}`;
+  hitbox.style.zIndex = `${getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_EFFECT)}`;
 
   hitbox.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -1692,6 +1877,7 @@ const addWorldItemToState = (worldItem) => {
     return false;
   }
   worldItems.push(worldItem);
+  addItemUidToWorldTileStack(worldItem);
   return true;
 };
 
@@ -1707,6 +1893,8 @@ const removeWorldItemFromState = (itemUid) => {
     return worldItem.uid === itemUid;
   });
   if (index !== -1) {
+    const worldItem = worldItems[index];
+    removeItemUidFromWorldTileStack(worldItem);
     worldItems.splice(index, 1);
     return true;
   }
@@ -1756,7 +1944,7 @@ const updateItemPosition = () => {
       const positionHitbox = {
         left: item.x - camera.x,
         top: item.y - camera.y,
-        zIndex: item.y,
+        zIndex: getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_EFFECT),
         width: SPRITE_SIZE,
         height: SPRITE_SIZE,
       };
@@ -2209,9 +2397,7 @@ const setWorldItemPosition = (destination, item) => {
     return false;
   }
 
-  item.x = destination.x;
-  item.y = destination.y;
-  return true;
+  return moveItemUidToWorldTileStack(item, destination.x, destination.y);
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshInventoryUi = () => {
@@ -2801,6 +2987,14 @@ const findItemLocationByUid = (uid) => {
   return null;
 };
 
+const findWorldItemByUid = (itemUid) => {
+  return (
+    worldItems.find((worldItem) => {
+      return worldItem.uid === itemUid;
+    }) ?? null
+  );
+};
+
 const refreshAllByUid = (uid) => {
   const location = findItemLocationByUid(uid);
   if (!location) {
@@ -2905,7 +3099,7 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     return;
   }
-  if (source.locationType === "worldItem" && !isNearPlayer(sourceItem, 1)) {
+  if (source.locationType === "worldItem" && (!isNearPlayer(sourceItem, 1) || !isWorldItemTopOfTileStack(sourceItem))) {
     cancelItemDrag();
     return;
   }
@@ -4163,12 +4357,13 @@ const getFloatingTextScreenPosition = (target, offsetY) => {
   let left = 0;
   let top = 0;
   if (target) {
+    const surfaceOffsetY = getEntitySurfaceOffsetY(target);
     if ("renderX" in target && "renderY" in target) {
       left = target.renderX - camera.x + TILE_SIZE / 2;
-      top = target.renderY - camera.y - offsetY;
+      top = target.renderY - camera.y - offsetY - surfaceOffsetY;
     } else {
       left = target.x - camera.x + TILE_SIZE / 2;
-      top = target.y - camera.y - offsetY;
+      top = target.y - camera.y - offsetY - surfaceOffsetY;
     }
   }
   return {
@@ -4353,16 +4548,17 @@ const ctx = lightCanvas.getContext("2d");
 /* ---------- LUMIERE - AFFICHAGE ---------- */
 
 const updateLight = (source) => {
+  const surfaceOffsetY = getEntitySurfaceOffsetY(source);
   if (currentMap.dark) {
     let lightRadius = 0;
     let screenX = 0;
     let screenY = 0;
     if ("renderX" in source && "renderY" in source) {
       screenX = source.renderX - camera.x + TILE_SIZE / 2;
-      screenY = source.renderY - camera.y + TILE_SIZE / 2;
+      screenY = source.renderY - camera.y + TILE_SIZE / 2 - surfaceOffsetY;
     } else {
       screenX = source.x - camera.x + TILE_SIZE / 2;
-      screenY = source.y - camera.y + TILE_SIZE / 2;
+      screenY = source.y - camera.y + TILE_SIZE / 2 - surfaceOffsetY;
     }
 
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -4480,7 +4676,11 @@ const updateMovement = (now) => {
     return;
   }
 
-  if (canMoveTo(nextX, nextY) && !isMonsterAtPosition(nextX, nextY) && !isBlockingItemAtPosition(nextX, nextY)) {
+  if (
+    canMoveTo(playerState.x, playerState.y, nextX, nextY) &&
+    !isMonsterAtPosition(nextX, nextY) &&
+    !isBlockingItemAtPosition(nextX, nextY)
+  ) {
     playerState.oldX = playerState.x;
     playerState.oldY = playerState.y;
     playerState.moveStartTime = now;
@@ -4860,7 +5060,11 @@ const handleItemUiMouseMove = (e) => {
     return;
   }
   const item = getDragSourceItem(dragState.pendingSourceLocation);
-  if (!item || (dragState.pendingSourceLocation.locationType === "worldItem" && !isNearPlayer(item, 1))) {
+  if (
+    !item ||
+    (dragState.pendingSourceLocation.locationType === "worldItem" &&
+      (!isNearPlayer(item, 1) || !isWorldItemTopOfTileStack(item)))
+  ) {
     resetDragState();
     resetDragStatePending();
     return;
@@ -4981,7 +5185,7 @@ const getNeighbors = (tile) => {
   ];
 };
 
-const isWalkableTile = (row, col) => {
+const isWalkableTile = (row, col, fromTile = null) => {
   const tileX = col * TILE_SIZE;
   const tileY = row * TILE_SIZE;
   if (!isInsideMap(tileX, tileY)) {
@@ -4995,6 +5199,13 @@ const isWalkableTile = (row, col) => {
     !isBlockingItemAtPosition(tileX, tileY) &&
     !isPlayerAtPosition(tileX, tileY)
   ) {
+    if (fromTile) {
+      const fromWorld = getWorldPosition(fromTile);
+      const toWorld = getWorldPosition({ row, col });
+      if (!canStepFromTileToTile(fromWorld.tileX, fromWorld.tileY, toWorld.tileX, toWorld.tileY)) {
+        return false;
+      }
+    }
     return true;
   } else {
     return false;
@@ -5009,7 +5220,7 @@ const getNeighborNodes = (tile, targetTile) => {
   const neighborsTile = getNeighbors(tile);
   const neighborsNodes = [];
   neighborsTile.forEach((neighbors) => {
-    if (isWalkableTile(neighbors.row, neighbors.col)) {
+    if (isWalkableTile(neighbors.row, neighbors.col, tile)) {
       const g = tile.g + 1;
       const h = getDistance(neighbors, targetTile);
       const node = {
@@ -5071,7 +5282,7 @@ const pathDestination = (selfTile, destinationTile) => {
   let bestDistance = null;
   let bestNeighbor = null;
   neighbors.forEach((neighbor) => {
-    if (isWalkableTile(neighbor.row, neighbor.col)) {
+    if (isWalkableTile(neighbor.row, neighbor.col, selfTile)) {
       possibleNeighbors.push(neighbor);
     }
   });
@@ -5201,9 +5412,10 @@ const renderMonsters = (monstersList) => {
 
       selectMonster(monster);
     });
+    const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
     div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
-    div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY}px`;
-    div.style.zIndex = monster.y;
+    div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY - surfaceOffsetY}px`;
+    div.style.zIndex = getWorldRenderZIndex(monster.y, WORLD_RENDER_LAYER_CREATURE);
     hpContainer.appendChild(hpRed);
     div.appendChild(monsterText);
     div.appendChild(monsterName);
@@ -5510,12 +5722,13 @@ const updateMonsterCombat = (now) => {
 
 const updateMonsterPosition = () => {
   monsters.forEach((monster) => {
+    const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
     const monsterData = getMonsterData(monster.monsterId);
     const monsterElement = findMonsterElement(monster.uid);
     if (monsterElement) {
       monsterElement.style.left = `${monster.renderX - camera.x + monsterData.drawOffsetX}px`;
-      monsterElement.style.top = `${monster.renderY - camera.y + monsterData.drawOffsetY}px`;
-      monsterElement.style.zIndex = monster.y;
+      monsterElement.style.top = `${monster.renderY - camera.y + monsterData.drawOffsetY - surfaceOffsetY}px`;
+      monsterElement.style.zIndex = getWorldRenderZIndex(monster.y, WORLD_RENDER_LAYER_CREATURE);
     }
   });
 };
@@ -5562,7 +5775,7 @@ const updateMonsterMovement = (now) => {
       }
 
       const nextStep = monster.path[0];
-      if (!isWalkableTile(nextStep.row, nextStep.col)) {
+      if (!isWalkableTile(nextStep.row, nextStep.col, monsterPosition)) {
         const newPath = findPath(monsterPosition, destination);
         if (newPath.length <= 0) {
           return;
@@ -6520,6 +6733,13 @@ requestAnimationFrame(gameLoop);
 /* ==================================================== */
 /* ---------- INITIALISATION - DONNEES TEST ---------- */
 const setupTestWorld = () => {
+  addGroundItem(createGroundItem("smallBox", 1, 15 * TILE_SIZE, 14 * TILE_SIZE));
+  addGroundItem(createGroundItem("smallBox", 1, 16 * TILE_SIZE, 13 * TILE_SIZE));
+  addGroundItem(createGroundItem("box", 1, 16 * TILE_SIZE, 14 * TILE_SIZE));
+  addGroundItem(createGroundItem("fireRune", 1, 16 * TILE_SIZE, 14 * TILE_SIZE));
+  addGroundItem(createGroundItem("smallBox", 1, 16 * TILE_SIZE, 15 * TILE_SIZE));
+  addGroundItem(createGroundItem("smallBox", 1, 17 * TILE_SIZE, 14 * TILE_SIZE));
+
   addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 23 * TILE_SIZE));
   addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 22 * TILE_SIZE));
   addGroundItem(createGroundItem("box", 1, 20 * TILE_SIZE, 21 * TILE_SIZE));
