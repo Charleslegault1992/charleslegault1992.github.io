@@ -1,3 +1,8 @@
+/* global PIXI */
+
+const { Application, Container, Graphics } = PIXI;
+
+
 /* ==================================================== */
 //#region     -----  BASE - ELEMENTS HTML  -----
 /* ==================================================== */
@@ -20,6 +25,13 @@ const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 const lightCanvas = document.querySelector("#light-canvas");
 const fpsCounter = document.querySelector("#fps-counter");
 //#endregion  -----  BASE - ELEMENTS HTML  -----
+
+/* ==================================================== */
+//#region     -----  BASE - ETAT PIXI GLOBAL  -----
+/* ==================================================== */
+let app = new PIXI.Application();
+let worldContainer = new PIXI.Container()
+//#endregion  -----  BASE - ETAT PIXI GLOBAL  -----
 
 /* ==================================================== */
 //#region     -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
