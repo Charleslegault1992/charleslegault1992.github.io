@@ -1,0 +1,14 @@
+{ "columns":9,
+ "image":"cavewall128.png",
+ "imageheight":448,
+ "imagewidth":576,
+ "margin":0,
+ "name":"wallCave",
+ "spacing":0,
+ "tilecount":63,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}

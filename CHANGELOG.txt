@@ -11,6 +11,10 @@
     - Le joueur et les monstres peuvent monter seulement si la hauteur est assez basse, mais peuvent toujours descendre.
     - Amelioration du drag ditems vers les containers pour mieux placer les items dans les cases libres au lieu de swap quand cest pas necessaire.
     - Amelioration du drag et du loot avec des piles d'items plus fiables, du stacking auto et moins de swaps invalides.
+    - Ajout du debut de l'import Tiled .tmj vers une structure worldMapsByZ chunked.
+    - Ajout du loader de maps pour charger world_z0 et world_z-1 depuis les fichiers Tiled.
+    - Ajout du support des layers Tiled: ground, groundDetails, walls, objects, top, collision, interactables, transitions, spawns.
+    - Ajout des interactables Tiled pour les coffres rewardChest et les objets lookOnly.
 
 0.295 - Switch sur la transition des monstres/player/items du CSS a une interpolation data-only
     -Ajout d'une interpolation data-only sur le player/monstres/items

@@ -1,0 +1,14 @@
+{ "columns":32,
+ "image":"cavewall128.png",
+ "imageheight":1024,
+ "imagewidth":2048,
+ "margin":0,
+ "name":"caveWall",
+ "spacing":0,
+ "tilecount":512,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}

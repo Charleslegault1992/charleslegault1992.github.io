@@ -1,0 +1,14 @@
+{ "columns":8,
+ "image":"bigwall.png",
+ "imageheight":384,
+ "imagewidth":512,
+ "margin":0,
+ "name":"bigwall",
+ "spacing":0,
+ "tilecount":48,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}
