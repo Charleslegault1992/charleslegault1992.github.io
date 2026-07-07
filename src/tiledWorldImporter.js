@@ -235,6 +235,10 @@ export const importTiledMapIntoWorldMaps = (worldMapsByZ, tiledMap, fileName) =>
   if (!worldMap) {
     return null;
   }
+  if (Array.isArray(tiledMap.tilesets)) {
+    worldMap.tilesets = tiledMap.tilesets;
+  }
+
   if (!Array.isArray(tiledMap.layers)) {
     return null;
   }

@@ -1,5 +1,5 @@
-import { initializePixiRenderer, renderPixiMap } from "./pixiRenderer";
-import { loadWorldMaps } from "./worldLoader";
+import { initializePixiRenderer, renderPixiVisibleWorldChunks, updatePixiCamera } from "./pixiRenderer.js";
+import { getWorldMapsDebugSummary, loadWorldMaps } from "./worldLoader.js";
 
 /* ==================================================== */
 //#region     -----  BASE - ELEMENTS HTML  -----
@@ -40,6 +40,7 @@ const WORLD_RENDER_LAYER_ITEM = 10;
 const WORLD_RENDER_LAYER_CREATURE = 50;
 const WORLD_RENDER_LAYER_EFFECT = 90;
 const PLAYER_SIZE = TILE_SIZE;
+const CHUNK_SIZE_TILES = 16;
 const MOVE_SPEED = TILE_SIZE;
 const MAP_COLS = GAME_WIDTH / TILE_SIZE;
 const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
@@ -62,7 +63,6 @@ let selectedMonsterUid = null;
 const monsterElementsByUid = new Map();
 const worldItemElementsByUid = new Map();
 const worldTileStacksByKey = new Map();
-const tileRenderRefs = [];
 const renderState = {
   lastCameraX: null,
   lastCameraY: null,
@@ -123,6 +123,13 @@ const mousePosition = {
   isInsideMap: false,
 };
 
+const pixiWorldRenderState = {
+  worldMapsByZ: null,
+  currentZ: 0,
+  lastPlayerChunkX: null,
+  lastPlayerChunkY: null,
+  visibleRadiusChunks: 1,
+};
 /* ---------- BASE - ETAT ITEM USE ---------- */
 
 const itemUseState = {
@@ -1232,17 +1239,6 @@ const currentMap = {
   dark: true,
 };
 
-/* ---------- MAP - AFFICHAGE DOM ---------- */
-
-const renderMap = (map) => {
-  renderPixiMap(map, TILE_SIZE, FLOOR, WALL);
-  // tileRenderRefs.push({
-  //   element: div,
-  //   row,
-  //   col,
-  // });
-};
-
 /* ---------- MAP - COLLISIONS ET LIMITES ---------- */
 
 const isInsideMap = (testX, testY) => {
@@ -1257,28 +1253,25 @@ const canStepFromTileToTile = (fromX, fromY, toX, toY) => {
 };
 
 const canMoveTo = (fromX, fromY, testX, testY) => {
-  if (!isInsideMap(testX, testY)) {
+  if (!Number.isFinite(fromX) || !Number.isFinite(fromY) || !Number.isFinite(testX) || !Number.isFinite(testY)) {
     return false;
   }
   const nextCol = testX / TILE_SIZE;
   const nextRow = testY / TILE_SIZE;
-  const nextTile = gameMap[nextRow][nextCol];
-  return nextTile === FLOOR && canStepFromTileToTile(fromX, fromY, testX, testY);
-};
-
-const updateMapPosition = () => {
-  for (const tileRef of tileRenderRefs) {
-    const tile = tileRef?.element ?? null;
-    const row = tileRef?.row ?? null;
-    const col = tileRef?.col ?? null;
-    if (!tile || row === null || col === null) {
-      continue;
-    }
-    const worldX = col * TILE_SIZE;
-    const worldY = row * TILE_SIZE;
-    tile.style.left = `${worldX - camera.x}px`;
-    tile.style.top = `${worldY - camera.y}px`;
+  if (!Number.isInteger(nextCol) || !Number.isInteger(nextRow)) {
+    return false;
   }
+  const currentWorldMap = getCurrentWorldMap();
+  if (!currentWorldMap) {
+    return false;
+  }
+  if (isTiledCollisionAtTile(currentWorldMap, nextCol, nextRow)) {
+    return false;
+  }
+  if (!canStepFromTileToTile(fromX, fromY, testX, testY)) {
+    return false;
+  }
+  return true;
 };
 //#endregion  -----  MAP  -----
 
@@ -1293,6 +1286,68 @@ const getRandomInt = (min, max) => {
 
 const getRandomFloat = (min, max) => {
   return Math.random() * (max - min) + min;
+};
+
+const getChunkPositionFromWorldPosition = (x, y) => {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  const col = Math.floor(x / TILE_SIZE);
+  const row = Math.floor(y / TILE_SIZE);
+  const chunkX = Math.floor(col / CHUNK_SIZE_TILES);
+  const chunkY = Math.floor(row / CHUNK_SIZE_TILES);
+  return { chunkX, chunkY };
+};
+
+const getWorldChunkForTilePosition = (worldMap, col, row) => {
+  if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
+    return null;
+  }
+  const chunkX = Math.floor(col / CHUNK_SIZE_TILES);
+  const chunkY = Math.floor(row / CHUNK_SIZE_TILES);
+  const chunkKey = `${worldMap.z}:${chunkX}:${chunkY}`;
+  return worldMap.chunksByKey.get(chunkKey) ?? null;
+};
+
+const getLocalTileIndexInChunk = (col, row) => {
+  if (!Number.isInteger(col) || !Number.isInteger(row)) {
+    return null;
+  }
+  const localCol = ((col % CHUNK_SIZE_TILES) + CHUNK_SIZE_TILES) % CHUNK_SIZE_TILES;
+  const localRow = ((row % CHUNK_SIZE_TILES) + CHUNK_SIZE_TILES) % CHUNK_SIZE_TILES;
+  const index = localRow * CHUNK_SIZE_TILES + localCol;
+  return index;
+};
+
+const getCollisionGidAtTile = (worldMap, col, row) => {
+  if (!worldMap || !Number.isInteger(col) || !Number.isInteger(row)) {
+    return 0;
+  }
+  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
+  const index = getLocalTileIndexInChunk(col, row);
+  if (!chunk || !Number.isInteger(index)) {
+    return 0;
+  }
+  const collisionLayer = chunk.layers?.collision ?? null;
+  if (!Array.isArray(collisionLayer)) {
+    return 0;
+  }
+  const gid = collisionLayer[index] ?? 0;
+  return gid;
+};
+
+const getCurrentWorldMap = () => {
+  if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
+    return null;
+  }
+  return pixiWorldRenderState.worldMapsByZ.get(pixiWorldRenderState.currentZ) ?? null;
+};
+
+const isTiledCollisionAtTile = (worldMap, col, row) => {
+  if (!worldMap || !Number.isInteger(col) || !Number.isInteger(row)) {
+    return false;
+  }
+  return getCollisionGidAtTile(worldMap, col, row) > 0;
 };
 
 const isNearPlayer = (target, range = 1) => {
@@ -4840,6 +4895,7 @@ const updateMovement = (now) => {
     playerState.moveDuration = getPlayerMoveCooldown();
     playerState.x = nextX;
     playerState.y = nextY;
+    updatePixiVisibleChunksAroundPlayer();
     playerState.direction = direction;
     playerState.walkFrame += 1;
     if (playerState.walkFrame >= PLAYER_ANIMATION_FRAMES) {
@@ -5975,7 +6031,6 @@ const updateMonsterMovement = (now) => {
 /* ---------- RENDER - INITIALISATION DU MONDE ---------- */
 
 const renderInitialWorld = () => {
-  renderMap(gameMap);
   renderMonsters(monsters);
   updateWorldRender();
 };
@@ -6008,18 +6063,10 @@ const updateRenderPositions = (now) => {
 
 const updateRenderCamera = () => {
   updateCamera();
+  updatePixiCamera(camera.x, camera.y);
   if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
     updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
   }
-};
-
-const updateRenderMap = () => {
-  if (camera.x === renderState.lastCameraX && camera.y === renderState.lastCameraY) {
-    return;
-  }
-  updateMapPosition();
-  renderState.lastCameraX = camera.x;
-  renderState.lastCameraY = camera.y;
 };
 
 const updateRenderWorldItems = () => {
@@ -6035,9 +6082,35 @@ const updateRenderLight = () => {
   updateLight(playerState);
 };
 
+const updatePixiVisibleChunksAroundPlayer = async () => {
+  if (!(pixiWorldRenderState?.worldMapsByZ instanceof Map)) {
+    return;
+  }
+  const actualMap = pixiWorldRenderState.worldMapsByZ.get(pixiWorldRenderState.currentZ);
+  const playerChunkPosition = getChunkPositionFromWorldPosition(playerState.x, playerState.y);
+  if (!actualMap || !playerChunkPosition) {
+    return;
+  }
+  if (
+    playerChunkPosition.chunkX === pixiWorldRenderState.lastPlayerChunkX &&
+    playerChunkPosition.chunkY === pixiWorldRenderState.lastPlayerChunkY
+  ) {
+    return;
+  }
+
+  await renderPixiVisibleWorldChunks(
+    actualMap,
+    playerChunkPosition.chunkX,
+    playerChunkPosition.chunkY,
+    pixiWorldRenderState.visibleRadiusChunks,
+  );
+
+  pixiWorldRenderState.lastPlayerChunkX = playerChunkPosition.chunkX;
+  pixiWorldRenderState.lastPlayerChunkY = playerChunkPosition.chunkY;
+};
+
 const updateWorldRender = () => {
   updateRenderCamera();
-  updateRenderMap();
   updateRenderWorldItems();
   updateRenderCreatures();
   updateRenderLight();
@@ -6950,13 +7023,19 @@ const startGame = async () => {
   setupTestPlayerInventory();
   setupTestWorld();
   const worldMapsByZ = loadWorldMaps();
-  console.log(worldMapsByZ);
+  console.log(getWorldMapsDebugSummary(worldMapsByZ));
+  console.log(worldMapsByZ.get(0).tilesets[0]);
 
   await initializePixiRenderer({
     htmlParentElement: game,
     gameWidth: GAME_WIDTH,
     gameHeight: GAME_HEIGHT,
   });
+
+  const worldMap = worldMapsByZ.get(0);
+  pixiWorldRenderState.worldMapsByZ = worldMapsByZ;
+  pixiWorldRenderState.currentZ = 0;
+  await updatePixiVisibleChunksAroundPlayer();
 
   initializePlayerUi();
 
