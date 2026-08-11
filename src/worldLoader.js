@@ -1,20 +1,35 @@
+/* ==================================================== */
+//#region     -----  IMPORTS  -----
+/* ==================================================== */
 import worldZMinus1Raw from "./assets/maps/tiled/world_z-1.tmj?raw";
 import worldZ0Raw from "./assets/maps/tiled/world_z0.tmj?raw";
 import { importTiledMapIntoWorldMaps } from "./tiledWorldImporter.js";
+//#endregion  -----  IMPORTS  -----
 
+/* ==================================================== */
+//#region     -----  ASSETS - MODULES VITE  -----
+/* ==================================================== */
 const tilesetRawModulesByPath = import.meta.glob("./assets/tilesets/*.tsj", {
   query: "?raw",
   import: "default",
   eager: true,
 });
+//#endregion  -----  ASSETS - MODULES VITE  -----
 
+/* ==================================================== */
+//#region     -----  OUTILS - PATHS  -----
+/* ==================================================== */
 const getFileNameFromPath = (path) => {
   if (typeof path !== "string" || path === "") {
     return null;
   }
   return path.split("/").at(-1);
 };
+//#endregion  -----  OUTILS - PATHS  -----
 
+/* ==================================================== */
+//#region     -----  TILESETS - HYDRATATION  -----
+/* ==================================================== */
 const createTilesetRawByFileName = () => {
   const tilesetRawByFileName = new Map();
   for (const [path, raw] of Object.entries(tilesetRawModulesByPath)) {
@@ -56,7 +71,11 @@ const hydrateTiledMapTilesets = (tiledMap, tilesetRawByFileName) => {
     tilesets: hydratedTilesets,
   };
 };
+//#endregion  -----  TILESETS - HYDRATATION  -----
 
+/* ==================================================== */
+//#region     -----  WORLD MAPS - LOAD  -----
+/* ==================================================== */
 export const loadWorldMaps = () => {
   const tilesetRawByFileName = createTilesetRawByFileName();
   const worldMapsByZ = new Map();
@@ -68,17 +87,23 @@ export const loadWorldMaps = () => {
   importTiledMapIntoWorldMaps(worldMapsByZ, hydratedWorldZMinus1, "world_z-1.tmj");
   return worldMapsByZ;
 };
+//#endregion  -----  WORLD MAPS - LOAD  -----
 
+/* ==================================================== */
+//#region     -----  DEBUG  -----
+/* ==================================================== */
 export const getWorldMapsDebugSummary = (worldMapsByZ) => {
   const maps = [];
   for (const worldMap of worldMapsByZ.values()) {
     let transitions = 0;
     let spawns = 0;
     let interactables = 0;
+    let npcs = 0;
     for (const chunk of worldMap.chunksByKey.values()) {
       transitions += chunk.transitions.length;
       spawns += chunk.spawns.length;
       interactables += chunk.interactables.length;
+      npcs += chunk.npcs.length;
     }
     maps.push({
       z: worldMap.z,
@@ -86,6 +111,7 @@ export const getWorldMapsDebugSummary = (worldMapsByZ) => {
       transitions,
       spawns,
       interactables,
+      npcs,
     });
   }
   return {
@@ -93,3 +119,4 @@ export const getWorldMapsDebugSummary = (worldMapsByZ) => {
     maps,
   };
 };
+//#endregion  -----  DEBUG  -----

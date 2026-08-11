@@ -1,3 +1,6 @@
+/* ==================================================== */
+//#region     -----  TILESETS - SELECTION  -----
+/* ==================================================== */
 const getTilesetForGid = (tiledTilesets, gid) => {
   if (!Number.isFinite(gid) || gid <= 0 || !Array.isArray(tiledTilesets)) {
     return null;
@@ -21,14 +24,22 @@ const getTilesetForGid = (tiledTilesets, gid) => {
   }
   return bestTileset;
 };
+//#endregion  -----  TILESETS - SELECTION  -----
 
+/* ==================================================== */
+//#region     -----  GID - LOCAL TILE  -----
+/* ==================================================== */
 const getLocalTileIdFromGid = (tileset, gid) => {
   if (!Number.isFinite(tileset?.firstgid) || gid <= 0 || !Number.isFinite(gid) || gid < tileset.firstgid) {
     return null;
   }
   return gid - tileset.firstgid;
 };
+//#endregion  -----  GID - LOCAL TILE  -----
 
+/* ==================================================== */
+//#region     -----  TILESET - SOURCE RECT  -----
+/* ==================================================== */
 const getTileSourcePositionInTileset = (tileset, localTileId) => {
   if (
     !Number.isFinite(tileset?.columns) ||
@@ -60,7 +71,11 @@ const getTileSourcePositionInTileset = (tileset, localTileId) => {
     sourceHeight: tileheight,
   };
 };
+//#endregion  -----  TILESET - SOURCE RECT  -----
 
+/* ==================================================== */
+//#region     -----  RENDER DATA  -----
+/* ==================================================== */
 export const getTileRenderDataFromGid = (tiledTilesets, gid) => {
   if (!Number.isFinite(gid) || gid <= 0 || !Array.isArray(tiledTilesets)) {
     return null;
@@ -88,3 +103,4 @@ export const getTileRenderDataFromGid = (tiledTilesets, gid) => {
     ...sourcePosition,
   };
 };
+//#endregion  -----  RENDER DATA  -----

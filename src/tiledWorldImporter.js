@@ -29,6 +29,7 @@ export const createEmptyWorldMap = (z) => {
   return {
     z,
     chunksByKey: new Map(),
+    interactablesById: new Map(),
   };
 };
 
@@ -103,6 +104,7 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
     interactables: [],
     transitions: [],
     spawns: [],
+    npcs: [],
   };
 };
 
@@ -206,6 +208,8 @@ const importTiledObjectLayerObjects = (worldMap, tiledLayer) => {
       continue;
     }
     const cleanTiledObject = {
+      tiledObjectId: tiledObject.id,
+      z: worldMap.z,
       col,
       row,
       x: tiledObject.x,
@@ -215,6 +219,13 @@ const importTiledObjectLayerObjects = (worldMap, tiledLayer) => {
       properties: getTiledObjectProperties(tiledObject),
     };
     worldChunk[layerName].push(cleanTiledObject);
+
+    if (layerName === "interactables") {
+      const interactableId = cleanTiledObject.properties.interactableId;
+      if (typeof interactableId === "string" && interactableId !== "" && !worldMap.interactablesById.has(interactableId)) {
+        worldMap.interactablesById.set(interactableId, cleanTiledObject);
+      }
+    }
   }
 };
 //#endregion  -----  IMPORT - OBJECT LAYERS  -----
