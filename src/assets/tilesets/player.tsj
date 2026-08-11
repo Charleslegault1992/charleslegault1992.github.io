@@ -1,0 +1,14 @@
+{ "columns":4,
+ "image":"..\/images\/joueurs\/walkingsheet.png",
+ "imageheight":512,
+ "imagewidth":256,
+ "margin":0,
+ "name":"player",
+ "spacing":0,
+ "tilecount":32,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}

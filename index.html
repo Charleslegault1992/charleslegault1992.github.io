@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
     <!-- Google tag (gtag.js) -->
@@ -16,17 +16,26 @@
 
       gtag("config", "G-V4S1ZRKD3N");
     </script>
-    <script src="./js/main.js" defer></script>
-    <link rel="stylesheet" href="./css/style.css" />
+    <!-- <script src="./js/main.js" defer></script> -->
+    <script type="module" src="/src/main.js"></script>
+    <link rel="stylesheet" href="/src/css/style.css" />
     <title>No name yet Online</title>
   </head>
   <body>
+    <div id="game-welcome" class="game-welcome-overlay">
+      <button id="game-welcome-play" class="game-welcome-play-button" type="button">PLAY</button>
+      <div class="game-welcome-language" role="group" aria-label="Language">
+        <button class="game-welcome-language-button" type="button" data-game-language="en">EN</button>
+        <button class="game-welcome-language-button" type="button" data-game-language="fr">FR</button>
+      </div>
+    </div>
+    <div id="character-selector" class="character-selector-overlay" hidden></div>
     <header>
       <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
           <section class="navbar-gauche">
             <a class="navbar-brand" href="#"
-              ><img src="./images/icone.png" alt="Logo" class="d-inline-block align-text-top logo" />No name yet
+              ><img src="/images/icone.png" alt="Logo" class="d-inline-block align-text-top logo" />No name yet
               Online</a
             >
           </section>
@@ -45,13 +54,13 @@
             <div class="collapse navbar-collapse" id="navbarNav">
               <ul class="navbar-nav">
                 <li class="nav-item">
-                  <a class="nav-link active" aria-current="page" href="#">Home</a>
+                  <a class="nav-link active" aria-current="page" href="#" data-game-text="home">Home</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="#">Game</a>
+                  <a class="nav-link" href="#" data-game-text="game">Game</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="#">Account</a>
+                  <a class="nav-link" href="#" data-game-text="account">Account</a>
                 </li>
               </ul>
             </div>
@@ -68,12 +77,35 @@
         </section>
         <section class="boite-jeux" id="boite-jeux">
           <section class="jeux-gauche jeux-panneau">
+            <div id="player-minimap" class="boite-panneau minimap-panel">
+              <div class="minimap-header">
+                <div class="boite-jeux-titre" data-game-text="minimap">Minimap</div>
+                <div class="minimap-controls">
+                  <button id="minimap-zoom-out" class="minimap-control-button" type="button" data-game-title="zoomOut">-</button>
+                  <span id="minimap-zoom-level" class="minimap-zoom-level">100%</span>
+                  <button id="minimap-zoom-in" class="minimap-control-button" type="button" data-game-title="zoomIn">+</button>
+                  <button id="minimap-center" class="minimap-control-button" type="button" data-game-title="centerMinimap">&#9678;</button>
+                </div>
+              </div>
+              <div class="separateur-panneau"></div>
+              <div class="minimap-viewport">
+                <canvas id="minimap-canvas" width="210" height="150"></canvas>
+                <div class="minimap-floor-controls">
+                  <button id="minimap-floor-up" class="minimap-floor-button" type="button" data-game-title="floorUp">&#8593;</button>
+                  <span id="minimap-floor-level" class="minimap-floor-level">Z 0</span>
+                  <button id="minimap-floor-down" class="minimap-floor-button" type="button" data-game-title="floorDown">&#8595;</button>
+                </div>
+              </div>
+            </div>
             <div id="player-stats" class="boite-panneau"></div>
           </section>
 
           <div class="boite-jeux-inner">
-            <section class="jeux" id="game">
+            <section class="jeux" id="game" tabindex="-1">
               <div id="fps-counter">FPS: 0</div>
+              <div id="game-status-message" class="game-status-message"></div>
+              <div id="player-quests" class="boite-panneau quest-window" hidden></div>
+              <div id="game-options" class="boite-panneau options-window" hidden></div>
               <canvas id="light-canvas"></canvas>
               <div id="player">
                 <div class="player-floating-text-layer"></div>
@@ -94,6 +126,16 @@
           <div id="chat" class="chat"></div>
           <input id="chat-input" class="chat-input" />
         </section>
+        <div id="mobile-game-controls" class="mobile-game-controls" aria-hidden="true">
+          <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control">
+            <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
+          </div>
+          <div class="mobile-panel-buttons">
+            <button class="mobile-panel-button" type="button" data-mobile-panel="stats" data-game-text="stats">Stats</button>
+            <button class="mobile-panel-button" type="button" data-mobile-panel="inventory" data-game-text="mobileInventory">Inventory</button>
+            <button class="mobile-panel-button" type="button" data-mobile-panel="chat" data-game-text="mobileChat">Chat</button>
+          </div>
+        </div>
       </div>
     </main>
   </body>

@@ -1,3 +1,127 @@
+0.31 - Version mobile et derniers correctifs
+    - Ajout d'une interface mobile jouable avec joystick et controles tactiles.
+    - Les panneaux peuvent maintenant etre ouverts et fermes individuellement sur mobile.
+    - Amelioration du layout mobile pour garder le jeu, le chat et les controles accessibles.
+    - Correction du corps d'un monstre qui pouvait suivre le joueur au spawn apres une mort simultanee.
+    - Ajout de l'historique du chat avec les fleches du haut et du bas.
+    - Correction du niveau affiche dans la liste des personnages sauvegardes.
+
+0.309 - Correctifs multi-z et interface des personnages
+    - Correction du decor qui pouvait rester sur le mauvais etage apres la mort du joueur.
+    - Correction des barres de vie des monstres apres un changement de z.
+    - Le dernier dommage reste maintenant visible quand un monstre meurt.
+    - Amelioration de la fenetre de selection des personnages avec portrait, nom et niveau.
+    - Ajout de la suppression d'un personnage meme quand il est le dernier disponible.
+
+0.308 - Audio, langues et options
+    - Ajout des musiques et des effets sonores pour le combat, les items, les coffres et les transitions.
+    - Les sons d'attaque jouent seulement quand le coup touche vraiment la cible.
+    - Ajout des options de volume pour la musique et les effets sonores.
+    - Ajout du choix de langue anglais ou francais sur l'accueil et dans les options.
+    - Ajout des traductions francaises pour les menus, messages et dialogues de Kay.
+    - Ajout des couleurs rouge, jaune et verte pour les modes de combat selectionnes.
+
+0.307 - Mini carte et interface des containers
+    - Ajout d'une mini carte basee sur les vraies tiles du monde.
+    - Ajout du zoom, du deplacement, du changement d'etage et du recentrage sur le joueur.
+    - La mini carte se decouvre maintenant a mesure que le personnage explore le monde.
+    - Ajout de l'auto walk sur la mini carte avec une limite de distance.
+    - Les monstres apparaissent sur la mini carte seulement quand ils sont tres proches.
+    - Ajout du scroll et du redimensionnement limite pour les fenetres de containers.
+
+0.306 - Arc, fleches et combat a distance
+    - Ajout de l'arc, des fleches et du projectile visuel lors des attaques a distance.
+    - Les fleches sont consommees depuis le slot d'equipement et demandent un arc equipe.
+    - Le slot de bouclier affiche maintenant une image de fleche quand un arc est equipe.
+    - Les fleches retournent dans le sac ou tombent au sol quand l'arc est retire.
+    - Ajout de la line of sight pour les fleches, les runes et les items lances.
+    - Ajustement de la precision et de la vitesse d'attaque de l'arc.
+
+0.305 - Torches, lumiere et nouvel equipement
+    - Ajout des torches allumables avec carburant, trois stages et une version calcinee.
+    - Une torche eclaire seulement quand elle est equipee ou allumee au sol.
+    - Les caves sont maintenant noires et le monde exterieur utilise une lumiere de jour.
+    - Ajout de la mace comme arme de depart et ajustement des attaques de base.
+    - Amelioration du look des armes pour afficher leur attaque et leur defense.
+    - Ajout d'une torche comme recompense dans le coffre des spiders.
+
+0.304 - NPC et dialogues
+    - Ajout de Kay avec son sprite, son nom, sa barre de vie et son point de spawn.
+    - Ajout des dialogues de NPC avec distance, file d'attente et textes localises.
+    - Kay peut maintenant marcher rarement autour de sa petite zone de spawn.
+    - Les NPC et les monstres reviennent a leur frame normale quand ils arretent de marcher.
+    - Les textes parles restent dans le monde a l'endroit ou ils ont ete dits.
+
+0.303 - Accueil et gestion des personnages
+    - Ajout d'une page d'accueil plein ecran avec image et bouton Play.
+    - Le jeu demarre seulement apres avoir choisi ou cree un personnage.
+    - Ajout du choix entre personnage masculin et feminin avec leur sprite.
+    - Ajout de la fenetre de personnages avec Ctrl+D pendant le jeu.
+    - Ajout du changement de personnage, du logout et de la suppression de personnage.
+    - Ajout de l'autosave aux 30 secondes et lors de la fermeture ou perte de focus de la page.
+
+0.302 - Ciblage et feedback visuel
+    - Ajout d'un indicateur anime sur les tiles valides pendant l'utilisation d'un item.
+    - Les runes affichent les monstres atteignables et les potions montrent la tile du joueur.
+    - Les indicateurs suivent maintenant correctement le joueur et les monstres en mouvement.
+    - Ajout d'un effet visuel de completion quand un coffre de quete est ouvert.
+    - Amelioration des messages d'erreur et des messages de cible perdue en bas du jeu.
+
+0.301 - Potions, sang et effets de sol
+    - Ajout de la potion de mana et de la bouteille vide apres utilisation.
+    - Ajout des liquides au sol avec trois stages de decomposition.
+    - Les liquides sont des effets de sol non cliquables et non deplacables.
+    - Les monstres laissent du sang quand ils sont frappes et une grosse flaque a leur mort.
+    - Les spiders utilisent maintenant du sang vert.
+    - Ajout des messages de recompense de quete avec le loot obtenu.
+
+0.3 - Respawn des monstres et sauvegarde du personnage
+    - Ajout du respawn des monstres avec une file de priorite centrale.
+    - Les temps de respawn sont maintenant configures par zone directement dans Tiled.
+    - Les rats respawn apres 2 minutes et les spiders apres 3 minutes.
+    - Le respawn est bloque si un joueur est proche et reessaye 30 secondes plus tard.
+    - Ajout d'une sauvegarde locale versionnee pour preparer la future sauvegarde serveur.
+    - Sauvegarde de la position, des vitals, de l'experience, des skills, des quetes et de l'equipement.
+    - Sauvegarde recursive des sacs et de leur contenu en gardant les UID des items.
+    - Chargement automatique du personnage et recalcul des stats derivees au demarrage.
+    - Ajout de la sauvegarde rapide avec Ctrl+S.
+
+0.299 - Quetes, navigation et systeme de survie
+    - Ajout de la sanity avec une barre dans le panneau des stats.
+    - Ajout des barres HP, mana et experience avec leur progression.
+    - Ajout de la regeneration HP et mana selon la classe tant que le joueur a de la sanity.
+    - La nourriture augmente maintenant la sanity et la sanity descend avec le temps.
+    - Ajout des coffres de recompense Tiled ouvrables une fois par personnage.
+    - Ajout du systeme de quetes et d'une fenetre centrale pour voir les quetes commencees ou completees.
+    - Ajout des objets Tiled lookOnly pour les pancartes et les objets non deplacables.
+    - Ajout du pathfinding au clique gauche pour deplacer le joueur.
+    - Ajout du mode Follow pour suivre automatiquement le monstre selectionne.
+    - Ajout des messages en bas du jeu pour les actions impossibles et les informations importantes.
+
+0.298 - Monde multi-z, spawns et intelligence des monstres
+    - Ajout du z directement sur le joueur, les monstres et les items.
+    - Ajout des transitions Tiled pour les caves, les trous et les rope spots.
+    - Ajout des player spawns et monster spawns places directement dans Tiled.
+    - Ajout des index de monstres par UID, tile et chunk pour eviter de parcourir toute la liste.
+    - Ajout des states idle, wander, chase et combat pour les monstres.
+    - Ajout du reveil et du sommeil des monstres selon la distance du joueur.
+    - Ajout de la detection par vision avec line of sight et par hearing avec validation du path.
+    - Ajout de la perte de cible selon le z, la distance et les mauvais paths trop longs.
+    - Ajout des mouvements diagonaux avec un cout plus eleve et une priorite aux mouvements droits.
+    - Ajout du combat dance et du recalcul de path quand un autre monstre bloque le chemin.
+
+0.297 - Integration PixiJS et rendu Tiled chunked
+    - Passage du projet sur Vite avec PixiJS installe par npm.
+    - Reorganisation des images dans src/assets et public avec les nouveaux chemins Vite.
+    - Ajout de pixiRenderer.js pour separer le rendu Pixi de la logique du jeu.
+    - Ajout du chargement data-driven des maps .tmj, tilesets .tsj et images de tilesets.
+    - Ajout du resolver GID pour retrouver le tileset et la position de chaque tile dans son image.
+    - Ajout du cache des textures Pixi pour reutiliser les memes textures entre les sprites.
+    - Ajout du rendu des layers ground, groundDetails, walls, objects et top.
+    - Ajout du rendu par chunks visibles autour du joueur avec ajout et retrait automatique des containers.
+    - Migration du joueur, des monstres et des items du rendu DOM vers PixiJS.
+    - Remplacement des anciennes collisions hardcodees par les collisions des maps Tiled.
+
 0.296 - Refactor du moteur de jeu et du rendu
     - Separation rendu/logic de la gameloop
     - Remplacement de setInterval par requestAnimationFrame
@@ -11,6 +135,10 @@
     - Le joueur et les monstres peuvent monter seulement si la hauteur est assez basse, mais peuvent toujours descendre.
     - Amelioration du drag ditems vers les containers pour mieux placer les items dans les cases libres au lieu de swap quand cest pas necessaire.
     - Amelioration du drag et du loot avec des piles d'items plus fiables, du stacking auto et moins de swaps invalides.
+    - Ajout du debut de l'import Tiled .tmj vers une structure worldMapsByZ chunked.
+    - Ajout du loader de maps pour charger world_z0 et world_z-1 depuis les fichiers Tiled.
+    - Ajout du support des layers Tiled: ground, groundDetails, walls, objects, top, collision, interactables, transitions, spawns.
+    - Ajout des interactables Tiled pour les coffres rewardChest et les objets lookOnly.
 
 0.295 - Switch sur la transition des monstres/player/items du CSS a une interpolation data-only
     -Ajout d'une interpolation data-only sur le player/monstres/items
