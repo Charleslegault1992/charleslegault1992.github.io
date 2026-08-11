@@ -1,3 +1,18 @@
+0.312 - Sorts par incantation
+    - Ajout d'un systeme de sorts lances en ecrivant leur incantation latine dans le chat local.
+    - Ajout du sort Lumiere au magic level 0 avec un effet temporaire dans les endroits sombres.
+    - Ajout du sort Soin au magic level 1 avec une puissance basee sur le niveau et le magic level.
+    - Les sorts utilisent le mana, le cooldown magique commun et donnent de l'experience magique.
+    - Les sorts sont partages entre tous les personnages avec le support des restrictions de classe pour plus tard.
+
+0.311 - Amelioration de l'interface mobile
+    - Ajout d'un HUD mobile pour les vitals du joueur et la vie de la cible selectionnee.
+    - Ajout de boutons separes pour la carte, les stats, l'equipement, le sac, le chat, le follow et les stances.
+    - Amelioration des fenetres de sacs, du loot tactile et de l'indicateur pendant l'utilisation d'un item.
+    - Le joystick demande maintenant de garder la direction diagonale avant de marcher en diagonal.
+    - Ajout d'un ecran qui demande de tourner le telephone en mode paysage.
+    - Amelioration du placement, de la transparence et de la fermeture des panneaux sur mobile.
+
 0.31 - Version mobile et derniers correctifs
     - Ajout d'une interface mobile jouable avec joystick et controles tactiles.
     - Les panneaux peuvent maintenant etre ouverts et fermes individuellement sur mobile.

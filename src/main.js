@@ -47,6 +47,7 @@ import {
   stopGameMusic,
   unlockGameAudio,
 } from "./audioManager.js";
+import { spellsDatabase } from "./spellDatabase.js";
 
 /* ==================================================== */
 //#region     -----  BASE - ELEMENTS HTML  -----
@@ -89,6 +90,25 @@ const mobileGameControls = document.querySelector("#mobile-game-controls");
 const mobileJoystick = document.querySelector("#mobile-joystick");
 const mobileJoystickKnob = document.querySelector("#mobile-joystick-knob");
 const mobilePanelButtons = document.querySelectorAll("[data-mobile-panel]");
+const mobileActionButtons = document.querySelectorAll("[data-mobile-action]");
+const mobilePanelCloseButton = document.querySelector("#mobile-panel-close");
+const mobilePlayerName = document.querySelector("#mobile-player-name");
+const mobilePlayerLevel = document.querySelector("#mobile-player-level");
+const mobilePlayerHealthFill = document.querySelector("#mobile-player-health-fill");
+const mobilePlayerHealthValue = document.querySelector("#mobile-player-health-value");
+const mobilePlayerManaFill = document.querySelector("#mobile-player-mana-fill");
+const mobilePlayerManaValue = document.querySelector("#mobile-player-mana-value");
+const mobilePlayerSanityFill = document.querySelector("#mobile-player-sanity-fill");
+const mobilePlayerSanityValue = document.querySelector("#mobile-player-sanity-value");
+const mobileTargetHud = document.querySelector("#mobile-target-hud");
+const mobileTargetName = document.querySelector("#mobile-target-name");
+const mobileTargetValue = document.querySelector("#mobile-target-value");
+const mobileTargetHealthFill = document.querySelector("#mobile-target-health-fill");
+const mobileItemUseIndicator = document.querySelector("#mobile-item-use-indicator");
+const mobileItemUseIcon = document.querySelector("#mobile-item-use-icon");
+const mobileItemUseLabel = document.querySelector("#mobile-item-use-label");
+const mobileStanceIcon = document.querySelector("#mobile-stance-icon");
+const mobileStanceLabel = document.querySelector("#mobile-stance-label");
 //#endregion  -----  BASE - ELEMENTS HTML  -----
 
 /* ==================================================== */
@@ -1204,6 +1224,12 @@ const playerState = {
     nextManaRegenAt: 0,
     nextSanityDecayAt: 0,
   },
+  spellEffects: {
+    light: {
+      radius: 0,
+      expiresAt: 0,
+    },
+  },
   progress: {
     questsById: {},
     rewardClaimsByInteractableId: {},
@@ -2000,6 +2026,7 @@ const resetAfterDeath = () => {
   cancelItemDrag();
   cancelItemUse();
   clearMonsterSelection();
+  syncMobileTargetHud();
   clearMonsters();
   clearGroundItemRender();
   updatePixiVisibleChunksAroundPlayer();
@@ -6325,8 +6352,12 @@ const GAME_UI_TEXT = {
     balanced: "Balanced",
     fullDefense: "Full Defense",
     stats: "Stats",
-    mobileInventory: "Inventory",
+    mobileMap: "Map",
+    mobileEquipment: "Gear",
+    mobileBackpack: "Bag",
     mobileChat: "Chat",
+    rotateDeviceTitle: "Rotate your phone",
+    rotateDeviceText: "This game is played in landscape mode.",
     nameLabel: "Name:",
     healthLabel: "Hp:",
     manaLabel: "Mana:",
@@ -6363,6 +6394,9 @@ const GAME_UI_TEXT = {
     arrowsRequired: "You need arrows to use this bow.",
     invalidCharacterName: "Use 2 to 20 letters. Spaces, apostrophes and hyphens are allowed.",
     invalidAppearance: "Choose a character appearance.",
+    spellWrongClass: "Your class cannot cast this spell.",
+    spellMagicLevelRequired: (level) => `You need magic level ${level} to cast this spell.`,
+    spellNotEnoughMana: "You do not have enough mana.",
     duplicateCharacterName: "A character with this name already exists.",
     characterStorageError: "The character data could not be saved.",
     corruptedSave: "The character data is corrupted.",
@@ -6454,8 +6488,12 @@ const GAME_UI_TEXT = {
     balanced: "Equilibre",
     fullDefense: "Defense",
     stats: "Stats",
-    mobileInventory: "Sac",
+    mobileMap: "Carte",
+    mobileEquipment: "Equip.",
+    mobileBackpack: "Sac",
     mobileChat: "Chat",
+    rotateDeviceTitle: "Tourne ton telephone",
+    rotateDeviceText: "Le jeu se joue en mode paysage.",
     nameLabel: "Nom:",
     healthLabel: "Vie:",
     manaLabel: "Mana:",
@@ -6492,6 +6530,9 @@ const GAME_UI_TEXT = {
     arrowsRequired: "Il te faut des fleches pour utiliser cet arc.",
     invalidCharacterName: "Utilise de 2 a 20 lettres. Les espaces, apostrophes et tirets sont permis.",
     invalidAppearance: "Choisis une apparence.",
+    spellWrongClass: "Ta classe ne peut pas lancer ce sort.",
+    spellMagicLevelRequired: (level) => `Il te faut le niveau de magie ${level} pour lancer ce sort.`,
+    spellNotEnoughMana: "Tu n'as pas assez de mana.",
     duplicateCharacterName: "Un personnage porte deja ce nom.",
     characterStorageError: "Les donnees du personnage n'ont pas pu etre sauvegardees.",
     corruptedSave: "La sauvegarde du personnage est corrompue.",
@@ -7443,6 +7484,9 @@ const updatePlayerInventory = () => {
   refreshCombatModeButtons();
   renderQuestWindow();
   renderOptionsWindow();
+  syncMobileBackpackButton();
+  syncMobileFollowButton();
+  syncItemUseSourceFeedback();
 };
 //#endregion  -----  UI - EQUIPMENT / INVENTAIRE  -----
 
@@ -7621,6 +7665,7 @@ const renderContainerDock = () => {
     let body = null;
     const div = document.createElement("div");
     div.classList.add("container-window");
+    div.classList.add(`container-window-${container.sourceType}`);
     div.dataset.containerUid = container.item.uid;
     const header = document.createElement("div");
     header.classList.add("container-window-header");
@@ -7696,6 +7741,9 @@ const renderContainerDock = () => {
       applyContainerWindowHeightBounds(div, body, container);
     }
   });
+  mobileGameControls?.classList.toggle("mobile-game-controls-container-open", openedContainers.length > 0);
+  syncMobileBackpackButton();
+  syncItemUseSourceFeedback();
 };
 
 const closeAllContainer = () => {
@@ -7749,6 +7797,9 @@ const openContainer = (containerItem, title, source, parent) => {
     maxWindowHeight: null,
   });
 
+  if (isMobileGameLayout()) {
+    setOpenMobilePanel(null);
+  }
   renderContainerDock();
 };
 
@@ -7829,6 +7880,7 @@ const removeUseCursorClass = () => {
 };
 
 const cancelItemUse = () => {
+  clearItemUseSourceFeedback();
   itemUseState.isUsingItem = false;
   itemUseState.source = null;
   itemUseState.item = null;
@@ -7850,7 +7902,55 @@ const startItemUse = (source, item, useData) => {
   itemUseState.item = item;
   itemUseState.useData = useData;
   itemUseState.startedAt = Date.now();
+  syncItemUseSourceFeedback();
   syncItemUseTargetIndicators();
+};
+
+const getItemUseSourceElement = (source) => {
+  if (source?.locationType === "containerSlot") {
+    return document.querySelector(
+      `[data-container-uid="${source.parentContainerUid}"][data-container-slot-index="${source.slotIndex}"]`,
+    );
+  }
+  if (source?.locationType === "equipmentSlot") {
+    return document.querySelector(`[data-equipment-slot="${source.equipmentSlotName}"]`);
+  }
+  return null;
+};
+
+const clearItemUseSourceFeedback = () => {
+  for (const sourceElement of document.querySelectorAll(".item-use-source-active")) {
+    sourceElement.classList.remove("item-use-source-active");
+  }
+  if (isMobileGameLayout() && itemUseState.source?.locationType === "worldItem") {
+    setPixiWorldItemSelected(itemUseState.source.itemUid, false);
+  }
+  if (mobileItemUseIcon) {
+    mobileItemUseIcon.textContent = "";
+  }
+  if (mobileItemUseLabel) {
+    mobileItemUseLabel.textContent = "";
+  }
+  mobileItemUseIndicator?.toggleAttribute("hidden", true);
+};
+
+const syncItemUseSourceFeedback = () => {
+  clearItemUseSourceFeedback();
+  if (!isMobileGameLayout() || !itemUseState.isUsingItem || !itemUseState.item) {
+    return;
+  }
+
+  getItemUseSourceElement(itemUseState.source)?.classList.add("item-use-source-active");
+  if (itemUseState.source?.locationType === "worldItem") {
+    setPixiWorldItemSelected(itemUseState.source.itemUid, true);
+  }
+  if (mobileItemUseIcon) {
+    renderItemIcon(mobileItemUseIcon, itemUseState.item, 28);
+  }
+  if (mobileItemUseLabel) {
+    mobileItemUseLabel.textContent = getLocalizedItemName(itemUseState.item.itemId);
+  }
+  mobileItemUseIndicator?.toggleAttribute("hidden", false);
 };
 
 const isUsingItem = () => {
@@ -8282,6 +8382,36 @@ const setPlayerCombatMode = (combatMode) => {
   playerState.combatMode = combatMode;
 };
 
+const MOBILE_COMBAT_MODE_ORDER = ["fullAttack", "balanced", "fullDefense"];
+const MOBILE_COMBAT_MODE_SHORT_LABELS = {
+  fullAttack: "ATK",
+  balanced: "BAL",
+  fullDefense: "DEF",
+};
+
+const syncMobileStanceButton = () => {
+  const combatMode = playerState.combatMode;
+  if (!MOBILE_COMBAT_MODE_ORDER.includes(combatMode)) {
+    return;
+  }
+  const stanceButton = mobileStanceLabel?.closest(".mobile-stance-button");
+  if (mobileStanceIcon) {
+    mobileStanceIcon.textContent = MOBILE_COMBAT_MODE_SHORT_LABELS[combatMode];
+  }
+  if (mobileStanceLabel) {
+    mobileStanceLabel.textContent = getGameUiText(combatMode);
+  }
+  stanceButton?.setAttribute("data-combat-mode", combatMode);
+  stanceButton?.setAttribute("aria-label", getGameUiText(combatMode));
+};
+
+const cycleMobileCombatMode = () => {
+  const currentIndex = MOBILE_COMBAT_MODE_ORDER.indexOf(playerState.combatMode);
+  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % MOBILE_COMBAT_MODE_ORDER.length;
+  setPlayerCombatMode(MOBILE_COMBAT_MODE_ORDER[nextIndex]);
+  refreshCombatModeButtons();
+};
+
 const refreshCombatModeButtons = () => {
   const combatMode = playerState.combatMode;
   const stanceButtonElement = document.querySelectorAll(".stance-button");
@@ -8295,6 +8425,7 @@ const refreshCombatModeButtons = () => {
       stanceButton.classList.add("stance-button-active");
     }
   });
+  syncMobileStanceButton();
 };
 
 const bindCombatModeButtons = () => {
@@ -8561,6 +8692,7 @@ const updatePlayerStatsUi = () => {
   for (const skillKey of Object.keys(playerState.skills)) {
     updateSkillStatRow(skillKey);
   }
+  syncMobilePlayerHud();
 };
 
 const updatePlayerStats = () => {
@@ -8750,12 +8882,18 @@ const addSkillLevelUpFeedback = (skillKey, newLevel) => {
 /* ---------- UI - SCALE DU JEU ---------- */
 
 const MOBILE_GAME_LAYOUT_QUERY = "(max-width: 900px), (max-width: 1024px) and (pointer: coarse)";
+const MOBILE_JOYSTICK_DIAGONAL_HOLD_MS = 1000;
 const mobileGameLayoutMedia = window.matchMedia(MOBILE_GAME_LAYOUT_QUERY);
 
 const mobileGameUiState = {
   openPanel: null,
   joystickPointerId: null,
   joystickWasMoving: false,
+  joystickDiagonalCandidate: null,
+  joystickDiagonalReady: false,
+  joystickDiagonalTimeoutId: null,
+  joystickClientX: null,
+  joystickClientY: null,
 };
 
 const isMobileGameLayout = () => {
@@ -8787,8 +8925,9 @@ const updateGameScale = () => {
 
 const getMobilePanelElement = (panelName) => {
   const panelElementsByName = {
-    stats: panneauGauche,
-    inventory: panneauDroite,
+    map: playerMinimap,
+    stats: playerStats,
+    inventory: playerInventory,
     chat: boiteChat,
   };
   return panelElementsByName[panelName] ?? null;
@@ -8797,8 +8936,11 @@ const getMobilePanelElement = (panelName) => {
 const setOpenMobilePanel = (panelName = null) => {
   const nextPanelName = mobileGameUiState.openPanel === panelName ? null : panelName;
   mobileGameUiState.openPanel = nextPanelName;
+  mobileGameControls?.classList.toggle("mobile-game-controls-panel-open", nextPanelName !== null);
+  mobileGameControls?.classList.toggle("mobile-game-controls-chat-open", nextPanelName === "chat");
+  mobilePanelCloseButton?.toggleAttribute("hidden", nextPanelName === null);
 
-  for (const name of ["stats", "inventory", "chat"]) {
+  for (const name of ["map", "stats", "inventory", "chat"]) {
     getMobilePanelElement(name)?.classList.toggle("mobile-panel-open", name === nextPanelName);
   }
   for (const button of mobilePanelButtons) {
@@ -8812,12 +8954,95 @@ const setOpenMobilePanel = (panelName = null) => {
   }
 };
 
+const setMobileHudProgress = (fillElement, valueElement, value, maximumValue) => {
+  if (!fillElement || !valueElement || !Number.isFinite(value) || !Number.isFinite(maximumValue)) {
+    return;
+  }
+  const safeMaximumValue = Math.max(maximumValue, 0);
+  const progressRatio = safeMaximumValue > 0 ? clamp(value / safeMaximumValue, 0, 1) : 0;
+  fillElement.style.width = `${progressRatio * 100}%`;
+  valueElement.textContent = `${Math.max(Math.floor(value), 0)}/${Math.floor(safeMaximumValue)}`;
+};
+
+const syncMobilePlayerHud = () => {
+  if (!mobilePlayerName || !mobilePlayerLevel) {
+    return;
+  }
+  mobilePlayerName.textContent = playerState.name;
+  mobilePlayerLevel.textContent = `Lv ${playerState.level}`;
+  setMobileHudProgress(mobilePlayerHealthFill, mobilePlayerHealthValue, playerState.hp, playerState.maxHp);
+  setMobileHudProgress(mobilePlayerManaFill, mobilePlayerManaValue, playerState.mana, playerState.maxMana);
+  setMobileHudProgress(mobilePlayerSanityFill, mobilePlayerSanityValue, playerState.sanity, playerState.maxSanity);
+};
+
+const syncMobileTargetHud = () => {
+  const monster = selectedMonsterUid === null ? null : (monstersByUid.get(selectedMonsterUid) ?? null);
+  if (!monster || monster.z !== playerState.z) {
+    mobileTargetHud?.toggleAttribute("hidden", true);
+    return;
+  }
+
+  const monsterData = getMonsterData(monster.monsterId);
+  const localizedMonsterData = getLocalizedMonsterData(monster.monsterId) ?? monsterData;
+  if (!monsterData || !localizedMonsterData || !mobileTargetName || !mobileTargetValue || !mobileTargetHealthFill) {
+    mobileTargetHud?.toggleAttribute("hidden", true);
+    return;
+  }
+
+  const hpRatio = clamp(monster.hp / monsterData.maxHp, 0, 1);
+  mobileTargetName.textContent = localizedMonsterData.name;
+  mobileTargetValue.textContent = `${Math.max(monster.hp, 0)}/${monsterData.maxHp}`;
+  mobileTargetHealthFill.style.width = `${hpRatio * 100}%`;
+  mobileTargetHealthFill.style.setProperty("--mobile-target-hp-color", getHpColor(monster.hp, monsterData.maxHp));
+  mobileTargetHud.toggleAttribute("hidden", false);
+};
+
+const syncMobileBackpackButton = () => {
+  const backpackButton = document.querySelector('[data-mobile-action="toggle-backpack"]');
+  const backpack = getEquipmentSlotItem("backpack");
+  const isOpen = backpack ? findOpenedContainerWrapperByUid(backpack.uid) !== null : false;
+  backpackButton?.classList.toggle("mobile-panel-button-active", isOpen);
+  backpackButton?.setAttribute("aria-expanded", String(isOpen));
+  backpackButton?.toggleAttribute("disabled", !backpack);
+};
+
+const syncMobileFollowButton = () => {
+  const followButton = document.querySelector('[data-mobile-action="toggle-follow"]');
+  const isActive = playerNavigationState.followEnabled;
+  followButton?.classList.toggle("mobile-panel-button-active", isActive);
+  followButton?.setAttribute("aria-pressed", String(isActive));
+};
+
+const toggleMobileBackpack = () => {
+  const backpack = getEquipmentSlotItem("backpack");
+  if (!backpack || !isOpenableContainerItem(backpack)) {
+    showGameStatusMessage(getGameUiText("backpackRequired"));
+    syncMobileBackpackButton();
+    return;
+  }
+
+  const openedBackpack = findOpenedContainerWrapperByUid(backpack.uid);
+  if (openedBackpack) {
+    closeContainer(backpack);
+    return;
+  }
+
+  setOpenMobilePanel(null);
+  openContainer(backpack, getLocalizedItemName(backpack.itemId), "equipment", null);
+};
+
 const syncMobileGameLayout = () => {
   const mobileLayout = isMobileGameLayout();
   mobileGameControls?.setAttribute("aria-hidden", String(!mobileLayout));
   if (!mobileLayout) {
     setOpenMobilePanel(null);
   }
+  syncMobilePlayerHud();
+  syncMobileTargetHud();
+  syncMobileBackpackButton();
+  syncMobileFollowButton();
+  syncMobileStanceButton();
+  syncItemUseSourceFeedback();
   updateGameScale();
 };
 
@@ -9280,6 +9505,24 @@ const drawTorchGlow = (screenX, screenY, radius) => {
   ctx.fillRect(screenX - glowRadius, screenY - glowRadius, glowRadius * 2, glowRadius * 2);
 };
 
+const getActivePlayerSpellLightRadius = (now) => {
+  const lightEffect = playerState.spellEffects.light;
+  if (!Number.isFinite(now) || lightEffect.expiresAt <= now) {
+    return 0;
+  }
+  return lightEffect.radius;
+};
+
+const drawMagicLightGlow = (screenX, screenY, radius) => {
+  const glowRadius = radius * 0.75;
+  const gradient = ctx.createRadialGradient(screenX, screenY, 12, screenX, screenY, glowRadius);
+  gradient.addColorStop(0, "rgba(222, 239, 255, 0.04)");
+  gradient.addColorStop(0.6, "rgba(139, 194, 255, 0.025)");
+  gradient.addColorStop(1, "rgba(90, 150, 255, 0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(screenX - glowRadius, screenY - glowRadius, glowRadius * 2, glowRadius * 2);
+};
+
 const drawOutdoorSunlight = () => {
   const radius = Math.max(GAME_WIDTH, GAME_HEIGHT);
   const gradient = ctx.createRadialGradient(GAME_WIDTH * 0.18, 0, 0, GAME_WIDTH * 0.18, 0, radius);
@@ -9312,6 +9555,11 @@ const updateLight = (source) => {
     );
   }
 
+  const spellLightRadius = getActivePlayerSpellLightRadius(Date.now());
+  if (playerScreenPosition && spellLightRadius > 0) {
+    drawDarknessCutout(playerScreenPosition.screenX, playerScreenPosition.screenY, spellLightRadius, 0.7);
+  }
+
   const torchLights = getActiveTorchLightSources();
   for (const torchLight of torchLights) {
     const screenPosition = getLightSourceScreenPosition(torchLight.source, torchLight.surfaceOffsetY);
@@ -9329,6 +9577,9 @@ const updateLight = (source) => {
     if (screenPosition && radius > 0) {
       drawTorchGlow(screenPosition.screenX, screenPosition.screenY, radius);
     }
+  }
+  if (playerScreenPosition && spellLightRadius > 0) {
+    drawMagicLightGlow(playerScreenPosition.screenX, playerScreenPosition.screenY, spellLightRadius);
   }
 };
 //#endregion  -----  LIGHT - CANVAS  -----
@@ -9367,13 +9618,26 @@ const resetMovementKeys = () => {
   keysPressed.down = false;
 };
 
+const resetMobileJoystickDiagonalHold = () => {
+  if (mobileGameUiState.joystickDiagonalTimeoutId !== null) {
+    clearTimeout(mobileGameUiState.joystickDiagonalTimeoutId);
+  }
+  mobileGameUiState.joystickDiagonalCandidate = null;
+  mobileGameUiState.joystickDiagonalReady = false;
+  mobileGameUiState.joystickDiagonalTimeoutId = null;
+  mobileGameUiState.joystickClientX = null;
+  mobileGameUiState.joystickClientY = null;
+};
+
 const resetMobileJoystick = () => {
   mobileGameUiState.joystickPointerId = null;
   mobileGameUiState.joystickWasMoving = false;
+  resetMobileJoystickDiagonalHold();
   resetMovementKeys();
   if (mobileJoystickKnob) {
     mobileJoystickKnob.style.transform = "translate(0px, 0px)";
   }
+  mobileJoystick?.classList.remove("mobile-joystick-diagonal-pending", "mobile-joystick-diagonal-ready");
 };
 
 const updateMobileJoystickFromPointer = (clientX, clientY) => {
@@ -9392,11 +9656,57 @@ const updateMobileJoystickFromPointer = (clientX, clientY) => {
   const deltaX = rawDeltaX * distanceScale;
   const deltaY = rawDeltaY * distanceScale;
   const deadZone = maxDistance * 0.3;
+  const absoluteDeltaX = Math.abs(deltaX);
+  const absoluteDeltaY = Math.abs(deltaY);
+  const dominantAxisDistance = Math.max(absoluteDeltaX, absoluteDeltaY);
+  const secondaryAxisDistance = Math.min(absoluteDeltaX, absoluteDeltaY);
+  const diagonalRatio = dominantAxisDistance > 0 ? secondaryAxisDistance / dominantAxisDistance : 0;
+  let diagonalCandidate = null;
+  if (dominantAxisDistance > deadZone && diagonalRatio >= 0.72) {
+    const horizontalDirection = deltaX < 0 ? "left" : "right";
+    const verticalDirection = deltaY < 0 ? "up" : "down";
+    diagonalCandidate = `${horizontalDirection}:${verticalDirection}`;
+  }
 
-  keysPressed.left = deltaX < -deadZone;
-  keysPressed.right = deltaX > deadZone;
-  keysPressed.up = deltaY < -deadZone;
-  keysPressed.down = deltaY > deadZone;
+  mobileGameUiState.joystickClientX = clientX;
+  mobileGameUiState.joystickClientY = clientY;
+
+  if (diagonalCandidate !== mobileGameUiState.joystickDiagonalCandidate) {
+    resetMobileJoystickDiagonalHold();
+    mobileGameUiState.joystickClientX = clientX;
+    mobileGameUiState.joystickClientY = clientY;
+    if (diagonalCandidate) {
+      mobileGameUiState.joystickDiagonalCandidate = diagonalCandidate;
+      mobileGameUiState.joystickDiagonalTimeoutId = setTimeout(() => {
+        if (
+          mobileGameUiState.joystickPointerId === null ||
+          mobileGameUiState.joystickDiagonalCandidate !== diagonalCandidate
+        ) {
+          return;
+        }
+        mobileGameUiState.joystickDiagonalReady = true;
+        mobileGameUiState.joystickDiagonalTimeoutId = null;
+        navigator.vibrate?.(8);
+        updateMobileJoystickFromPointer(mobileGameUiState.joystickClientX, mobileGameUiState.joystickClientY);
+      }, MOBILE_JOYSTICK_DIAGONAL_HOLD_MS);
+    }
+  }
+
+  const shouldMoveDiagonally = diagonalCandidate !== null && mobileGameUiState.joystickDiagonalReady;
+  mobileJoystick.classList.toggle("mobile-joystick-diagonal-pending", diagonalCandidate !== null && !shouldMoveDiagonally);
+  mobileJoystick.classList.toggle("mobile-joystick-diagonal-ready", shouldMoveDiagonally);
+
+  resetMovementKeys();
+  if (dominantAxisDistance > deadZone) {
+    if (shouldMoveDiagonally || absoluteDeltaX > absoluteDeltaY) {
+      keysPressed.left = deltaX < 0;
+      keysPressed.right = deltaX > 0;
+    }
+    if (shouldMoveDiagonally || absoluteDeltaY > absoluteDeltaX) {
+      keysPressed.up = deltaY < 0;
+      keysPressed.down = deltaY > 0;
+    }
+  }
 
   const isMoving = keysPressed.left || keysPressed.right || keysPressed.up || keysPressed.down;
   if (isMoving && !mobileGameUiState.joystickWasMoving) {
@@ -9699,6 +10009,7 @@ window.addEventListener("resize", () => {
 });
 window.visualViewport?.addEventListener("resize", updateGameScale);
 window.addEventListener("orientationchange", () => {
+  resetMobileJoystick();
   requestAnimationFrame(updateGameScale);
 });
 
@@ -10163,11 +10474,29 @@ const createTouchReleaseEvent = (pointerEvent) => {
   };
 };
 
+const getMobileWorldContainerSourceAtTarget = (target) => {
+  if (!target?.tile || target.monster) {
+    return null;
+  }
+
+  const item = getTopWorldItemAtTile(target.tile.x, target.tile.y, playerState.z);
+  if (!item || !isOpenableContainerItem(item)) {
+    return null;
+  }
+
+  const source = {
+    locationType: "worldItem",
+    itemUid: item.uid,
+  };
+  return canInteractWithWorldItemSource(source) ? source : null;
+};
+
 document.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "touch" && isMobileGameLayout() && mobileGameUiState.openPanel !== null) {
     const openPanelElement = getMobilePanelElement(mobileGameUiState.openPanel);
     const clickedPanelButton = event.target instanceof Element && event.target.closest(".mobile-panel-buttons");
-    if (!openPanelElement?.contains(event.target) && !clickedPanelButton) {
+    const clickedContainerWindow = event.target instanceof Element && event.target.closest("#player-containers");
+    if (!openPanelElement?.contains(event.target) && !clickedPanelButton && !clickedContainerWindow) {
       event.preventDefault();
       setOpenMobilePanel(null);
       return;
@@ -10246,18 +10575,22 @@ const finishMobileTouchInput = (event) => {
   event.preventDefault();
   const releaseEvent = createTouchReleaseEvent(event);
   const pendingSource = dragState.pendingSourceLocation;
+  const target = mobileTouchInputState.didMove ? null : getPointerTargetFromEvent(releaseEvent);
 
   if (mobileTouchInputState.didLongPress) {
     cancelItemDrag();
   } else if (dragState.isDragging) {
     handleItemUiMouseUp(releaseEvent);
+  } else if (target?.monster) {
+    resetDragStatePending();
+    selectMonster(target.monster);
   } else if (pendingSource && !mobileTouchInputState.didMove) {
     resetDragStatePending();
     handleUseItemFromSource(pendingSource);
   } else if (!mobileTouchInputState.didMove) {
-    const target = getPointerTargetFromEvent(releaseEvent);
-    if (target?.monster) {
-      selectMonster(target.monster);
+    const worldContainerSource = getMobileWorldContainerSourceAtTarget(target);
+    if (worldContainerSource) {
+      handleUseItemFromSource(worldContainerSource);
     } else if (handleInteractableContextMenu(target) || handleTransitionContextMenu(target)) {
       inputState.shouldBlockNextWorldClick = true;
     } else if (target?.pointerInsideMap && target.tile) {
@@ -10318,6 +10651,33 @@ for (const button of mobilePanelButtons) {
     setOpenMobilePanel(button.dataset.mobilePanel);
   });
 }
+
+for (const button of mobileActionButtons) {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.dataset.mobileAction === "toggle-backpack") {
+      toggleMobileBackpack();
+    } else if (button.dataset.mobileAction === "toggle-follow") {
+      togglePlayerFollow();
+      syncMobileFollowButton();
+    } else if (button.dataset.mobileAction === "cycle-stance") {
+      cycleMobileCombatMode();
+    }
+  });
+}
+
+mobileItemUseIndicator?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  cancelItemUse();
+});
+
+mobilePanelCloseButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  setOpenMobilePanel(null);
+});
 
 mobileGameLayoutMedia.addEventListener("change", syncMobileGameLayout);
 syncMobileGameLayout();
@@ -11594,6 +11954,9 @@ const monsterHpRefresh = (monster) => {
     monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
     monsterHp.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
   }
+  if (monster?.uid === selectedMonsterUid) {
+    syncMobileTargetHud();
+  }
 };
 
 const createMonster = (monsterId, x, y, z) => {
@@ -11952,10 +12315,12 @@ const selectMonster = (monster) => {
     if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
       stopPlayerNavigation();
     }
+    syncMobileTargetHud();
     return;
   }
   selectedMonsterUid = monster.uid;
   selectMonsterElement(selectedMonsterUid);
+  syncMobileTargetHud();
   if (playerNavigationState.followEnabled) {
     startPlayerFollowNavigation();
   }
@@ -11968,6 +12333,7 @@ const loseSelectedMonsterTarget = () => {
 
   selectedMonsterUid = null;
   clearMonsterSelection();
+  syncMobileTargetHud();
 
   const wasFollowing =
     playerNavigationState.followEnabled || playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow;
@@ -12090,6 +12456,7 @@ const clearSelectedMonsterIfNeeded = (monster) => {
     if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
       stopPlayerNavigation();
     }
+    syncMobileTargetHud();
   }
 };
 
@@ -13569,6 +13936,107 @@ const calculateRuneAttackResult = (useData) => {
   };
 };
 
+/* ---------- COMBAT - SORTS ---------- */
+
+const normalizeSpellIncantation = (text) => {
+  if (typeof text !== "string") {
+    return "";
+  }
+  return text.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+};
+
+const spellsByIncantation = new Map(
+  Object.values(spellsDatabase).map((spellData) => [normalizeSpellIncantation(spellData.incantation), spellData]),
+);
+
+const getSpellFromChatText = (text) => {
+  const normalizedIncantation = normalizeSpellIncantation(text);
+  return spellsByIncantation.get(normalizedIncantation) ?? null;
+};
+
+const getSpellPowerAmount = (spellData) => {
+  const power = spellData?.power;
+  const magicLevel = playerState.skills.magic.level;
+  if (
+    !Number.isFinite(power?.min) ||
+    !Number.isFinite(power?.max) ||
+    !Number.isFinite(power?.magicLevelMultiplier) ||
+    !Number.isFinite(power?.levelMultiplier)
+  ) {
+    return 0;
+  }
+
+  const minimumPower = power.min + magicLevel * power.magicLevelMultiplier + playerState.level * power.levelMultiplier;
+  const maximumPower = power.max + magicLevel * power.magicLevelMultiplier + playerState.level * power.levelMultiplier;
+  return Math.max(1, Math.floor(getRandomFloat(minimumPower, maximumPower)));
+};
+
+const castSelfHealingSpell = (spellData) => {
+  if (playerState.hp >= playerState.maxHp) {
+    showGameStatusMessage(getGameUiText("fullHealth"));
+    return false;
+  }
+
+  const restoredAmount = Math.min(getSpellPowerAmount(spellData), playerState.maxHp - playerState.hp);
+  playerState.hp += restoredAmount;
+  showFloatingTextAbovePlayer(restoredAmount, spellData.textType);
+  return true;
+};
+
+const castPlayerLightSpell = (spellData) => {
+  if (!Number.isFinite(spellData?.durationMs) || !Number.isFinite(spellData?.lightRadius)) {
+    return false;
+  }
+  playerState.spellEffects.light.radius = spellData.lightRadius;
+  playerState.spellEffects.light.expiresAt = Date.now() + spellData.durationMs;
+  return true;
+};
+
+const applyMagicExperienceFromSpell = () => {
+  const experienceMultiplier = getSkillExperienceGainMultiplier("magic");
+  const experienceAmount = normalizeSkillExperienceGain(SKILL_EXPERIENCE_GAIN_PER_TRY * experienceMultiplier);
+  applyExperienceToPlayerSkill("magic", experienceAmount);
+};
+
+const castPlayerSpell = (spellData) => {
+  if (!spellData) {
+    return false;
+  }
+  if (Array.isArray(spellData.allowedClassIds) && !spellData.allowedClassIds.includes(playerState.classId)) {
+    showGameStatusMessage(getGameUiText("spellWrongClass"));
+    return false;
+  }
+  if (playerState.skills.magic.level < spellData.requiredMagicLevel) {
+    showGameStatusMessage(getGameUiText("spellMagicLevelRequired")(spellData.requiredMagicLevel));
+    return false;
+  }
+  if (!isUseCooldownReady(spellData.cooldownGroup)) {
+    showGameStatusMessage(getGameUiText("exhausted"));
+    return false;
+  }
+  if (playerState.mana < spellData.manaCost) {
+    showGameStatusMessage(getGameUiText("spellNotEnoughMana"));
+    return false;
+  }
+
+  let didCastSpell = false;
+  if (spellData.action === "healSelf") {
+    didCastSpell = castSelfHealingSpell(spellData);
+  } else if (spellData.action === "lightSelf") {
+    didCastSpell = castPlayerLightSpell(spellData);
+  }
+  if (!didCastSpell) {
+    return false;
+  }
+
+  playerState.mana -= spellData.manaCost;
+  startUseCooldown(spellData.cooldownGroup);
+  applyMagicExperienceFromSpell();
+  refreshPlayerVitalsUi();
+  playGameSfx(GAME_SFX.runeUse);
+  return true;
+};
+
 const getExperienceRewardFromMonster = (monster) => {
   if (!monster) {
     return 0;
@@ -13949,8 +14417,13 @@ const sendPlayerChatMessage = (text) => {
     return false;
   }
   if (activeChatChannelId === "local") {
+    const spellData = getSpellFromChatText(text);
     showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
-    handleNpcPlayerSpeech(text, playerState, Date.now());
+    if (spellData) {
+      castPlayerSpell(spellData);
+    } else {
+      handleNpcPlayerSpeech(text, playerState, Date.now());
+    }
   }
   renderActiveChatMessages();
   return true;
