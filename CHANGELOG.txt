@@ -1,3 +1,21 @@
+0.319 - Correctifs des personnages et du rendu
+    - Amelioration du cadrage des portraits dans la selection des personnages.
+    - Correction de la position de Charles dans le monde.
+    - Synchronisation du rendu Pixi avec la boucle du jeu pour garder les noms et barres de vie fixes sur les creatures.
+
+0.318 - Banque et gestion de l'argent
+    - Ajout de Charles le banquier avec depot, retrait, balance et echange de monnaie.
+    - Le solde bancaire est maintenant sauvegarde avec le personnage.
+    - Un clic droit sur une pile de monnaie ouvre maintenant une fenetre pour separer la quantite.
+    - Les echanges entre pieces d'or, platine et cristal passent maintenant par la banque.
+
+0.317 - Apparence, equipement et economie
+    - Ajout du choix de couleur pour les cheveux, le chandail, les pantalons et les bottes des personnages.
+    - Ajout de nouveaux pantalons, bottes, armures, casques et boucliers depuis la sprite sheet.
+    - Ajout des premieres pieces d'equipement dans les categories d'achat et de vente de Ben.
+    - Ajout des pieces de platine et de cristal avec leur vraie valeur en pieces d'or.
+    - Les sorts partagent maintenant leur cooldown et les runes utilisent leur propre cooldown commun.
+
 0.316 - Containers et cooldown des runes
     - Les fenetres de bags et de corps peuvent maintenant etre replacees dans le panneau avec un drag.
     - Les actions apres un auto walk attendent la fin visuelle du dernier pas avant de se lancer.

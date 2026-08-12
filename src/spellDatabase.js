@@ -11,7 +11,7 @@ export const spellsDatabase = {
     allowedClassIds: null,
     requiredMagicLevel: 0,
     manaCost: 5,
-    cooldownGroup: "magic",
+    cooldownGroup: "spell",
     action: "lightSelf",
     durationMs: 180000,
     lightRadius: 340,
@@ -40,7 +40,7 @@ export const spellsDatabase = {
     allowedClassIds: null,
     requiredMagicLevel: 1,
     manaCost: 20,
-    cooldownGroup: "magic",
+    cooldownGroup: "spell",
     action: "healSelf",
     power: {
       min: 14,

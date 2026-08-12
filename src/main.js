@@ -15,6 +15,7 @@ import {
   removePixiNpcVisual,
   removePixiMonsterVisual,
   removePixiWorldItemVisual,
+  renderPixiFrame,
   renderPixiVisibleWorldChunks,
   setPixiMonsterSelected,
   setPixiItemUseTargets,
@@ -33,9 +34,11 @@ import {
 import { getWorldMapsDebugSummary, loadWorldMaps } from "./worldLoader.js";
 import {
   createCharacterProfile,
+  DEFAULT_CHARACTER_APPEARANCE_COLORS,
   deleteCharacterProfile,
   listCharacterProfiles,
   loadCharacterSaveDocument,
+  normalizeCharacterAppearanceColors,
   saveCharacterSnapshot,
   setActiveCharacterId,
 } from "./characterSaveStore.js";
@@ -74,6 +77,7 @@ const gameWelcome = document.querySelector("#game-welcome");
 const gameWelcomePlayButton = document.querySelector("#game-welcome-play");
 const gameWelcomeLanguageButtons = document.querySelectorAll("[data-game-language]");
 const characterSelector = document.querySelector("#character-selector");
+const stackSplitMenu = document.querySelector("#stack-split-menu");
 const playerContainers = document.querySelector("#player-containers");
 const player = document.querySelector("#player");
 const game = document.querySelector("#game");
@@ -89,6 +93,7 @@ const lightCanvas = document.querySelector("#light-canvas");
 const fpsCounter = document.querySelector("#fps-counter");
 const gameStatusMessage = document.querySelector("#game-status-message");
 const mobileGameControls = document.querySelector("#mobile-game-controls");
+const mobileJoystickZone = document.querySelector("#mobile-joystick-zone");
 const mobileJoystick = document.querySelector("#mobile-joystick");
 const mobileJoystickKnob = document.querySelector("#mobile-joystick-knob");
 const mobilePanelButtons = document.querySelectorAll("[data-mobile-panel]");
@@ -290,6 +295,10 @@ let nextMonsterRespawnEventOrder = 0;
 
 const questUiState = {
   isOpen: false,
+};
+const stackSplitMenuState = {
+  source: null,
+  itemUid: null,
 };
 
 const spellUiState = {
@@ -747,6 +756,253 @@ const itemsDatabase = {
       ],
     },
   },
+  ironShield: {
+    itemId: "ironShield",
+    name: "Iron Bulwark",
+    desc: "A dependable shield forged from solid iron.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "an",
+    weight: 42,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 16 },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  azureGuardShield: {
+    itemId: "azureGuardShield",
+    name: "Azure Guard",
+    desc: "A blue shield carried by veteran sentinels.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "an",
+    weight: 44,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 18 },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  suncrestShield: {
+    itemId: "suncrestShield",
+    name: "Suncrest Shield",
+    desc: "Its bronze crest shines like a small sun.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 46,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 20 },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  lionheartShield: {
+    itemId: "lionheartShield",
+    name: "Lionheart Aegis",
+    desc: "A noble shield marked by a silver lion.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 48,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 22 },
+    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  dreadShield: {
+    itemId: "dreadShield",
+    name: "Dreadwatch Shield",
+    desc: "A dark shield trimmed with old gold.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 50,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 24 },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  seraphShield: {
+    itemId: "seraphShield",
+    name: "Seraph Aegis",
+    desc: "A jeweled shield shaped like folded wings.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 52,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 27 },
+    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  groveShield: {
+    itemId: "groveShield",
+    name: "Grovekeeper Shield",
+    desc: "A round shield blessed with an ancient leaf.",
+    type: "shield",
+    equipmentSlot: ["shield"],
+    suffix: "a",
+    weight: 38,
+    stackable: false,
+    blockMovement: false,
+    combat: { shieldDefense: 19 },
+    render: { atlas: "items", parts: [{ atlasCol: 7, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  hideTrousers: {
+    itemId: "hideTrousers",
+    name: "Roughhide Trousers",
+    desc: "Heavy trousers stitched from rough hide.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 22,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 2 },
+    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  wandererPants: {
+    itemId: "wandererPants",
+    name: "Wanderer Pants",
+    desc: "Simple trousers made for long roads.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 18,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 1 },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  hunterLeggings: {
+    itemId: "hunterLeggings",
+    name: "Hunter Leggings",
+    desc: "Flexible leggings reinforced at the knees.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 24,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 3 },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  chainLeggings: {
+    itemId: "chainLeggings",
+    name: "Chain Leggings",
+    desc: "Interlocked rings protect the legs without slowing them.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 32,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 4 },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  knightGreaves: {
+    itemId: "knightGreaves",
+    name: "Knight Greaves",
+    desc: "Polished steel greaves made for the front line.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 38,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 5 },
+    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  sunforgedGreaves: {
+    itemId: "sunforgedGreaves",
+    name: "Sunforged Greaves",
+    desc: "Golden greaves forged for a royal champion.",
+    type: "legs",
+    equipmentSlot: ["legs"],
+    suffix: "some",
+    weight: 40,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 6 },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  wornBoots: {
+    itemId: "wornBoots",
+    name: "Roadworn Boots",
+    desc: "Old boots that have crossed many muddy roads.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 12,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 1 },
+    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  leatherBoots: {
+    itemId: "leatherBoots",
+    name: "Leather Boots",
+    desc: "Sturdy leather boots with a comfortable fit.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 14,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 1 },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  ironBoots: {
+    itemId: "ironBoots",
+    name: "Ironstep Boots",
+    desc: "Iron-plated boots that land with authority.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 22,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 2 },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  steelBoots: {
+    itemId: "steelBoots",
+    name: "Steel Vanguard Boots",
+    desc: "Reinforced boots worn by disciplined guards.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 25,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 3 },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  tidewalkerBoots: {
+    itemId: "tidewalkerBoots",
+    name: "Tidewalker Boots",
+    desc: "Blue-trimmed boots that never seem to stay wet.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 3 },
+    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  sunforgedBoots: {
+    itemId: "sunforgedBoots",
+    name: "Sunforged Boots",
+    desc: "Ornate boots plated with warm golden steel.",
+    type: "boots",
+    equipmentSlot: ["boots"],
+    suffix: "some",
+    weight: 27,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 4 },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
   leatherArmor: {
     itemId: "leatherArmor",
     name: "Leather Armor",
@@ -772,6 +1028,201 @@ const itemsDatabase = {
         },
       ],
     },
+  },
+  studdedLeatherArmor: {
+    itemId: "studdedLeatherArmor",
+    name: "Studded Wayfarer Coat",
+    desc: "A leather coat reinforced with metal studs.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 38,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 6 },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  mercenaryArmor: {
+    itemId: "mercenaryArmor",
+    name: "Mercenary Harness",
+    desc: "Layered leather and iron built for practical warfare.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 42,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 7 },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  steelPlate: {
+    itemId: "steelPlate",
+    name: "Steel Vanguard Plate",
+    desc: "A dark steel breastplate made to hold the line.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 55,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 9 },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  tideforgedArmor: {
+    itemId: "tideforgedArmor",
+    name: "Tideforged Mail",
+    desc: "Blue steel mail that moves like flowing water.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 48,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 10 },
+    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  arcanistRobe: {
+    itemId: "arcanistRobe",
+    name: "Violet Arcanist Robe",
+    desc: "An ornate robe woven for a practiced spellcaster.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 24,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 7 },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  grovekeeperMantle: {
+    itemId: "grovekeeperMantle",
+    name: "Grovekeeper Mantle",
+    desc: "A moss-green mantle smelling faintly of rain.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 6 },
+    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  midnightMantle: {
+    itemId: "midnightMantle",
+    name: "Midnight Mantle",
+    desc: "A deep blue mantle favored by wandering seers.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "a",
+    weight: 21,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 7 },
+    render: { atlas: "items", parts: [{ atlasCol: 7, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  ivoryMantle: {
+    itemId: "ivoryMantle",
+    name: "Ivory Oracle Mantle",
+    desc: "A bright mantle bordered with ancient gold.",
+    type: "armor",
+    equipmentSlot: ["armor"],
+    suffix: "an",
+    weight: 22,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 8 },
+    render: { atlas: "items", parts: [{ atlasCol: 8, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  wandererHood: {
+    itemId: "wandererHood",
+    name: "Wanderer Hood",
+    desc: "A weathered hood that keeps dust from the eyes.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "a",
+    weight: 8,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 1 },
+    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  groveHood: {
+    itemId: "groveHood",
+    name: "Grove Hood",
+    desc: "A green hood used by quiet forest wardens.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "a",
+    weight: 8,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 1 },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  leatherCap: {
+    itemId: "leatherCap",
+    name: "Ironbound Leather Cap",
+    desc: "A leather cap strengthened with narrow iron bands.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "an",
+    weight: 14,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 2 },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  ironHelm: {
+    itemId: "ironHelm",
+    name: "Iron Sentinel Helm",
+    desc: "A broad iron helm with guarded cheeks.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "an",
+    weight: 20,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 3 },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  hornedSteelHelm: {
+    itemId: "hornedSteelHelm",
+    name: "Horned Steel Helm",
+    desc: "A steel helm crowned by two short horns.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "a",
+    weight: 23,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 4 },
+    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  knightGreathelm: {
+    itemId: "knightGreathelm",
+    name: "Knight Greathelm",
+    desc: "A sealed helm built for brutal close combat.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "a",
+    weight: 26,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 5 },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+  },
+  sunforgedHelm: {
+    itemId: "sunforgedHelm",
+    name: "Sunforged Crownhelm",
+    desc: "A golden crownhelm set with a blue visor.",
+    type: "helmet",
+    equipmentSlot: ["helmet"],
+    suffix: "a",
+    weight: 28,
+    stackable: false,
+    blockMovement: false,
+    combat: { armor: 6 },
+    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
 
   spiderCorpse: {
@@ -833,6 +1284,14 @@ const itemsDatabase = {
     weight: 0.1,
     stackable: true,
     blockMovement: false,
+    currency: {
+      value: 1,
+      higherItemId: "azureCoin",
+    },
+    use: {
+      mode: "direct",
+      action: "splitCurrencyStack",
+    },
     render: {
       atlas: "items",
       parts: [
@@ -844,6 +1303,51 @@ const itemsDatabase = {
           zOffset: 0,
         },
       ],
+    },
+  },
+  azureCoin: {
+    itemId: "azureCoin",
+    name: "Platinum Coin",
+    desc: "A platinum coin worth 100 gold coins.",
+    type: "currency",
+    suffix: "an",
+    weight: 0.1,
+    stackable: true,
+    blockMovement: false,
+    currency: {
+      value: 100,
+      lowerItemId: "goldCoin",
+      higherItemId: "crystalCoin",
+    },
+    use: {
+      mode: "direct",
+      action: "splitCurrencyStack",
+    },
+    render: {
+      atlas: "items",
+      parts: [{ atlasCol: 5, atlasRow: 5, offsetX: 0, offsetY: 0, zOffset: 0 }],
+    },
+  },
+  crystalCoin: {
+    itemId: "crystalCoin",
+    name: "Crystal Coin",
+    desc: "A crystalline coin worth 1,000 gold coins.",
+    type: "currency",
+    suffix: "a",
+    weight: 0.1,
+    stackable: true,
+    blockMovement: false,
+    currency: {
+      value: 1000,
+      lowerItemId: "azureCoin",
+    },
+    use: {
+      mode: "direct",
+      action: "splitCurrencyStack",
+    },
+    render: {
+      atlas: "items",
+      parts: [{ atlasCol: 10, atlasRow: 5, offsetX: 0, offsetY: 0, zOffset: 0 }],
     },
   },
   fireRune: {
@@ -861,7 +1365,7 @@ const itemsDatabase = {
       damage: 6,
       charges: 5,
       range: 7,
-      cooldownGroup: "magic",
+      cooldownGroup: "rune",
     },
     render: {
       atlas: "items",
@@ -1035,13 +1539,27 @@ const npcsDatabase = {
     },
     service: {
       type: "itemShop",
+      categories: {
+        supplies: { labels: { en: "Supplies", fr: "Provisions" }, keywords: ["supplies", "provisions"] },
+        weapons: { labels: { en: "Weapons", fr: "Armes" }, keywords: ["weapon", "weapons", "arme", "armes"] },
+        helmets: { labels: { en: "Helmets", fr: "Casques" }, keywords: ["helmet", "helmets", "casque", "casques"] },
+        armor: { labels: { en: "Armor", fr: "Armures" }, keywords: ["armor", "armors", "armure", "armures"] },
+        legs: { labels: { en: "Legs", fr: "Pantalons" }, keywords: ["legs", "pants", "leggings", "pantalon", "pantalons"] },
+        boots: { labels: { en: "Boots", fr: "Bottes" }, keywords: ["boot", "boots", "botte", "bottes"] },
+        shields: { labels: { en: "Shields", fr: "Boucliers" }, keywords: ["shield", "shields", "bouclier", "boucliers"] },
+      },
       offers: {
-        apple: { buyPrice: 3, sellPrice: 1, keywords: ["apple", "pomme"] },
-        healthPotion: { buyPrice: 20, sellPrice: 8, keywords: ["health", "vie"] },
-        manaPotion: { buyPrice: 20, sellPrice: 8, keywords: ["mana"] },
-        torch: { buyPrice: 15, sellPrice: 5, keywords: ["torch", "torche"] },
-        mace: { buyPrice: 30, sellPrice: 12, keywords: ["mace", "masse"] },
-        sword: { buyPrice: null, sellPrice: 25, keywords: ["sword", "epee"] },
+        apple: { category: "supplies", buyPrice: 3, sellPrice: 1, keywords: ["apple", "pomme"] },
+        healthPotion: { category: "supplies", buyPrice: 20, sellPrice: 8, keywords: ["health", "vie"] },
+        manaPotion: { category: "supplies", buyPrice: 20, sellPrice: 8, keywords: ["mana"] },
+        torch: { category: "supplies", buyPrice: 15, sellPrice: 5, keywords: ["torch", "torche"] },
+        mace: { category: "weapons", buyPrice: 30, sellPrice: 12, keywords: ["mace", "masse"] },
+        sword: { category: "weapons", buyPrice: null, sellPrice: 25, keywords: ["sword", "epee"] },
+        wandererHood: { category: "helmets", buyPrice: 20, sellPrice: 7, keywords: ["wanderer hood", "capuchon"] },
+        leatherArmor: { category: "armor", buyPrice: 80, sellPrice: 28, keywords: ["leather armor", "armure cuir"] },
+        wandererPants: { category: "legs", buyPrice: 25, sellPrice: 8, keywords: ["wanderer pants", "pantalon voyageur"] },
+        wornBoots: { category: "boots", buyPrice: 20, sellPrice: 7, keywords: ["worn boots", "bottes usees"] },
+        woodenShield: { category: "shields", buyPrice: 60, sellPrice: 20, keywords: ["wooden shield", "bouclier bois"] },
       },
     },
     dialogue: {
@@ -1053,8 +1571,10 @@ const npcsDatabase = {
         job: "I trade equipment and supplies.",
         help: "Ask me for a trade, then say buy or sell with an item name.",
         trade: "I sell apples, health potions, mana potions, torches and maces.",
-        buyMenu: "What do you want to buy?",
-        sellMenu: "What do you want to sell?",
+        buyMenu: "What kind of item do you want to buy?",
+        sellMenu: "What kind of item do you want to sell?",
+        buyCategoryMenu: "Which {categoryName} do you want to buy?",
+        sellCategoryMenu: "Which {categoryName} do you want to sell?",
         confirmBuy: "Do you want to buy {quantity} {itemName} for {price} gold?",
         confirmSell: "Do you want to sell {quantity} {itemName} for {price} gold?",
         confirmRequired: "Say yes to confirm or no to cancel.",
@@ -1078,8 +1598,10 @@ const npcsDatabase = {
         job: "Je vends de l'equipement et des provisions.",
         help: "Demande-moi mes offres, puis dis acheter ou vendre avec le nom de l'objet.",
         trade: "Je vends des pommes, des potions de vie et de mana, des torches et des masses.",
-        buyMenu: "Qu'est-ce que tu veux acheter?",
-        sellMenu: "Qu'est-ce que tu veux vendre?",
+        buyMenu: "Quelle categorie veux-tu acheter?",
+        sellMenu: "Quelle categorie veux-tu vendre?",
+        buyCategoryMenu: "Quel article dans {categoryName} veux-tu acheter?",
+        sellCategoryMenu: "Quel article dans {categoryName} veux-tu vendre?",
         confirmBuy: "Veux-tu acheter {quantity} {itemName} pour {price} pieces d'or?",
         confirmSell: "Veux-tu vendre {quantity} {itemName} pour {price} pieces d'or?",
         confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
@@ -1160,6 +1682,119 @@ const npcsDatabase = {
         farewell: "Que ta magie te guide, {playerName}.",
         rudeDeparture: "Disparaitre en plein cours? Tes manieres ont plus besoin d'entrainement que ta magie.",
         timeoutFarewell: "Tu ne parles plus? On va reprendre ca une autre fois. Au revoir!",
+      },
+    },
+  },
+  charles: {
+    npcId: "charles",
+    name: "Charles",
+    desc: "The banker of Tiro.",
+    suffix: "a",
+    textureUrl: new URL("./assets/images/npc/Charles.png", import.meta.url).href,
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE * 2,
+    spriteSize: SPRITE_SIZE,
+    animationFrames: 4,
+    direction: "down",
+    maxHp: 100,
+    movement: {
+      enabled: false,
+      roamRadiusTiles: 0,
+      intervalMinMs: 60000,
+      intervalMaxMs: 60000,
+      moveCooldownMs: 350,
+    },
+    service: {
+      type: "banker",
+      exchangeRecipes: [
+        { sourceItemId: "goldCoin", sourceQuantity: 100, outputItemId: "azureCoin", outputQuantity: 1 },
+        { sourceItemId: "azureCoin", sourceQuantity: 1, outputItemId: "goldCoin", outputQuantity: 100 },
+        { sourceItemId: "azureCoin", sourceQuantity: 10, outputItemId: "crystalCoin", outputQuantity: 1 },
+        { sourceItemId: "crystalCoin", sourceQuantity: 1, outputItemId: "azureCoin", outputQuantity: 10 },
+      ],
+    },
+    dialogue: {
+      en: {
+        greeting: "Hello, {playerName}. Your bank balance is {bankBalance} gold.",
+        greetingSuggestions: ["Balance", "Deposit", "Withdraw", "Exchange", "Bye"],
+        confirmationSuggestions: ["yes", "no"],
+        name: "I am Charles, Tiro's banker.",
+        job: "I keep your gold safe and exchange coin denominations.",
+        help: "Ask for your balance, a deposit, a withdrawal or an exchange.",
+        balance: "You have {bankBalance} gold in the bank and carry {cashBalance} gold.",
+        depositPrompt: "How much gold do you want to deposit? You can also say deposit all.",
+        depositSuggestions: ["Deposit all", "Back", "Bye"],
+        withdrawPrompt: "How much gold do you want to withdraw? You can also say withdraw all.",
+        withdrawSuggestions: ["Withdraw all", "Back", "Bye"],
+        exchangePrompt: "Which exchange do you want?",
+        exchangeSuggestions: [
+          "Gold to platinum",
+          "Platinum to gold",
+          "Platinum to crystal",
+          "Crystal to platinum",
+          "Back",
+          "Bye",
+        ],
+        confirmDeposit: "Do you want to deposit {amount} gold?",
+        confirmWithdraw: "Do you want to withdraw {amount} gold?",
+        confirmExchange: "Do you want to exchange {sourceQuantity} {sourceName} for {outputQuantity} {outputName}?",
+        confirmRequired: "Say yes to confirm or no to cancel.",
+        cancelled: "No problem. The transaction is cancelled.",
+        deposited: "Done. I deposited {amount} gold. Your bank balance is now {bankBalance} gold.",
+        withdrawn: "Done. I withdrew {amount} gold. Your bank balance is now {bankBalance} gold.",
+        exchanged: "Done. Here is your {outputQuantity} {outputName}.",
+        notEnoughCash: "You do not carry enough gold for that.",
+        notEnoughBankGold: "You do not have enough gold in the bank.",
+        missingCoins: "You do not carry the coins required for that exchange.",
+        noRoom: "Make some room in your backpack first.",
+        notEnoughCapacity: "That withdrawal is too heavy for you.",
+        invalidAmount: "Tell me a whole amount of gold greater than zero.",
+        unavailable: "I cannot complete that banking transaction.",
+        unknown: "Ask me about balance, deposit, withdrawal or exchange.",
+        farewell: "Your gold is safe with me. Goodbye, {playerName}.",
+        rudeDeparture: "Running off before balancing the books? Bold financial strategy.",
+        timeoutFarewell: "No answer? I will close your account window for now. Goodbye!",
+      },
+      fr: {
+        greeting: "Salut, {playerName}. Ton solde en banque est de {bankBalance} pieces d'or.",
+        greetingSuggestions: ["Solde", "Depot", "Retrait", "Echange", "Bye"],
+        confirmationSuggestions: ["oui", "non"],
+        name: "Moi, c'est Charles, le banquier de Tiro.",
+        job: "Je garde ton or en securite et je change tes pieces.",
+        help: "Demande-moi ton solde, un depot, un retrait ou un echange.",
+        balance: "Tu as {bankBalance} pieces d'or en banque et {cashBalance} sur toi.",
+        depositPrompt: "Combien d'or veux-tu deposer? Tu peux aussi dire deposer tout.",
+        depositSuggestions: ["Deposer tout", "Retour", "Bye"],
+        withdrawPrompt: "Combien d'or veux-tu retirer? Tu peux aussi dire retirer tout.",
+        withdrawSuggestions: ["Retirer tout", "Retour", "Bye"],
+        exchangePrompt: "Quel echange veux-tu faire?",
+        exchangeSuggestions: [
+          "Or en platine",
+          "Platine en or",
+          "Platine en cristal",
+          "Cristal en platine",
+          "Retour",
+          "Bye",
+        ],
+        confirmDeposit: "Veux-tu deposer {amount} pieces d'or?",
+        confirmWithdraw: "Veux-tu retirer {amount} pieces d'or?",
+        confirmExchange: "Veux-tu echanger {sourceQuantity} {sourceName} contre {outputQuantity} {outputName}?",
+        confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
+        cancelled: "Pas de trouble. La transaction est annulee.",
+        deposited: "C'est fait. J'ai depose {amount} pieces d'or. Ton solde est maintenant de {bankBalance}.",
+        withdrawn: "C'est fait. J'ai retire {amount} pieces d'or. Ton solde est maintenant de {bankBalance}.",
+        exchanged: "C'est fait. Voici {outputQuantity} {outputName}.",
+        notEnoughCash: "Tu n'as pas assez d'or sur toi.",
+        notEnoughBankGold: "Tu n'as pas assez d'or en banque.",
+        missingCoins: "Tu n'as pas les bonnes pieces pour faire cet echange.",
+        noRoom: "Fais un peu de place dans ton sac avant.",
+        notEnoughCapacity: "Ce retrait-la est trop lourd pour toi.",
+        invalidAmount: "Donne-moi un montant entier plus grand que zero.",
+        unavailable: "Je ne peux pas completer cette transaction-la.",
+        unknown: "Demande-moi ton solde, un depot, un retrait ou un echange.",
+        farewell: "Ton or est en securite avec moi. A la prochaine, {playerName}!",
+        rudeDeparture: "Partir avant de balancer les comptes? Strategie financiere audacieuse.",
+        timeoutFarewell: "Pas de reponse? Je ferme ton dossier pour le moment. Au revoir!",
       },
     },
   },
@@ -1313,12 +1948,14 @@ const NPC_DIALOGUE_CONFIG = {
 /* ---------- TIMING - ITEM USE ---------- */
 
 const useCooldown = {
-  magic: 2000,
+  rune: 2000,
+  spell: 2000,
   item: 1000,
 };
 
 const nextUseCooldown = {
-  magic: 0,
+  rune: 0,
+  spell: 0,
   item: 0,
 };
 //#endregion  -----  CORE - TIMING ET COOLDOWNS  -----
@@ -1330,6 +1967,8 @@ const PLAYER_FRAME_WIDTH = TILE_SIZE;
 const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
 const PLAYER_ANIMATION_FRAMES = 4;
 const DEFAULT_PLAYER_APPEARANCE_ID = "male";
+const playerAppearanceTexturePromiseByCacheKey = new Map();
+const playerAppearanceSourceImagePromiseByUrl = new Map();
 const playerAppearancesDatabase = {
   male: {
     appearanceId: "male",
@@ -1345,6 +1984,232 @@ const playerAppearancesDatabase = {
 
 const getPlayerAppearanceData = (appearanceId = playerState?.appearanceId) => {
   return playerAppearancesDatabase[appearanceId] ?? playerAppearancesDatabase[DEFAULT_PLAYER_APPEARANCE_ID];
+};
+
+const parseHexColor = (hexColor) => {
+  const normalizedColor = normalizeCharacterAppearanceColors({ hair: hexColor, clothes: hexColor }).hair;
+  return {
+    red: Number.parseInt(normalizedColor.slice(1, 3), 16),
+    green: Number.parseInt(normalizedColor.slice(3, 5), 16),
+    blue: Number.parseInt(normalizedColor.slice(5, 7), 16),
+  };
+};
+
+const loadPlayerAppearanceSourceImage = (textureUrl) => {
+  if (!playerAppearanceSourceImagePromiseByUrl.has(textureUrl)) {
+    playerAppearanceSourceImagePromiseByUrl.set(
+      textureUrl,
+      new Promise((resolve, reject) => {
+        const image = new Image();
+        image.addEventListener("load", () => resolve(image), { once: true });
+        image.addEventListener("error", reject, { once: true });
+        image.src = textureUrl;
+      }),
+    );
+  }
+  return playerAppearanceSourceImagePromiseByUrl.get(textureUrl);
+};
+
+const collectAppearanceColorComponents = (pixelData, imageWidth, frameCol, frameRow, colorType) => {
+  const framePixelCount = PLAYER_FRAME_WIDTH * PLAYER_FRAME_HEIGHT;
+  const candidates = new Uint8Array(framePixelCount);
+  const pantsStartY = 90;
+  const shoesStartY = 109;
+
+  for (let localY = 0; localY < PLAYER_FRAME_HEIGHT; localY++) {
+    for (let localX = 0; localX < PLAYER_FRAME_WIDTH; localX++) {
+      const imageX = frameCol * PLAYER_FRAME_WIDTH + localX;
+      const imageY = frameRow * PLAYER_FRAME_HEIGHT + localY;
+      const pixelOffset = (imageY * imageWidth + imageX) * 4;
+      const red = pixelData[pixelOffset];
+      const green = pixelData[pixelOffset + 1];
+      const blue = pixelData[pixelOffset + 2];
+      const alpha = pixelData[pixelOffset + 3];
+      const brightness = (red + green + blue) / 3;
+      const colorSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
+      const isFrontNeckArea = frameRow === 0 && localX >= 24 && localX <= 40 && localY >= 54;
+      const isHairColor =
+        alpha > 24 &&
+        !isFrontNeckArea &&
+        red > 25 &&
+        brightness < 120 &&
+        red > green * 1.12 &&
+        green > blue * 1.12;
+      const isClothesColor =
+        alpha > 24 && localY < pantsStartY && brightness >= 85 && colorSpread <= 30;
+      const isPantsColor =
+        alpha > 24 &&
+        localY >= pantsStartY &&
+        localY < shoesStartY &&
+        brightness >= 40 &&
+        brightness < 180 &&
+        colorSpread <= 30;
+      const isShoesColor = alpha > 24 && localY >= shoesStartY && isHairColor;
+      if (
+        (colorType === "hair" && isHairColor) ||
+        (colorType === "clothes" && isClothesColor) ||
+        (colorType === "pants" && isPantsColor) ||
+        (colorType === "shoes" && isShoesColor)
+      ) {
+        candidates[localY * PLAYER_FRAME_WIDTH + localX] = 1;
+      }
+    }
+  }
+
+  const visited = new Uint8Array(framePixelCount);
+  const selectedPixelIndexes = [];
+  for (let startIndex = 0; startIndex < framePixelCount; startIndex++) {
+    if (!candidates[startIndex] || visited[startIndex]) {
+      continue;
+    }
+
+    const component = [];
+    const pendingIndexes = [startIndex];
+    let minimumY = PLAYER_FRAME_HEIGHT;
+    let maximumBrightness = 0;
+    visited[startIndex] = 1;
+
+    while (pendingIndexes.length > 0) {
+      const localIndex = pendingIndexes.pop();
+      const localX = localIndex % PLAYER_FRAME_WIDTH;
+      const localY = Math.floor(localIndex / PLAYER_FRAME_WIDTH);
+      const imageX = frameCol * PLAYER_FRAME_WIDTH + localX;
+      const imageY = frameRow * PLAYER_FRAME_HEIGHT + localY;
+      const pixelOffset = (imageY * imageWidth + imageX) * 4;
+      const brightness = (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
+      component.push(pixelOffset);
+      minimumY = Math.min(minimumY, localY);
+      maximumBrightness = Math.max(maximumBrightness, brightness);
+
+      for (let offsetY = -1; offsetY <= 1; offsetY++) {
+        for (let offsetX = -1; offsetX <= 1; offsetX++) {
+          const neighborX = localX + offsetX;
+          const neighborY = localY + offsetY;
+          if (
+            (offsetX === 0 && offsetY === 0) ||
+            neighborX < 0 ||
+            neighborX >= PLAYER_FRAME_WIDTH ||
+            neighborY < 0 ||
+            neighborY >= PLAYER_FRAME_HEIGHT
+          ) {
+            continue;
+          }
+          if (colorType === "hair" && Math.abs(offsetX) + Math.abs(offsetY) !== 1) {
+            continue;
+          }
+          const neighborIndex = neighborY * PLAYER_FRAME_WIDTH + neighborX;
+          if (candidates[neighborIndex] && !visited[neighborIndex]) {
+            visited[neighborIndex] = 1;
+            pendingIndexes.push(neighborIndex);
+          }
+        }
+      }
+    }
+
+    const isHairComponent = colorType === "hair" && component.length >= 8 && minimumY <= 36;
+    const isClothesComponent = colorType === "clothes" && component.length >= 24 && maximumBrightness >= 165;
+    const isPantsComponent = colorType === "pants" && component.length >= 4;
+    const isShoesComponent = colorType === "shoes" && component.length >= 4;
+    if (isHairComponent || isClothesComponent || isPantsComponent || isShoesComponent) {
+      selectedPixelIndexes.push(...component);
+    }
+  }
+  return selectedPixelIndexes;
+};
+
+const recolorAppearancePixels = (pixelData, pixelIndexes, targetColor, referenceBrightness) => {
+  for (const pixelOffset of pixelIndexes) {
+    const brightness =
+      (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
+    const shade = clamp(brightness / referenceBrightness, 0.2, 1.35);
+    pixelData[pixelOffset] = Math.min(255, Math.round(targetColor.red * shade));
+    pixelData[pixelOffset + 1] = Math.min(255, Math.round(targetColor.green * shade));
+    pixelData[pixelOffset + 2] = Math.min(255, Math.round(targetColor.blue * shade));
+  }
+};
+
+const createPlayerAppearanceTextureUrl = async (appearanceId, appearanceColors) => {
+  const appearanceData = getPlayerAppearanceData(appearanceId);
+  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
+  const sourceImage = await loadPlayerAppearanceSourceImage(appearanceData.textureUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceImage.naturalWidth;
+  canvas.height = sourceImage.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    return appearanceData.textureUrl;
+  }
+
+  context.drawImage(sourceImage, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const hairColor = parseHexColor(normalizedColors.hair);
+  const clothesColor = parseHexColor(normalizedColors.clothes);
+  const pantsColor = parseHexColor(normalizedColors.pants);
+  const shoesColor = parseHexColor(normalizedColors.shoes);
+  for (let frameRow = 0; frameRow < PLAYER_ANIMATION_FRAMES; frameRow++) {
+    for (let frameCol = 0; frameCol < PLAYER_ANIMATION_FRAMES; frameCol++) {
+      const hairPixelIndexes = collectAppearanceColorComponents(
+        imageData.data,
+        canvas.width,
+        frameCol,
+        frameRow,
+        "hair",
+      );
+      const clothesPixelIndexes = collectAppearanceColorComponents(
+        imageData.data,
+        canvas.width,
+        frameCol,
+        frameRow,
+        "clothes",
+      );
+      const pantsPixelIndexes = collectAppearanceColorComponents(
+        imageData.data,
+        canvas.width,
+        frameCol,
+        frameRow,
+        "pants",
+      );
+      const shoesPixelIndexes = collectAppearanceColorComponents(
+        imageData.data,
+        canvas.width,
+        frameCol,
+        frameRow,
+        "shoes",
+      );
+      recolorAppearancePixels(imageData.data, hairPixelIndexes, hairColor, 105);
+      recolorAppearancePixels(imageData.data, clothesPixelIndexes, clothesColor, 230);
+      recolorAppearancePixels(imageData.data, pantsPixelIndexes, pantsColor, 120);
+      recolorAppearancePixels(imageData.data, shoesPixelIndexes, shoesColor, 75);
+    }
+  }
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/png");
+};
+
+const getPlayerAppearanceTextureUrl = (appearanceId, appearanceColors) => {
+  const appearanceData = getPlayerAppearanceData(appearanceId);
+  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
+  const cacheKey = `${appearanceData.appearanceId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
+  if (!playerAppearanceTexturePromiseByCacheKey.has(cacheKey)) {
+    const texturePromise = createPlayerAppearanceTextureUrl(appearanceData.appearanceId, normalizedColors).catch(
+      () => appearanceData.textureUrl,
+    );
+    playerAppearanceTexturePromiseByCacheKey.set(cacheKey, texturePromise);
+  }
+  return playerAppearanceTexturePromiseByCacheKey.get(cacheKey);
+};
+
+const applyPlayerAppearanceBackground = async (element, appearanceId, appearanceColors) => {
+  if (!element) {
+    return;
+  }
+  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
+  const requestKey = `${appearanceId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
+  element.dataset.appearanceRequestKey = requestKey;
+  const textureUrl = await getPlayerAppearanceTextureUrl(appearanceId, normalizedColors);
+  if (element.dataset.appearanceRequestKey === requestKey) {
+    element.style.backgroundImage = `url("${textureUrl}")`;
+  }
 };
 //#endregion  -----  PLAYER - CONFIG SPRITE  -----
 
@@ -1398,6 +2263,7 @@ const playerState = {
   moveDuration: 0,
   name: "Charles",
   appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
+  appearanceColors: normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS),
   hp: 100,
   maxHp: 100,
   mana: 0,
@@ -1408,6 +2274,9 @@ const playerState = {
   experience: 0,
   classId: "noClass",
   gold: 0,
+  bank: {
+    goldBalance: 0,
+  },
   damage: 5,
   z: 0,
   spawn: {
@@ -1541,6 +2410,7 @@ const createCharacterSaveSnapshot = () => {
     uid: playerState.uid,
     name: playerState.name,
     appearanceId: playerState.appearanceId,
+    appearanceColors: normalizeCharacterAppearanceColors(playerState.appearanceColors),
     classId: playerState.classId,
     position: {
       x: playerState.x,
@@ -1560,6 +2430,9 @@ const createCharacterSaveSnapshot = () => {
     progression: {
       experience: playerState.experience,
       skills,
+    },
+    bank: {
+      goldBalance: playerState.bank.goldBalance,
     },
     spellbook: structuredClone(playerState.spellbook),
     progress: {
@@ -1663,8 +2536,15 @@ const applyCharacterSaveSnapshot = (characterSnapshot) => {
   playerState.uid = characterSnapshot.uid;
   playerState.name = characterSnapshot.name;
   playerState.appearanceId = getPlayerAppearanceData(characterSnapshot.appearanceId).appearanceId;
+  playerState.appearanceColors = normalizeCharacterAppearanceColors(characterSnapshot.appearanceColors);
   playerState.classId = characterSnapshot.classId;
   playerState.experience = characterSnapshot.progression.experience;
+  playerState.bank = {
+    goldBalance:
+      Number.isSafeInteger(characterSnapshot.bank?.goldBalance) && characterSnapshot.bank.goldBalance >= 0
+        ? characterSnapshot.bank.goldBalance
+        : 0,
+  };
   playerState.spellbook = normalizePlayerSpellbook(characterSnapshot.spellbook);
   playerState.spawn = structuredClone(characterSnapshot.spawn);
   playerState.progress = {
@@ -1729,6 +2609,7 @@ const loadInitialCharacterSnapshot = () => {
       playerState.uid = loadResult.entry.characterId;
       playerState.name = loadResult.entry.name;
       playerState.appearanceId = getPlayerAppearanceData(loadResult.entry.appearanceId).appearanceId;
+      playerState.appearanceColors = normalizeCharacterAppearanceColors(loadResult.entry.appearanceColors);
     }
     return null;
   }
@@ -4839,7 +5720,137 @@ const getPlayerBackpackItemQuantity = (itemId) => {
 };
 
 const getPlayerGoldAmount = () => {
-  return getPlayerBackpackItemQuantity("goldCoin");
+  const backpack = getEquipmentSlotItem("backpack");
+  if (!backpack) {
+    return 0;
+  }
+  let goldAmount = 0;
+  visitContainerItems(backpack, (item) => {
+    const currencyValue = getItemData(item.itemId)?.currency?.value;
+    if (Number.isInteger(currencyValue) && currencyValue > 0) {
+      goldAmount += currencyValue * item.quantity;
+    }
+  });
+  return goldAmount;
+};
+
+const getPlayerBankGoldAmount = () => {
+  return Number.isSafeInteger(playerState.bank?.goldBalance) && playerState.bank.goldBalance >= 0
+    ? playerState.bank.goldBalance
+    : 0;
+};
+
+const visitContainerSlots = (containerItem, visitor) => {
+  const capacity = getItemData(containerItem?.itemId)?.capacity;
+  if (!Array.isArray(containerItem?.content) || !Number.isInteger(capacity) || typeof visitor !== "function") {
+    return;
+  }
+  for (let slotIndex = 0; slotIndex < capacity; slotIndex++) {
+    const item = containerItem.content[slotIndex] ?? null;
+    visitor(containerItem, slotIndex, item);
+    if (Array.isArray(item?.content)) {
+      visitContainerSlots(item, visitor);
+    }
+  }
+};
+
+const getCurrencyDataByValueDescending = () => {
+  return Object.values(itemsDatabase)
+    .filter((itemData) => Number.isInteger(itemData.currency?.value) && itemData.currency.value > 0)
+    .sort((firstCurrency, secondCurrency) => secondCurrency.currency.value - firstCurrency.currency.value);
+};
+
+const createCurrencyItemsForGoldAmount = (goldAmount) => {
+  if (!Number.isInteger(goldAmount) || goldAmount < 0) {
+    return null;
+  }
+  const currencyItems = [];
+  let remainingGold = goldAmount;
+  for (const currencyData of getCurrencyDataByValueDescending()) {
+    let currencyQuantity = Math.floor(remainingGold / currencyData.currency.value);
+    remainingGold %= currencyData.currency.value;
+    while (currencyQuantity > 0) {
+      const stackQuantity = Math.min(currencyQuantity, MAX_ITEM_STACK_SIZE);
+      const item = createItemInstance(currencyData.itemId, stackQuantity);
+      if (!item) {
+        return null;
+      }
+      currencyItems.push(item);
+      currencyQuantity -= stackQuantity;
+    }
+  }
+  return remainingGold === 0 ? currencyItems : null;
+};
+
+const createPlayerCurrencyValuePlan = (goldAmount) => {
+  const backpack = getEquipmentSlotItem("backpack");
+  const currencyItems = createCurrencyItemsForGoldAmount(goldAmount);
+  if (!backpack || !currencyItems) {
+    return { success: false };
+  }
+
+  const occupiedCurrencySlots = [];
+  const emptySlots = [];
+  visitContainerSlots(backpack, (containerItem, slotIndex, item) => {
+    if (!item) {
+      emptySlots.push({ containerItem, slotIndex });
+    } else if (Number.isInteger(getItemData(item.itemId)?.currency?.value)) {
+      occupiedCurrencySlots.push({ containerItem, slotIndex });
+    }
+  });
+
+  const availableSlots = [...occupiedCurrencySlots, ...emptySlots];
+  if (currencyItems.length > availableSlots.length) {
+    return { success: false };
+  }
+  return {
+    success: true,
+    slots: availableSlots,
+    previousItems: availableSlots.map(({ containerItem, slotIndex }) => containerItem.content[slotIndex] ?? null),
+    nextItems: availableSlots.map((_, index) => currencyItems[index] ?? null),
+  };
+};
+
+const commitPlayerCurrencyValuePlan = (currencyPlan) => {
+  if (!currencyPlan?.success || !Array.isArray(currencyPlan.slots)) {
+    return false;
+  }
+  for (let index = 0; index < currencyPlan.slots.length; index++) {
+    const { containerItem, slotIndex } = currencyPlan.slots[index];
+    containerItem.content[slotIndex] = currencyPlan.nextItems[index];
+  }
+  return true;
+};
+
+const rollbackPlayerCurrencyValuePlan = (currencyPlan) => {
+  if (!currencyPlan?.success || !Array.isArray(currencyPlan.slots)) {
+    return false;
+  }
+  for (let index = 0; index < currencyPlan.slots.length; index++) {
+    const { containerItem, slotIndex } = currencyPlan.slots[index];
+    containerItem.content[slotIndex] = currencyPlan.previousItems[index];
+  }
+  return true;
+};
+
+const getPlayerCurrencyValuePlanWeightDifference = (currencyPlan) => {
+  if (!currencyPlan?.success || !Array.isArray(currencyPlan.previousItems) || !Array.isArray(currencyPlan.nextItems)) {
+    return null;
+  }
+  const previousWeight = currencyPlan.previousItems.reduce((total, item) => total + (item ? getItemTotalWeight(item) : 0), 0);
+  const nextWeight = currencyPlan.nextItems.reduce((total, item) => total + (item ? getItemTotalWeight(item) : 0), 0);
+  return nextWeight - previousWeight;
+};
+
+const createPlayerGoldPaymentPlan = (goldAmount) => {
+  if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
+    return { success: false };
+  }
+  const remainingGold = getPlayerGoldAmount() - goldAmount;
+  if (remainingGold < 0) {
+    return { success: false };
+  }
+  return createPlayerCurrencyValuePlan(remainingGold);
 };
 
 const createPlayerBackpackItemRemovalPlan = (itemId, quantity) => {
@@ -4895,11 +5906,11 @@ const rollbackPlayerBackpackItemRemovalPlan = (removalPlan) => {
 };
 
 const spendPlayerGold = (goldAmount) => {
-  const removalPlan = createPlayerBackpackItemRemovalPlan("goldCoin", goldAmount);
-  if (!removalPlan.success) {
+  const paymentPlan = createPlayerGoldPaymentPlan(goldAmount);
+  if (!paymentPlan.success) {
     return false;
   }
-  return commitPlayerBackpackItemRemovalPlan(removalPlan);
+  return commitPlayerCurrencyValuePlan(paymentPlan);
 };
 
 /* ---------- INVENTAIRE - TRANSACTIONS DE RECOMPENSE ---------- */
@@ -5086,6 +6097,7 @@ const grantRewardItemsToPlayer = (rewardItems) => {
 
 const resetDragState = () => {
   dragState.isDragging = false;
+  document.body.classList.remove("item-drag-active");
   dragState.item = null;
   dragState.sourceLocationType = null;
   dragState.sourceSlotIndex = null;
@@ -5127,6 +6139,7 @@ const startItemDrag = (source) => {
   resetDragState();
   inputState.shouldBlockNextWorldClick = true;
   dragState.isDragging = true;
+  document.body.classList.add("item-drag-active");
   dragState.item = item;
 
   if (source.locationType === "containerSlot") {
@@ -6383,7 +7396,7 @@ const playCompletedItemDragSfx = (snapshot) => {
   ) {
     return false;
   }
-  if (snapshot.sourceItem.itemId === "goldCoin") {
+  if (getItemData(snapshot.sourceItem.itemId)?.type === "currency") {
     return playGameSfx(GAME_SFX.moneyMove);
   }
   return playGameSfx(GAME_SFX.itemMove);
@@ -6687,6 +7700,10 @@ const GAME_UI_TEXT = {
     deleteCharacterConfirm: (name) => `Delete ${name}? This cannot be undone.`,
     newCharacter: "New character",
     characterName: "Character name",
+    hairColor: "Hair",
+    clothesColor: "Clothes",
+    pantsColor: "Pants",
+    shoesColor: "Shoes",
     create: "Create",
     equipments: "Equipments",
     capacityShort: "Cap",
@@ -6741,6 +7758,11 @@ const GAME_UI_TEXT = {
     pvpUnavailable: "PVP is not implemented yet.",
     cannotPourPotion: "You cannot pour this potion there.",
     exhausted: "You are exhausted.",
+    splitStack: "Split stack",
+    splitAmount: "Amount",
+    splitConfirm: "Split",
+    splitStackNeedsSpace: "You need an empty slot to split this stack.",
+    cancel: "Cancel",
     targetOutOfRange: "Target is out of range.",
     runeBlockedByWall: "You cannot use this rune through a wall.",
     alreadyFull: "You are already full.",
@@ -6842,6 +7864,10 @@ const GAME_UI_TEXT = {
     deleteCharacterConfirm: (name) => `Supprimer ${name}? Cette action est irreversible.`,
     newCharacter: "Nouveau personnage",
     characterName: "Nom du personnage",
+    hairColor: "Cheveux",
+    clothesColor: "Linge",
+    pantsColor: "Pantalon",
+    shoesColor: "Souliers",
     create: "Creer",
     equipments: "Equipement",
     capacityShort: "Cap",
@@ -6896,6 +7922,11 @@ const GAME_UI_TEXT = {
     pvpUnavailable: "Le PVP n'est pas encore disponible.",
     cannotPourPotion: "Tu ne peux pas vider cette potion la.",
     exhausted: "Tu es epuise.",
+    splitStack: "Separer la pile",
+    splitAmount: "Quantite",
+    splitConfirm: "Separer",
+    splitStackNeedsSpace: "Il te faut une case vide pour separer cette pile.",
+    cancel: "Annuler",
     targetOutOfRange: "La cible est trop loin.",
     runeBlockedByWall: "Tu ne peux pas lancer cette rune a travers un mur.",
     alreadyFull: "Tu n'as plus faim.",
@@ -6979,10 +8010,46 @@ const GAME_CONTENT_TEXT = {
       arrow: { name: "Fleche", pluralName: "Fleches", desc: "Une fleche toute simple.", suffix: "une" },
       bow: { name: "Arc", pluralName: "Arcs", desc: "Un arc de chasse de base.", suffix: "un" },
       woodenShield: { name: "Bouclier de bois", pluralName: "Boucliers de bois", desc: "Un vieux bouclier de bois.", suffix: "un" },
+      ironShield: { name: "Rempart de fer", pluralName: "Remparts de fer", desc: "Un bouclier fiable forge en fer massif.", suffix: "un" },
+      azureGuardShield: { name: "Garde azur", pluralName: "Gardes azur", desc: "Un bouclier bleu porte par les sentinelles aguerries.", suffix: "un" },
+      suncrestShield: { name: "Bouclier solaire", pluralName: "Boucliers solaires", desc: "Son embleme de bronze brille comme un petit soleil.", suffix: "un" },
+      lionheartShield: { name: "Egide Coeur-de-lion", pluralName: "Egides Coeur-de-lion", desc: "Un bouclier noble marque d'un lion argente.", suffix: "une" },
+      dreadShield: { name: "Bouclier du guetteur noir", pluralName: "Boucliers du guetteur noir", desc: "Un bouclier sombre borde de vieil or.", suffix: "un" },
+      seraphShield: { name: "Egide du seraphin", pluralName: "Egides du seraphin", desc: "Un bouclier serti de joyaux en forme d'ailes repliees.", suffix: "une" },
+      groveShield: { name: "Bouclier du gardien des bois", pluralName: "Boucliers du gardien des bois", desc: "Un bouclier rond beni par une feuille ancienne.", suffix: "un" },
+      hideTrousers: { name: "Pantalon de peau brute", pluralName: "Pantalons de peau brute", desc: "Un pantalon lourd cousu dans une peau epaisse.", suffix: "un" },
+      wandererPants: { name: "Pantalon du vagabond", pluralName: "Pantalons du vagabond", desc: "Un pantalon simple fait pour les longues routes.", suffix: "un" },
+      hunterLeggings: { name: "Jambieres du chasseur", pluralName: "Jambieres du chasseur", desc: "Des jambieres souples renforcees aux genoux.", suffix: "des" },
+      chainLeggings: { name: "Jambieres de mailles", pluralName: "Jambieres de mailles", desc: "Des anneaux entrelaces protegent les jambes sans les ralentir.", suffix: "des" },
+      knightGreaves: { name: "Grevieres du chevalier", pluralName: "Grevieres du chevalier", desc: "Des grevieres d'acier polies pour la premiere ligne.", suffix: "des" },
+      sunforgedGreaves: { name: "Grevieres solaires", pluralName: "Grevieres solaires", desc: "Des grevieres dorees forgees pour un champion royal.", suffix: "des" },
+      wornBoots: { name: "Bottes usees", pluralName: "Bottes usees", desc: "De vieilles bottes qui ont traverse bien des routes boueuses.", suffix: "des" },
+      leatherBoots: { name: "Bottes de cuir", pluralName: "Bottes de cuir", desc: "Des bottes de cuir solides et confortables.", suffix: "des" },
+      ironBoots: { name: "Bottes Pas-de-fer", pluralName: "Bottes Pas-de-fer", desc: "Des bottes plaquees de fer qui frappent le sol avec autorite.", suffix: "des" },
+      steelBoots: { name: "Bottes de l'avant-garde", pluralName: "Bottes de l'avant-garde", desc: "Des bottes renforcees portees par les gardes disciplines.", suffix: "des" },
+      tidewalkerBoots: { name: "Bottes Marche-maree", pluralName: "Bottes Marche-maree", desc: "Des bottes bleues qui ne semblent jamais rester mouillees.", suffix: "des" },
+      sunforgedBoots: { name: "Bottes solaires", pluralName: "Bottes solaires", desc: "Des bottes ornees plaquees d'acier dore.", suffix: "des" },
       leatherArmor: { name: "Armure de cuir", pluralName: "Armures de cuir", desc: "Une armure de cuir classique.", suffix: "une" },
+      studdedLeatherArmor: { name: "Manteau cloute du voyageur", pluralName: "Manteaux cloutes du voyageur", desc: "Un manteau de cuir renforce de clous metalliques.", suffix: "un" },
+      mercenaryArmor: { name: "Harnais du mercenaire", pluralName: "Harnais du mercenaire", desc: "Du cuir et du fer superposes pour une guerre sans fla-fla.", suffix: "un" },
+      steelPlate: { name: "Plastron de l'avant-garde", pluralName: "Plastrons de l'avant-garde", desc: "Un plastron d'acier sombre concu pour tenir la ligne.", suffix: "un" },
+      tideforgedArmor: { name: "Cotte forge-maree", pluralName: "Cottes forge-maree", desc: "Une cotte d'acier bleu qui bouge comme l'eau.", suffix: "une" },
+      arcanistRobe: { name: "Robe violette de l'arcaniste", pluralName: "Robes violettes de l'arcaniste", desc: "Une robe ornee tissee pour un mage experimente.", suffix: "une" },
+      grovekeeperMantle: { name: "Manteau du gardien des bois", pluralName: "Manteaux du gardien des bois", desc: "Un manteau vert mousse qui sent legerement la pluie.", suffix: "un" },
+      midnightMantle: { name: "Manteau de minuit", pluralName: "Manteaux de minuit", desc: "Un manteau bleu profond aime des voyants voyageurs.", suffix: "un" },
+      ivoryMantle: { name: "Manteau d'ivoire de l'oracle", pluralName: "Manteaux d'ivoire de l'oracle", desc: "Un manteau clair borde d'or ancien.", suffix: "un" },
+      wandererHood: { name: "Capuchon du vagabond", pluralName: "Capuchons du vagabond", desc: "Un capuchon use qui garde la poussiere loin des yeux.", suffix: "un" },
+      groveHood: { name: "Capuchon des bois", pluralName: "Capuchons des bois", desc: "Un capuchon vert porte par les gardiens silencieux de la foret.", suffix: "un" },
+      leatherCap: { name: "Coiffe de cuir cerclee", pluralName: "Coiffes de cuir cerclees", desc: "Une coiffe de cuir renforcee de bandes de fer.", suffix: "une" },
+      ironHelm: { name: "Casque de la sentinelle", pluralName: "Casques de la sentinelle", desc: "Un large casque de fer qui protege les joues.", suffix: "un" },
+      hornedSteelHelm: { name: "Casque d'acier cornu", pluralName: "Casques d'acier cornus", desc: "Un casque d'acier couronne de deux petites cornes.", suffix: "un" },
+      knightGreathelm: { name: "Grand heaume du chevalier", pluralName: "Grands heaumes du chevalier", desc: "Un heaume ferme fait pour les combats brutaux.", suffix: "un" },
+      sunforgedHelm: { name: "Heaume-couronne solaire", pluralName: "Heaumes-couronnes solaires", desc: "Un heaume dore muni d'une visiere bleue.", suffix: "un" },
       spiderCorpse: { name: "Cadavre d'araignee", pluralName: "Cadavres d'araignee", desc: "Une araignee morte.", suffix: "un" },
       bag: { name: "Sac", pluralName: "Sacs", desc: "Un sac de 8 cases.", suffix: "un" },
       goldCoin: { name: "Piece d'or", pluralName: "Pieces d'or", desc: "Une piece d'or.", suffix: "une" },
+      azureCoin: { name: "Piece de platine", pluralName: "Pieces de platine", desc: "Une piece de platine qui vaut 100 pieces d'or.", suffix: "une" },
+      crystalCoin: { name: "Piece de cristal", pluralName: "Pieces de cristal", desc: "Une piece cristalline qui vaut 1 000 pieces d'or.", suffix: "une" },
       fireRune: { name: "Rune de feu", pluralName: "Runes de feu", desc: "Une rune gravee de magie de feu.", suffix: "une" },
     },
     monsters: {
@@ -7831,13 +8898,13 @@ const selectCharacterProfile = (characterId) => {
   reloadIntoSelectedCharacter();
 };
 
-const createNewCharacterProfile = (name, appearanceId, errorElement) => {
+const createNewCharacterProfile = (name, appearanceId, appearanceColors, errorElement) => {
   if (gameRuntimeState.isStarted && !saveCurrentCharacterBeforeSwitch()) {
     errorElement.textContent = getGameUiText("currentCharacterSaveFailed");
     return;
   }
 
-  const creationResult = createCharacterProfile(name, appearanceId);
+  const creationResult = createCharacterProfile(name, appearanceId, appearanceColors);
   if (!creationResult.success) {
     errorElement.textContent = getCharacterSelectorErrorMessage(creationResult.reason);
     return;
@@ -7939,7 +9006,11 @@ const renderCharacterSelector = () => {
       const appearanceData = getPlayerAppearanceData(characterProfile.appearanceId);
       const portraitElement = document.createElement("span");
       portraitElement.classList.add("character-selector-portrait");
-      portraitElement.style.backgroundImage = `url("${appearanceData.textureUrl}")`;
+      void applyPlayerAppearanceBackground(
+        portraitElement,
+        appearanceData.appearanceId,
+        characterProfile.appearanceColors,
+      );
 
       const identityElement = document.createElement("span");
       identityElement.classList.add("character-selector-identity");
@@ -7992,7 +9063,15 @@ const renderCharacterSelector = () => {
   const appearanceOptionsElement = document.createElement("div");
   appearanceOptionsElement.classList.add("character-appearance-options");
   let selectedAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
+  let selectedAppearanceColors = normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS);
   const appearanceButtonsById = new Map();
+  const appearancePreviewElementsById = new Map();
+
+  const refreshAppearancePreviews = () => {
+    for (const [appearanceId, previewElement] of appearancePreviewElementsById.entries()) {
+      void applyPlayerAppearanceBackground(previewElement, appearanceId, selectedAppearanceColors);
+    }
+  };
 
   const selectAppearance = (appearanceId) => {
     selectedAppearanceId = getPlayerAppearanceData(appearanceId).appearanceId;
@@ -8010,7 +9089,6 @@ const renderCharacterSelector = () => {
     appearanceButtonElement.setAttribute("aria-pressed", "false");
     const appearancePreviewElement = document.createElement("span");
     appearancePreviewElement.classList.add("character-appearance-preview");
-    appearancePreviewElement.style.backgroundImage = `url("${appearanceData.textureUrl}")`;
     const appearanceLabelElement = document.createElement("span");
     appearanceLabelElement.classList.add("character-appearance-label");
     appearanceLabelElement.textContent =
@@ -8020,9 +9098,40 @@ const renderCharacterSelector = () => {
       selectAppearance(appearanceData.appearanceId);
     });
     appearanceButtonsById.set(appearanceData.appearanceId, appearanceButtonElement);
+    appearancePreviewElementsById.set(appearanceData.appearanceId, appearancePreviewElement);
     appearanceOptionsElement.appendChild(appearanceButtonElement);
   }
   selectAppearance(selectedAppearanceId);
+  refreshAppearancePreviews();
+
+  const colorOptionsElement = document.createElement("div");
+  colorOptionsElement.classList.add("character-color-options");
+  const createColorControl = (colorKey, labelText) => {
+    const labelElement = document.createElement("label");
+    labelElement.classList.add("character-color-control");
+    const labelTextElement = document.createElement("span");
+    labelTextElement.textContent = labelText;
+    const inputElement = document.createElement("input");
+    inputElement.classList.add("character-color-input");
+    inputElement.type = "color";
+    inputElement.value = selectedAppearanceColors[colorKey];
+    inputElement.addEventListener("change", () => {
+      selectedAppearanceColors = normalizeCharacterAppearanceColors({
+        ...selectedAppearanceColors,
+        [colorKey]: inputElement.value,
+      });
+      refreshAppearancePreviews();
+    });
+    labelElement.append(labelTextElement, inputElement);
+    return labelElement;
+  };
+  colorOptionsElement.append(
+    createColorControl("hair", getGameUiText("hairColor")),
+    createColorControl("clothes", getGameUiText("clothesColor")),
+    createColorControl("pants", getGameUiText("pantsColor")),
+    createColorControl("shoes", getGameUiText("shoesColor")),
+  );
+
   const createButtonElement = document.createElement("button");
   createButtonElement.classList.add("character-create-button");
   createButtonElement.type = "submit";
@@ -8033,13 +9142,19 @@ const renderCharacterSelector = () => {
   formElement.append(
     formTitleElement,
     appearanceOptionsElement,
+    colorOptionsElement,
     nameInputElement,
     createButtonElement,
     formErrorElement,
   );
   formElement.addEventListener("submit", (event) => {
     event.preventDefault();
-    createNewCharacterProfile(nameInputElement.value, selectedAppearanceId, formErrorElement);
+    createNewCharacterProfile(
+      nameInputElement.value,
+      selectedAppearanceId,
+      selectedAppearanceColors,
+      formErrorElement,
+    );
   });
 
   wrapperElement.append(
@@ -8276,44 +9391,67 @@ const syncOpenedContainerOrderFromDock = () => {
 };
 
 const startContainerWindowDockDrag = (event, windowElement, headerElement) => {
-  if (event.button !== 0 || event.target.closest("button") || !playerContainers.contains(windowElement)) {
+  if (
+    dragState.isDragging ||
+    event.button !== 0 ||
+    event.target.closest("button") ||
+    !playerContainers.contains(windowElement)
+  ) {
     return;
   }
   event.preventDefault();
+  event.stopPropagation();
   windowElement.classList.add("container-window-dragging");
-  headerElement.setPointerCapture(event.pointerId);
+  const draggedPointerId = event.pointerId;
+  let lastPointerY = event.clientY;
 
   const moveWindow = (moveEvent) => {
-    const siblingWindows = [...playerContainers.querySelectorAll(".container-window")].filter((element) => {
-      return element !== windowElement;
-    });
-    const insertBeforeWindow =
-      siblingWindows.find((element) => {
-        const elementRect = element.getBoundingClientRect();
-        return moveEvent.clientY < elementRect.top + elementRect.height / 2;
-      }) ?? null;
-
-    playerContainers.insertBefore(windowElement, insertBeforeWindow);
+    if (moveEvent.pointerId !== draggedPointerId) {
+      return;
+    }
+    moveEvent.preventDefault();
+    if (moveEvent.clientY > lastPointerY) {
+      let nextWindow = windowElement.nextElementSibling;
+      while (nextWindow?.classList.contains("container-window")) {
+        if (moveEvent.clientY < nextWindow.getBoundingClientRect().top) {
+          break;
+        }
+        playerContainers.insertBefore(windowElement, nextWindow.nextElementSibling);
+        nextWindow = windowElement.nextElementSibling;
+      }
+    } else if (moveEvent.clientY < lastPointerY) {
+      let previousWindow = windowElement.previousElementSibling;
+      while (previousWindow?.classList.contains("container-window")) {
+        if (moveEvent.clientY > previousWindow.getBoundingClientRect().bottom) {
+          break;
+        }
+        playerContainers.insertBefore(windowElement, previousWindow);
+        previousWindow = windowElement.previousElementSibling;
+      }
+    }
+    lastPointerY = moveEvent.clientY;
   };
 
   const finishWindowMove = (finishEvent) => {
-    windowElement.classList.remove("container-window-dragging");
-    headerElement.removeEventListener("pointermove", moveWindow);
-    headerElement.removeEventListener("pointerup", finishWindowMove);
-    headerElement.removeEventListener("pointercancel", finishWindowMove);
-    if (headerElement.hasPointerCapture(finishEvent.pointerId)) {
-      headerElement.releasePointerCapture(finishEvent.pointerId);
+    if (finishEvent.type !== "blur" && finishEvent.pointerId !== draggedPointerId) {
+      return;
     }
+    windowElement.classList.remove("container-window-dragging");
+    document.removeEventListener("pointermove", moveWindow, true);
+    document.removeEventListener("pointerup", finishWindowMove, true);
+    document.removeEventListener("pointercancel", finishWindowMove, true);
+    window.removeEventListener("blur", finishWindowMove);
     syncOpenedContainerOrderFromDock();
   };
 
-  headerElement.addEventListener("pointermove", moveWindow);
-  headerElement.addEventListener("pointerup", finishWindowMove, { once: true });
-  headerElement.addEventListener("pointercancel", finishWindowMove, { once: true });
+  document.addEventListener("pointermove", moveWindow, true);
+  document.addEventListener("pointerup", finishWindowMove, true);
+  document.addEventListener("pointercancel", finishWindowMove, true);
+  window.addEventListener("blur", finishWindowMove, { once: true });
 };
 
 const startContainerWindowResize = (event, windowElement, container, resizeHandle) => {
-  if (event.button !== 0) {
+  if (dragState.isDragging || event.button !== 0) {
     return;
   }
   event.preventDefault();
@@ -9064,6 +10202,134 @@ const consumeOneItemFromSource = (source, item) => {
   return false;
 };
 
+const closeStackSplitMenu = () => {
+  stackSplitMenuState.source = null;
+  stackSplitMenuState.itemUid = null;
+  stackSplitMenu?.replaceChildren();
+  stackSplitMenu?.toggleAttribute("hidden", true);
+};
+
+const splitItemStack = (source, expectedItemUid, splitQuantity) => {
+  const item = getDragSourceItem(source);
+  const itemData = getItemData(item?.itemId);
+  if (
+    !itemData?.stackable ||
+    item.uid !== expectedItemUid ||
+    !Number.isInteger(splitQuantity) ||
+    splitQuantity <= 0 ||
+    splitQuantity >= item.quantity
+  ) {
+    return false;
+  }
+
+  if (source.locationType === "containerSlot") {
+    const parentContainer = getParentContainerFromContainerSlotLocation(source);
+    const emptySlotIndex = findFirstEmptyContainerSlot(parentContainer);
+    if (emptySlotIndex === null) {
+      showGameStatusMessage(getGameUiText("splitStackNeedsSpace"));
+      return false;
+    }
+    const splitItem = createItemInstance(item.itemId, splitQuantity);
+    if (!splitItem) {
+      return false;
+    }
+    parentContainer.content[emptySlotIndex] = splitItem;
+  } else if (source.locationType === "worldItem") {
+    if (!canInteractWithWorldItemSource(source)) {
+      return false;
+    }
+    const splitItem = createGroundItem(item.itemId, splitQuantity, item.x, item.y, item.z);
+    if (!splitItem || !addGroundItem(splitItem)) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  item.quantity -= splitQuantity;
+  refreshItemUiAfterDrag();
+  autosaveCurrentCharacter();
+  return true;
+};
+
+const openStackSplitMenu = (item, source) => {
+  if (!stackSplitMenu || !source || !getItemData(item?.itemId)?.stackable || item.quantity <= 1) {
+    return false;
+  }
+
+  stackSplitMenuState.source = structuredClone(source);
+  stackSplitMenuState.itemUid = item.uid;
+
+  const windowElement = document.createElement("form");
+  windowElement.classList.add("boite-panneau", "stack-split-window");
+  const titleElement = document.createElement("div");
+  titleElement.classList.add("boite-jeux-titre", "stack-split-title");
+  titleElement.textContent = getGameUiText("splitStack");
+  const itemElement = document.createElement("div");
+  itemElement.classList.add("stack-split-item");
+  itemElement.textContent = `${getLocalizedItemName(item.itemId, item.quantity)} (${item.quantity})`;
+  const inputRowElement = document.createElement("label");
+  inputRowElement.classList.add("stack-split-input-row");
+  inputRowElement.textContent = getGameUiText("splitAmount");
+  const numberInputElement = document.createElement("input");
+  numberInputElement.classList.add("stack-split-number");
+  numberInputElement.type = "number";
+  numberInputElement.min = "1";
+  numberInputElement.max = String(item.quantity - 1);
+  numberInputElement.step = "1";
+  numberInputElement.value = String(Math.max(1, Math.floor(item.quantity / 2)));
+  const rangeInputElement = document.createElement("input");
+  rangeInputElement.classList.add("stack-split-range");
+  rangeInputElement.type = "range";
+  rangeInputElement.min = numberInputElement.min;
+  rangeInputElement.max = numberInputElement.max;
+  rangeInputElement.value = numberInputElement.value;
+  const actionsElement = document.createElement("div");
+  actionsElement.classList.add("stack-split-actions");
+  const cancelButtonElement = document.createElement("button");
+  cancelButtonElement.type = "button";
+  cancelButtonElement.textContent = getGameUiText("cancel");
+  const confirmButtonElement = document.createElement("button");
+  confirmButtonElement.type = "submit";
+  confirmButtonElement.textContent = getGameUiText("splitConfirm");
+
+  inputRowElement.appendChild(numberInputElement);
+  actionsElement.append(cancelButtonElement, confirmButtonElement);
+  windowElement.append(titleElement, itemElement, inputRowElement, rangeInputElement, actionsElement);
+  stackSplitMenu.replaceChildren(windowElement);
+  stackSplitMenu.toggleAttribute("hidden", false);
+
+  rangeInputElement.addEventListener("input", () => {
+    numberInputElement.value = rangeInputElement.value;
+  });
+  numberInputElement.addEventListener("input", () => {
+    const quantity = clamp(Number(numberInputElement.value), 1, item.quantity - 1);
+    rangeInputElement.value = String(quantity);
+  });
+  cancelButtonElement.addEventListener("click", closeStackSplitMenu);
+  windowElement.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const sourceSnapshot = stackSplitMenuState.source;
+    const itemUid = stackSplitMenuState.itemUid;
+    const quantity = Number(numberInputElement.value);
+    if (splitItemStack(sourceSnapshot, itemUid, quantity)) {
+      closeStackSplitMenu();
+    }
+  });
+  return true;
+};
+
+stackSplitMenu?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (event.target === stackSplitMenu) {
+    closeStackSplitMenu();
+  }
+});
+stackSplitMenu?.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+});
+
 const handleEatFoodUse = (item, source, useData) => {
   if (!item || !source || !Number.isFinite(useData?.sanity) || useData.sanity <= 0) {
     return false;
@@ -9138,6 +10404,8 @@ const executeDirectItemUse = (item, source) => {
     handleEatFoodUse(item, source, useData);
   } else if (useData.action === "toggleTorch") {
     handleToggleTorchUse(item, source);
+  } else if (useData.action === "splitCurrencyStack") {
+    openStackSplitMenu(item, source);
   }
 };
 //#endregion  -----  ITEMS - UTILISATION ET COOLDOWNS  -----
@@ -10425,7 +11693,26 @@ const resetMobileJoystick = () => {
   if (mobileJoystickKnob) {
     mobileJoystickKnob.style.transform = "translate(0px, 0px)";
   }
+  if (mobileJoystick) {
+    mobileJoystick.style.removeProperty("top");
+    mobileJoystick.style.removeProperty("bottom");
+    mobileJoystick.style.removeProperty("left");
+  }
   mobileJoystick?.classList.remove("mobile-joystick-diagonal-pending", "mobile-joystick-diagonal-ready");
+};
+
+const placeMobileJoystickAtPointer = (clientX, clientY) => {
+  if (!mobileJoystickZone || !mobileJoystick || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return;
+  }
+  const zoneRect = mobileJoystickZone.getBoundingClientRect();
+  const joystickWidth = mobileJoystick.offsetWidth;
+  const joystickHeight = mobileJoystick.offsetHeight;
+  const left = clamp(clientX - zoneRect.left - joystickWidth / 2, 0, zoneRect.width - joystickWidth);
+  const top = clamp(clientY - zoneRect.top - joystickHeight / 2, 0, zoneRect.height - joystickHeight);
+  mobileJoystick.style.left = `${left}px`;
+  mobileJoystick.style.top = `${top}px`;
+  mobileJoystick.style.bottom = "auto";
 };
 
 const updateMobileJoystickFromPointer = (clientX, clientY) => {
@@ -10695,6 +11982,13 @@ const resetInputComboState = () => {
 /* ---------- INPUTS - TOUCHE APPUYEE ---------- */
 
 document.addEventListener("keydown", (e) => {
+  if (stackSplitMenu && !stackSplitMenu.hidden) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeStackSplitMenu();
+    }
+    return;
+  }
   if (e.ctrlKey && e.key.toLowerCase() === "d") {
     e.preventDefault();
     if (!e.repeat && !gameRuntimeState.isStarting) {
@@ -10851,7 +12145,7 @@ const lookAtPointerTarget = (target) => {
     }
     return {
       customText: getGameUiText("youSeeProperName")(npcData.name),
-      target: target.npc,
+      target: playerState,
     };
   } else if (target.item) {
     const itemData = getLocalizedItemData(target.item.itemId);
@@ -11411,18 +12705,19 @@ document.addEventListener("pointercancel", (event) => {
   resetMobileTouchInput();
 }, { passive: false });
 
-mobileJoystick?.addEventListener("pointerdown", (event) => {
+mobileJoystickZone?.addEventListener("pointerdown", (event) => {
   if (event.pointerType !== "touch" && event.pointerType !== "pen") {
     return;
   }
   event.preventDefault();
   event.stopPropagation();
   mobileGameUiState.joystickPointerId = event.pointerId;
-  mobileJoystick.setPointerCapture(event.pointerId);
+  mobileJoystickZone.setPointerCapture(event.pointerId);
+  placeMobileJoystickAtPointer(event.clientX, event.clientY);
   updateMobileJoystickFromPointer(event.clientX, event.clientY);
 });
 
-mobileJoystick?.addEventListener("pointermove", (event) => {
+mobileJoystickZone?.addEventListener("pointermove", (event) => {
   if (event.pointerId !== mobileGameUiState.joystickPointerId) {
     return;
   }
@@ -11440,8 +12735,15 @@ const finishMobileJoystickInput = (event) => {
   resetMobileJoystick();
 };
 
-mobileJoystick?.addEventListener("pointerup", finishMobileJoystickInput);
-mobileJoystick?.addEventListener("pointercancel", finishMobileJoystickInput);
+mobileJoystickZone?.addEventListener("pointerup", finishMobileJoystickInput);
+mobileJoystickZone?.addEventListener("pointercancel", finishMobileJoystickInput);
+
+boitePrincipale.addEventListener("contextmenu", (event) => {
+  if (!isMobileGameLayout()) {
+    return;
+  }
+  event.preventDefault();
+});
 
 for (const button of mobilePanelButtons) {
   button.addEventListener("click", (event) => {
@@ -12561,6 +13863,7 @@ const createNpcConversationState = () => {
     queuedReplies: [],
     pendingAction: null,
     activeMenu: null,
+    activeShopCategory: null,
     nextReplyAt: 0,
     lastInteractionAt: 0,
   };
@@ -12936,7 +14239,12 @@ const getNpcDialogueData = (npcData) => {
 
 const formatNpcDialogueText = (text, player, replacements = {}) => {
   let formattedText = text.replaceAll("{playerName}", player.name);
-  for (const [placeholder, value] of Object.entries(replacements)) {
+  const dialogueReplacements = {
+    bankBalance: getPlayerBankGoldAmount(),
+    cashBalance: getPlayerGoldAmount(),
+    ...replacements,
+  };
+  for (const [placeholder, value] of Object.entries(dialogueReplacements)) {
     formattedText = formattedText.replaceAll(`{${placeholder}}`, String(value));
   }
   return formattedText;
@@ -12997,6 +14305,7 @@ const promoteNextNpcConversation = (npc, state, now) => {
     }
     state.activePlayerUid = playerUid;
     state.activeMenu = null;
+    state.activeShopCategory = null;
     state.lastInteractionAt = now;
     const npcData = getNpcData(npc.npcId);
     const dialogue = getNpcDialogueData(npcData);
@@ -13020,6 +14329,7 @@ const releaseNpcConversation = (npc, state, now, reason = "farewell") => {
   state.queuedReplies.length = 0;
   state.pendingAction = null;
   state.activeMenu = null;
+  state.activeShopCategory = null;
   state.nextReplyAt = 0;
   state.lastInteractionAt = 0;
   promoteNextNpcConversation(npc, state, now);
@@ -13042,6 +14352,7 @@ const startNpcConversation = (npc, player, now) => {
   }
   state.activePlayerUid = player.uid;
   state.activeMenu = null;
+  state.activeShopCategory = null;
   state.lastInteractionAt = now;
   updateNpcDirectionToPlayer(npc);
   return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
@@ -13091,14 +14402,49 @@ const findNpcShopOffer = (npcData, speechWords) => {
   return null;
 };
 
+const getLocalizedNpcShopCategoryName = (categoryData) => {
+  const language = getCurrentGameLanguage();
+  return categoryData?.labels?.[language] ?? categoryData?.labels?.en ?? null;
+};
+
+const findNpcShopCategory = (npcData, speechWords) => {
+  if (!(speechWords instanceof Set)) {
+    return null;
+  }
+  for (const [categoryId, categoryData] of Object.entries(npcData?.service?.categories ?? {})) {
+    if (categoryData.keywords?.some((keyword) => hasNpcSpeechKeyword(speechWords, [keyword]))) {
+      return { categoryId, ...categoryData };
+    }
+  }
+  return null;
+};
+
 const getNpcMenuNavigationSuggestions = () => {
   return getCurrentGameLanguage() === "fr" ? ["Retour", "Bye"] : ["Back", "Bye"];
 };
 
-const getNpcShopMenuSuggestions = (npcData, tradeType) => {
+const getNpcShopCategorySuggestions = (npcData, tradeType) => {
+  const priceKey = tradeType === "sell" ? "sellPrice" : "buyPrice";
+  return Object.entries(npcData?.service?.categories ?? {})
+    .filter(([categoryId]) =>
+      Object.values(npcData?.service?.offers ?? {}).some(
+        (offer) => offer.category === categoryId && Number.isInteger(offer[priceKey]) && offer[priceKey] > 0,
+      ),
+    )
+    .map(([, categoryData]) => getLocalizedNpcShopCategoryName(categoryData))
+    .filter(Boolean);
+};
+
+const getNpcShopMenuSuggestions = (npcData, tradeType, categoryId = null) => {
+  if (!categoryId) {
+    return [...getNpcShopCategorySuggestions(npcData, tradeType), ...getNpcMenuNavigationSuggestions()];
+  }
   const priceKey = tradeType === "sell" ? "sellPrice" : "buyPrice";
   const itemSuggestions = Object.entries(npcData?.service?.offers ?? [])
-    .filter(([, offer]) => Number.isInteger(offer?.[priceKey]) && offer[priceKey] > 0)
+    .filter(
+      ([, offer]) =>
+        offer.category === categoryId && Number.isInteger(offer?.[priceKey]) && offer[priceKey] > 0,
+    )
     .map(([itemId]) => getLocalizedItemName(itemId));
   return [...itemSuggestions, ...getNpcMenuNavigationSuggestions()];
 };
@@ -13119,13 +14465,13 @@ const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) =>
     return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
   }
 
-  const paymentPlan = createPlayerBackpackItemRemovalPlan("goldCoin", totalPrice);
-  if (!paymentPlan.success || !commitPlayerBackpackItemRemovalPlan(paymentPlan)) {
+  const paymentPlan = createPlayerGoldPaymentPlan(totalPrice);
+  if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
     return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
   }
   const grantResult = grantRewardItemsToPlayer([{ itemId: offer.itemId, quantity }]);
   if (!grantResult.success) {
-    rollbackPlayerBackpackItemRemovalPlan(paymentPlan);
+    rollbackPlayerCurrencyValuePlan(paymentPlan);
     return queueNpcReply(npc, player, dialogue.noRoom, now);
   }
 
@@ -13142,7 +14488,7 @@ const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) =>
       itemName: getLocalizedItemName(offer.itemId, quantity),
       price: totalPrice,
     },
-    getNpcShopMenuSuggestions(npcData, "buy"),
+    getNpcShopMenuSuggestions(npcData, "buy", offer.category),
   );
 };
 
@@ -13175,7 +14521,7 @@ const sellItemToNpc = (npc, player, npcData, dialogue, offer, quantity, now) => 
       itemName: getLocalizedItemName(offer.itemId, quantity),
       price: totalPrice,
     },
-    getNpcShopMenuSuggestions(npcData, "sell"),
+    getNpcShopMenuSuggestions(npcData, "sell", offer.category),
   );
 };
 
@@ -13193,6 +14539,7 @@ const setNpcItemTradePendingAction = (npc, player, dialogue, offer, quantity, tr
     quantity,
   };
   state.activeMenu = tradeType === "sellItem" ? "sell" : "buy";
+  state.activeShopCategory = offer.category ?? null;
   const confirmationText = tradeType === "buyItem" ? dialogue.confirmBuy : dialogue.confirmSell;
   return queueNpcReply(
     npc,
@@ -13214,16 +14561,43 @@ const handleNpcItemShopSpeech = (npc, player, npcData, dialogue, text, speechWor
   const wantsBuy = hasNpcSpeechKeyword(speechWords, ["buy", "purchase", "achat", "acheter", "achete"]);
   const wantsSell = hasNpcSpeechKeyword(speechWords, ["sell", "sale", "vente", "vendre", "vends"]);
   const offer = findNpcShopOffer(npcData, speechWords);
+  const category = findNpcShopCategory(npcData, speechWords);
   const state = npcConversationStatesByUid.get(npc.uid);
+  const requestedTradeType = wantsSell
+    ? "sell"
+    : wantsBuy
+      ? "buy"
+      : state.activeMenu === "buy" || state.activeMenu === "sell"
+        ? state.activeMenu
+        : null;
+
+  if (!offer && category && requestedTradeType) {
+    state.activeMenu = requestedTradeType;
+    state.activeShopCategory = category.categoryId;
+    const categoryMenuText = requestedTradeType === "sell" ? dialogue.sellCategoryMenu : dialogue.buyCategoryMenu;
+    return queueNpcReply(
+      npc,
+      player,
+      categoryMenuText,
+      now,
+      false,
+      { categoryName: getLocalizedNpcShopCategoryName(category).toLocaleLowerCase() },
+      getNpcShopMenuSuggestions(npcData, requestedTradeType, category.categoryId),
+    );
+  }
   if (wantsBuy && !offer) {
     state.activeMenu = "buy";
+    state.activeShopCategory = null;
     return queueNpcReply(npc, player, dialogue.buyMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "buy"));
   }
   if (wantsSell && !offer) {
     state.activeMenu = "sell";
+    state.activeShopCategory = null;
     return queueNpcReply(npc, player, dialogue.sellMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "sell"));
   }
   if (wantsTrade && !wantsBuy && !wantsSell && !offer) {
+    state.activeMenu = null;
+    state.activeShopCategory = null;
     return queueNpcReply(npc, player, dialogue.trade, now, false, {}, dialogue.greetingSuggestions);
   }
   if (!offer) {
@@ -13323,6 +14697,222 @@ const handleNpcSpellTeacherSpeech = (npc, player, npcData, dialogue, text, speec
   );
 };
 
+const NPC_BANK_CURRENCY_ALIASES = {
+  goldCoin: ["gold", "or"],
+  azureCoin: ["platinum", "platine", "azure", "azur"],
+  crystalCoin: ["crystal", "cristal"],
+};
+
+const getNpcBankAmount = (text, allAmount) => {
+  const speechWords = getNpcSpeechWords(text);
+  if (hasNpcSpeechKeyword(speechWords, ["all", "tout", "tous"])) {
+    return allAmount;
+  }
+  const amountMatch = typeof text === "string" ? text.match(/\b(\d+)\b/) : null;
+  const amount = amountMatch ? Number(amountMatch[1]) : null;
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+};
+
+const findNpcBankCurrencyItemId = (text) => {
+  const speechWords = getNpcSpeechWords(text);
+  for (const [itemId, aliases] of Object.entries(NPC_BANK_CURRENCY_ALIASES)) {
+    if (hasNpcSpeechKeyword(speechWords, aliases)) {
+      return itemId;
+    }
+  }
+  return null;
+};
+
+const findNpcBankExchangeRecipe = (npcData, text) => {
+  if (typeof text !== "string") {
+    return null;
+  }
+  const normalizedText = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .trim();
+  const exchangeParts = normalizedText.split(/\s+(?:to|into|en|vers|contre)\s+/);
+  if (exchangeParts.length !== 2) {
+    return null;
+  }
+  const sourceItemId = findNpcBankCurrencyItemId(exchangeParts[0]);
+  const outputItemId = findNpcBankCurrencyItemId(exchangeParts[1]);
+  return (
+    npcData.service?.exchangeRecipes?.find(
+      (recipe) => recipe.sourceItemId === sourceItemId && recipe.outputItemId === outputItemId,
+    ) ?? null
+  );
+};
+
+const setNpcBankAmountPendingAction = (npc, player, dialogue, type, amount, now) => {
+  const state = npcConversationStatesByUid.get(npc?.uid);
+  if (!state || !Number.isSafeInteger(amount) || amount <= 0) {
+    return queueNpcReply(npc, player, dialogue.invalidAmount, now, false, {}, dialogue.greetingSuggestions);
+  }
+  state.pendingAction = { type, amount };
+  state.activeMenu = type === "bankDeposit" ? "bankDeposit" : "bankWithdraw";
+  const confirmationText = type === "bankDeposit" ? dialogue.confirmDeposit : dialogue.confirmWithdraw;
+  return queueNpcReply(
+    npc,
+    player,
+    confirmationText,
+    now,
+    false,
+    { amount },
+    dialogue.confirmationSuggestions,
+  );
+};
+
+const setNpcBankExchangePendingAction = (npc, player, dialogue, recipe, now) => {
+  const state = npcConversationStatesByUid.get(npc?.uid);
+  if (!state || !recipe) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now);
+  }
+  state.pendingAction = { type: "bankExchange", ...recipe };
+  state.activeMenu = "bankExchange";
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.confirmExchange,
+    now,
+    false,
+    {
+      sourceQuantity: recipe.sourceQuantity,
+      sourceName: getLocalizedItemName(recipe.sourceItemId, recipe.sourceQuantity),
+      outputQuantity: recipe.outputQuantity,
+      outputName: getLocalizedItemName(recipe.outputItemId, recipe.outputQuantity),
+    },
+    dialogue.confirmationSuggestions,
+  );
+};
+
+const depositPlayerGoldInBank = (npc, player, dialogue, amount, now) => {
+  const bankBalance = getPlayerBankGoldAmount();
+  if (
+    !Number.isSafeInteger(amount) ||
+    amount <= 0 ||
+    amount > getPlayerGoldAmount() ||
+    bankBalance > Number.MAX_SAFE_INTEGER - amount
+  ) {
+    return queueNpcReply(npc, player, dialogue.notEnoughCash, now, false, {}, dialogue.greetingSuggestions);
+  }
+  const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() - amount);
+  if (!currencyPlan.success || !commitPlayerCurrencyValuePlan(currencyPlan)) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
+  }
+  playerState.bank.goldBalance += amount;
+  refreshInventoryUi();
+  autosaveCurrentCharacter();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.deposited,
+    now,
+    false,
+    { amount, bankBalance: getPlayerBankGoldAmount() },
+    dialogue.greetingSuggestions,
+  );
+};
+
+const withdrawPlayerGoldFromBank = (npc, player, dialogue, amount, now) => {
+  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getPlayerBankGoldAmount()) {
+    return queueNpcReply(npc, player, dialogue.notEnoughBankGold, now, false, {}, dialogue.greetingSuggestions);
+  }
+  const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() + amount);
+  if (!currencyPlan.success) {
+    return queueNpcReply(npc, player, dialogue.noRoom, now, false, {}, dialogue.greetingSuggestions);
+  }
+  const weightDifference = getPlayerCurrencyValuePlanWeightDifference(currencyPlan);
+  if (!Number.isFinite(weightDifference) || weightDifference > getPlayerRemainingCapacity()) {
+    return queueNpcReply(npc, player, dialogue.notEnoughCapacity, now, false, {}, dialogue.greetingSuggestions);
+  }
+  if (!commitPlayerCurrencyValuePlan(currencyPlan)) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
+  }
+  playerState.bank.goldBalance -= amount;
+  refreshInventoryUi();
+  autosaveCurrentCharacter();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.withdrawn,
+    now,
+    false,
+    { amount, bankBalance: getPlayerBankGoldAmount() },
+    dialogue.greetingSuggestions,
+  );
+};
+
+const exchangePlayerCurrencyAtBank = (npc, player, dialogue, recipe, now) => {
+  const removalPlan = createPlayerBackpackItemRemovalPlan(recipe?.sourceItemId, recipe?.sourceQuantity);
+  if (!removalPlan.success || !commitPlayerBackpackItemRemovalPlan(removalPlan)) {
+    return queueNpcReply(npc, player, dialogue.missingCoins, now, false, {}, dialogue.exchangeSuggestions);
+  }
+  const grantResult = grantRewardItemsToPlayer([
+    { itemId: recipe.outputItemId, quantity: recipe.outputQuantity },
+  ]);
+  if (!grantResult.success) {
+    rollbackPlayerBackpackItemRemovalPlan(removalPlan);
+    refreshInventoryUi();
+    const failureText = grantResult.reason === "capacity" ? dialogue.notEnoughCapacity : dialogue.noRoom;
+    return queueNpcReply(npc, player, failureText, now, false, {}, dialogue.exchangeSuggestions);
+  }
+  refreshInventoryUi();
+  autosaveCurrentCharacter();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.exchanged,
+    now,
+    false,
+    {
+      outputQuantity: recipe.outputQuantity,
+      outputName: getLocalizedItemName(recipe.outputItemId, recipe.outputQuantity),
+    },
+    dialogue.exchangeSuggestions,
+  );
+};
+
+const handleNpcBankerSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
+  const state = npcConversationStatesByUid.get(npc.uid);
+  const wantsBalance = hasNpcSpeechKeyword(speechWords, ["balance", "solde"]);
+  const wantsDeposit = hasNpcSpeechKeyword(speechWords, ["deposit", "depot", "deposer", "depose"]);
+  const wantsWithdraw = hasNpcSpeechKeyword(speechWords, ["withdraw", "withdrawal", "retrait", "retirer", "retire"]);
+  const wantsExchange = hasNpcSpeechKeyword(speechWords, ["exchange", "change", "echange", "echanger"]);
+
+  if (wantsBalance) {
+    state.activeMenu = null;
+    return queueNpcReply(npc, player, dialogue.balance, now, false, {}, dialogue.greetingSuggestions);
+  }
+  if (wantsDeposit || state.activeMenu === "bankDeposit") {
+    const amount = getNpcBankAmount(text, getPlayerGoldAmount());
+    if (amount === null) {
+      state.activeMenu = "bankDeposit";
+      return queueNpcReply(npc, player, dialogue.depositPrompt, now, false, {}, dialogue.depositSuggestions);
+    }
+    return setNpcBankAmountPendingAction(npc, player, dialogue, "bankDeposit", amount, now);
+  }
+  if (wantsWithdraw || state.activeMenu === "bankWithdraw") {
+    const amount = getNpcBankAmount(text, getPlayerBankGoldAmount());
+    if (amount === null) {
+      state.activeMenu = "bankWithdraw";
+      return queueNpcReply(npc, player, dialogue.withdrawPrompt, now, false, {}, dialogue.withdrawSuggestions);
+    }
+    return setNpcBankAmountPendingAction(npc, player, dialogue, "bankWithdraw", amount, now);
+  }
+
+  const exchangeRecipe = findNpcBankExchangeRecipe(npcData, text);
+  if (exchangeRecipe) {
+    return setNpcBankExchangePendingAction(npc, player, dialogue, exchangeRecipe, now);
+  }
+  if (wantsExchange || state.activeMenu === "bankExchange") {
+    state.activeMenu = "bankExchange";
+    return queueNpcReply(npc, player, dialogue.exchangePrompt, now, false, {}, dialogue.exchangeSuggestions);
+  }
+  return false;
+};
+
 const isNpcConfirmationSpeech = (speechWords) => {
   return (
     hasNpcSpeechKeyword(speechWords, [
@@ -13375,6 +14965,15 @@ const executeNpcPendingAction = (npc, player, npcData, dialogue, state, now) => 
     const spellData = spellsDatabase[pendingAction.spellId];
     return learnSpellFromNpc(npc, player, npcData, dialogue, spellData, now);
   }
+  if (pendingAction.type === "bankDeposit") {
+    return depositPlayerGoldInBank(npc, player, dialogue, pendingAction.amount, now);
+  }
+  if (pendingAction.type === "bankWithdraw") {
+    return withdrawPlayerGoldFromBank(npc, player, dialogue, pendingAction.amount, now);
+  }
+  if (pendingAction.type === "bankExchange") {
+    return exchangePlayerCurrencyAtBank(npc, player, dialogue, pendingAction, now);
+  }
   return false;
 };
 
@@ -13390,7 +14989,9 @@ const handleNpcPendingActionSpeech = (npc, player, npcData, dialogue, state, spe
     state.pendingAction = null;
     if (pendingAction.type === "buyItem" || pendingAction.type === "sellItem") {
       const tradeType = pendingAction.type === "sellItem" ? "sell" : "buy";
+      const categoryId = npcData.service?.offers?.[pendingAction.itemId]?.category ?? null;
       state.activeMenu = tradeType;
+      state.activeShopCategory = categoryId;
       return queueNpcReply(
         npc,
         player,
@@ -13398,12 +14999,16 @@ const handleNpcPendingActionSpeech = (npc, player, npcData, dialogue, state, spe
         now,
         false,
         {},
-        getNpcShopMenuSuggestions(npcData, tradeType),
+        getNpcShopMenuSuggestions(npcData, tradeType, categoryId),
       );
     }
     if (pendingAction.type === "learnSpell") {
       state.activeMenu = "spells";
       return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, getNpcSpellMenuSuggestions(npcData));
+    }
+    if (pendingAction.type.startsWith("bank")) {
+      state.activeMenu = null;
+      return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
     }
     return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
   }
@@ -13416,6 +15021,9 @@ const handleNpcServiceSpeech = (npc, player, npcData, dialogue, text, speechWord
   }
   if (npcData.service?.type === "spellTeacher") {
     return handleNpcSpellTeacherSpeech(npc, player, npcData, dialogue, text, speechWords, now);
+  }
+  if (npcData.service?.type === "banker") {
+    return handleNpcBankerSpeech(npc, player, npcData, dialogue, text, speechWords, now);
   }
   return false;
 };
@@ -13446,6 +15054,7 @@ const handleNpcPlayerSpeech = (text, player, now) => {
 
   if (isGreeting) {
     state.activeMenu = null;
+    state.activeShopCategory = null;
     return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
   }
   if (hasNpcSpeechKeyword(speechWords, ["bye", "farewell", "ciao", "revoir"])) {
@@ -13455,7 +15064,18 @@ const handleNpcPlayerSpeech = (text, player, now) => {
     return handleNpcPendingActionSpeech(npc, player, npcData, dialogue, state, speechWords, now);
   }
   if (hasNpcSpeechKeyword(speechWords, ["back", "retour"])) {
+    if (
+      npcData.service?.type === "itemShop" &&
+      (state.activeMenu === "buy" || state.activeMenu === "sell") &&
+      state.activeShopCategory
+    ) {
+      const tradeType = state.activeMenu;
+      state.activeShopCategory = null;
+      const menuText = tradeType === "sell" ? dialogue.sellMenu : dialogue.buyMenu;
+      return queueNpcReply(npc, player, menuText, now, false, {}, getNpcShopMenuSuggestions(npcData, tradeType));
+    }
     state.activeMenu = null;
+    state.activeShopCategory = null;
     return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
   }
   if (hasNpcSpeechKeyword(speechWords, ["name", "nom"])) {
@@ -16476,6 +18096,7 @@ const gameLoop = (frameTime) => {
   }
   const renderNow = Date.now();
   renderGameFrame(renderNow);
+  renderPixiFrame(frameTime);
   updateFpsCounter(frameTime);
   requestAnimationFrame(gameLoop);
 };
@@ -16537,8 +18158,12 @@ const startGame = async () => {
       gameWidth: GAME_WIDTH,
       gameHeight: GAME_HEIGHT,
     });
+    const playerTextureUrl = await getPlayerAppearanceTextureUrl(
+      playerState.appearanceId,
+      playerState.appearanceColors,
+    );
     await loadPixiWorldEntityTextures({
-      playerTextureUrl: getPlayerAppearanceData().textureUrl,
+      playerTextureUrl,
       itemTextureUrl: getAtlasPath("items"),
       monsterTextureUrl: getAtlasPath("monsters"),
       npcTextureUrlsById: getNpcTextureUrlsById(),

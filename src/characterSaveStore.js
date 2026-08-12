@@ -5,6 +5,31 @@ const MIN_CHARACTER_NAME_LENGTH = 2;
 const MAX_CHARACTER_NAME_LENGTH = 20;
 const DEFAULT_CHARACTER_APPEARANCE_ID = "male";
 const CHARACTER_APPEARANCE_IDS = new Set(["male", "female"]);
+const CHARACTER_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+export const DEFAULT_CHARACTER_APPEARANCE_COLORS = Object.freeze({
+  hair: "#8a552c",
+  clothes: "#e7e2da",
+  pants: "#686868",
+  shoes: "#6b3f18",
+});
+
+export const normalizeCharacterAppearanceColors = (appearanceColors) => {
+  return {
+    hair: CHARACTER_COLOR_PATTERN.test(appearanceColors?.hair)
+      ? appearanceColors.hair.toLowerCase()
+      : DEFAULT_CHARACTER_APPEARANCE_COLORS.hair,
+    clothes: CHARACTER_COLOR_PATTERN.test(appearanceColors?.clothes)
+      ? appearanceColors.clothes.toLowerCase()
+      : DEFAULT_CHARACTER_APPEARANCE_COLORS.clothes,
+    pants: CHARACTER_COLOR_PATTERN.test(appearanceColors?.pants)
+      ? appearanceColors.pants.toLowerCase()
+      : DEFAULT_CHARACTER_APPEARANCE_COLORS.pants,
+    shoes: CHARACTER_COLOR_PATTERN.test(appearanceColors?.shoes)
+      ? appearanceColors.shoes.toLowerCase()
+      : DEFAULT_CHARACTER_APPEARANCE_COLORS.shoes,
+  };
+};
 
 const createEmptyCharacterCollection = () => {
   return {
@@ -128,6 +153,9 @@ export const saveCharacterSnapshot = (characterSnapshot) => {
   const collection = collectionResult.collection;
   const existingEntry = collection.charactersById[characterId] ?? null;
   const savedAt = Date.now();
+  const appearanceColors = normalizeCharacterAppearanceColors(
+    characterSnapshot.appearanceColors ?? existingEntry?.appearanceColors,
+  );
   collection.activeCharacterId = characterId;
   collection.charactersById[characterId] = {
     characterId,
@@ -135,9 +163,13 @@ export const saveCharacterSnapshot = (characterSnapshot) => {
     appearanceId: CHARACTER_APPEARANCE_IDS.has(characterSnapshot.appearanceId)
       ? characterSnapshot.appearanceId
       : (existingEntry?.appearanceId ?? DEFAULT_CHARACTER_APPEARANCE_ID),
+    appearanceColors,
     createdAt: existingEntry?.createdAt ?? savedAt,
     savedAt,
-    character: characterSnapshot,
+    character: {
+      ...characterSnapshot,
+      appearanceColors,
+    },
   };
 
   const writeResult = writeCharacterCollection(collection);
@@ -188,6 +220,9 @@ export const listCharacterProfiles = () => {
         name: entry.name,
         appearanceId:
           entry.character?.appearanceId ?? entry.appearanceId ?? DEFAULT_CHARACTER_APPEARANCE_ID,
+        appearanceColors: normalizeCharacterAppearanceColors(
+          entry.character?.appearanceColors ?? entry.appearanceColors,
+        ),
         experience: entry.character?.progression?.experience ?? 0,
         savedAt: entry.savedAt,
         isActive: entry.characterId === collection.activeCharacterId,
@@ -198,7 +233,11 @@ export const listCharacterProfiles = () => {
   return { success: true, characters };
 };
 
-export const createCharacterProfile = (name, appearanceId = DEFAULT_CHARACTER_APPEARANCE_ID) => {
+export const createCharacterProfile = (
+  name,
+  appearanceId = DEFAULT_CHARACTER_APPEARANCE_ID,
+  appearanceColors = DEFAULT_CHARACTER_APPEARANCE_COLORS,
+) => {
   const normalizedName = normalizeCharacterName(name);
   if (!isValidCharacterName(normalizedName)) {
     return { success: false, reason: "invalid-name" };
@@ -222,11 +261,13 @@ export const createCharacterProfile = (name, appearanceId = DEFAULT_CHARACTER_AP
 
   const characterId = createCharacterId();
   const now = Date.now();
+  const normalizedAppearanceColors = normalizeCharacterAppearanceColors(appearanceColors);
   collection.activeCharacterId = characterId;
   collection.charactersById[characterId] = {
     characterId,
     name: normalizedName,
     appearanceId,
+    appearanceColors: normalizedAppearanceColors,
     createdAt: now,
     savedAt: now,
     character: null,
@@ -236,7 +277,13 @@ export const createCharacterProfile = (name, appearanceId = DEFAULT_CHARACTER_AP
   if (!writeResult.success) {
     return writeResult;
   }
-  return { success: true, characterId, name: normalizedName, appearanceId };
+  return {
+    success: true,
+    characterId,
+    name: normalizedName,
+    appearanceId,
+    appearanceColors: normalizedAppearanceColors,
+  };
 };
 
 export const setActiveCharacterId = (characterId) => {

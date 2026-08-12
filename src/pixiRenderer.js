@@ -1290,8 +1290,16 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     0, 0, 0, 1, 0,
   ];
   pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
+  pixiApp.stop();
 };
 //#endregion  -----  PIXI - INITIALISATION  -----
+
+export const renderPixiFrame = (frameTime) => {
+  if (!pixiApp || !Number.isFinite(frameTime)) {
+    return;
+  }
+  pixiApp.ticker.update(frameTime);
+};
 
 /* ==================================================== */
 //#region     -----  PIXI - CAMERA  -----

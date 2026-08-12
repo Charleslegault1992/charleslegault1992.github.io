@@ -30,6 +30,7 @@
       </div>
     </div>
     <div id="character-selector" class="character-selector-overlay" hidden></div>
+    <div id="stack-split-menu" class="stack-split-overlay" hidden></div>
     <header>
       <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
@@ -162,8 +163,10 @@
             <span class="mobile-item-use-cancel" aria-hidden="true">&times;</span>
           </button>
           <button id="mobile-panel-close" class="mobile-panel-close-button" type="button" aria-label="Close panel" hidden>&times;</button>
-          <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control">
-            <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
+          <div id="mobile-joystick-zone" class="mobile-joystick-zone">
+            <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control">
+              <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
+            </div>
           </div>
           <div class="mobile-panel-buttons">
             <button class="mobile-panel-button" type="button" data-mobile-panel="map" data-game-title="mobileMap">

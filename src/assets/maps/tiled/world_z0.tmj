@@ -1271,6 +1271,24 @@
                  "width":64,
                  "x":448,
                  "y":640
+                },
+                {
+                 "height":64,
+                 "id":16,
+                 "name":"Charles",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"npcId",
+                         "type":"string",
+                         "value":"charles"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":64,
+                 "x":896,
+                 "y":-192
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -1279,7 +1297,7 @@
          "y":0
         }],
  "nextlayerid":14,
- "nextobjectid":16,
+ "nextobjectid":17,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",

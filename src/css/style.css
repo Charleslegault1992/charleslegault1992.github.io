@@ -941,6 +941,86 @@ main {
   display: none;
 }
 
+.stack-split-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000005;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.stack-split-overlay[hidden] {
+  display: none;
+}
+
+.stack-split-window {
+  width: 260px;
+  max-width: calc(100% - 24px);
+  padding: 7px;
+  border-color: rgba(210, 192, 143, 0.72);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.82);
+}
+
+.stack-split-title {
+  margin-bottom: 7px;
+  color: #f0dfaa;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.stack-split-item {
+  margin-bottom: 8px;
+  color: #e6e6e6;
+  font-size: 12px;
+}
+
+.stack-split-input-row {
+  display: grid;
+  grid-template-columns: 1fr 62px;
+  align-items: center;
+  gap: 8px;
+  color: #cfcfcf;
+  font-size: 11px;
+}
+
+.stack-split-number {
+  width: 62px;
+  border: 1px solid #686868;
+  color: #ffffff;
+  background: #171717;
+  text-align: center;
+}
+
+.stack-split-range {
+  width: 100%;
+  margin: 9px 0;
+  accent-color: #d1b86f;
+}
+
+.stack-split-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.stack-split-actions button {
+  min-width: 72px;
+  padding: 3px 8px;
+  border: 1px solid #69645a;
+  border-radius: 3px;
+  color: #ededed;
+  background: #292823;
+  font-size: 11px;
+}
+
+.stack-split-actions button:hover,
+.stack-split-actions button:focus-visible {
+  border-color: #d1b86f;
+  color: #ffffff;
+}
+
 .character-selector-window {
   width: 440px;
   max-width: calc(100% - 32px);
@@ -1035,7 +1115,8 @@ main {
 .character-selector-portrait {
   width: 40px;
   height: 48px;
-  background-position: -76px -8px;
+  background-position: -40px -12px;
+  background-size: 160px 320px;
   background-repeat: no-repeat;
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   overflow: hidden;
@@ -1157,6 +1238,46 @@ main {
   margin-top: 2px;
   font-size: 10px;
   font-weight: 700;
+}
+
+.character-color-options {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.character-color-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 6px;
+  border: 1px solid rgba(191, 191, 191, 0.45);
+  border-radius: 2px;
+  color: #d8d8d8;
+  background: rgba(18, 18, 18, 0.82);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.character-color-input {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.character-color-input::-webkit-color-swatch-wrapper {
+  padding: 1px;
+}
+
+.character-color-input::-webkit-color-swatch {
+  border: 0;
 }
 
 /* ---------- PANNEAU - SORTS ET HOTKEYS ---------- */
@@ -1397,6 +1518,11 @@ main {
 /* ==================================================== */
 .item-use-cursor {
   cursor: crosshair;
+}
+
+body.item-drag-active,
+body.item-drag-active * {
+  cursor: default !important;
 }
 
 /* #endregion  ----- INTERACTIONS - CURSEUR ----- */
@@ -2184,6 +2310,14 @@ main {
     touch-action: none;
   }
 
+  .boite-principal,
+  .mobile-game-controls,
+  .mobile-game-controls button {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   .jeux-panneau {
     display: contents;
   }
@@ -2587,7 +2721,7 @@ main {
     opacity: 0;
   }
 
-  .mobile-game-controls-panel-open .mobile-joystick {
+  .mobile-game-controls-panel-open .mobile-joystick-zone {
     opacity: 0;
     pointer-events: none;
   }
@@ -2752,10 +2886,20 @@ main {
     touch-action: manipulation;
   }
 
-  .mobile-joystick {
+  .mobile-joystick-zone {
     position: absolute;
     bottom: calc(14px + env(safe-area-inset-bottom));
     left: calc(14px + env(safe-area-inset-left));
+    width: min(40vw, 260px);
+    height: min(52vh, 260px);
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .mobile-joystick {
+    position: absolute;
+    bottom: 0;
+    left: 0;
     width: 120px;
     height: 120px;
     border: 1px solid rgba(255, 255, 255, 0.34);
@@ -2822,9 +2966,19 @@ main {
     right: calc(10px + env(safe-area-inset-right));
     bottom: calc(14px + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(3, 48px);
+    grid-template-columns: repeat(8, 48px);
     gap: 6px;
+    max-width: calc(100% - 150px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
     pointer-events: auto;
+    touch-action: pan-x;
+  }
+
+  .mobile-panel-buttons::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-panel-button {
@@ -3080,9 +3234,12 @@ main {
     width: 142px;
   }
 
-  .mobile-joystick {
+  .mobile-joystick-zone {
     bottom: calc(10px + env(safe-area-inset-bottom));
     left: calc(10px + env(safe-area-inset-left));
+  }
+
+  .mobile-joystick {
     width: 104px;
     height: 104px;
   }
@@ -3096,7 +3253,7 @@ main {
   .mobile-panel-buttons {
     right: calc(10px + env(safe-area-inset-right));
     bottom: calc(10px + env(safe-area-inset-bottom));
-    grid-template-columns: repeat(7, 44px);
+    grid-template-columns: repeat(8, 44px);
     gap: 5px;
   }
 
@@ -3247,13 +3404,17 @@ main {
     gap: 3px;
   }
 
+  .mobile-joystick-zone {
+    width: min(42vw, 220px);
+  }
+
   .mobile-joystick {
     width: 108px;
     height: 108px;
   }
 
   .mobile-panel-buttons {
-    grid-template-columns: repeat(3, 44px);
+    grid-template-columns: repeat(8, 44px);
   }
 
   .mobile-panel-button {
