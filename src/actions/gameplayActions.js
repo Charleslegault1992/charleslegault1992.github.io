@@ -1,10 +1,17 @@
-import { createGameAction, rejectGameAction, succeedGameAction } from "./gameAction.js";
+import {
+  createGameAction,
+  createGameActionResult,
+  GAME_ACTION_RESULT,
+  rejectGameAction,
+  succeedGameAction,
+} from "./gameAction.js";
 
 export const GAMEPLAY_ACTION_TYPE = Object.freeze({
   movePlayer: "gameplay.move-player",
   attackMonster: "gameplay.attack-monster",
   speakToNpc: "gameplay.speak-to-npc",
   interactWithWorld: "gameplay.interact-with-world",
+  useWorldTransition: "gameplay.use-world-transition",
   castSpell: "gameplay.cast-spell",
 });
 
@@ -21,10 +28,11 @@ const createTimedGameAction = (type, payload, requestedAt) => {
   return createGameAction(type, { ...payload, requestedAt });
 };
 
-export const createMovePlayerAction = ({ fromX, fromY, toX, toY, direction, isNavigationMovement, requestedAt }) => {
+export const createMovePlayerAction = ({ fromX, fromY, fromZ, toX, toY, direction, isNavigationMovement, requestedAt }) => {
   if (
     !Number.isFinite(fromX) ||
     !Number.isFinite(fromY) ||
+    !Number.isInteger(fromZ) ||
     !Number.isFinite(toX) ||
     !Number.isFinite(toY) ||
     typeof direction !== "string" ||
@@ -35,7 +43,7 @@ export const createMovePlayerAction = ({ fromX, fromY, toX, toY, direction, isNa
   }
   return createTimedGameAction(
     GAMEPLAY_ACTION_TYPE.movePlayer,
-    { fromX, fromY, toX, toY, direction, isNavigationMovement },
+    { fromX, fromY, fromZ, toX, toY, direction, isNavigationMovement },
     requestedAt,
   );
 };
@@ -80,6 +88,23 @@ export const createCastSpellAction = (spellId, requestedAt) => {
   return createTimedGameAction(GAMEPLAY_ACTION_TYPE.castSpell, { spellId }, requestedAt);
 };
 
+export const createUseWorldTransitionAction = ({ z, col, row, transitionType, requestedAt }) => {
+  if (
+    !Number.isInteger(z) ||
+    !Number.isInteger(col) ||
+    !Number.isInteger(row) ||
+    typeof transitionType !== "string" ||
+    transitionType === ""
+  ) {
+    return null;
+  }
+  return createTimedGameAction(
+    GAMEPLAY_ACTION_TYPE.useWorldTransition,
+    { z, col, row, transitionType },
+    requestedAt,
+  );
+};
+
 const executeGameplayAction = (action, context, executorName) => {
   const executor = context?.[executorName];
   if (typeof executor !== "function") {
@@ -87,13 +112,17 @@ const executeGameplayAction = (action, context, executorName) => {
   }
   const executionResult = executor(action.payload, action);
   if (executionResult?.success === false || executionResult === false) {
-    return rejectGameAction(
+    return createGameActionResult(
       action,
+      GAME_ACTION_RESULT.rejected,
       executionResult?.reason ?? GAMEPLAY_ACTION_REASON.executionRejected,
+      executionResult?.changes ?? null,
+      Array.isArray(executionResult?.events) ? executionResult.events : [],
     );
   }
   const changes = executionResult?.changes ?? (executionResult === true ? null : executionResult);
-  return succeedGameAction(action, changes);
+  const events = Array.isArray(executionResult?.events) ? executionResult.events : [];
+  return succeedGameAction(action, changes, events);
 };
 
 export const registerGameplayActionHandlers = (dispatcher) => {
@@ -102,6 +131,7 @@ export const registerGameplayActionHandlers = (dispatcher) => {
     [GAMEPLAY_ACTION_TYPE.attackMonster, "executeAttackMonster"],
     [GAMEPLAY_ACTION_TYPE.speakToNpc, "executeSpeakToNpc"],
     [GAMEPLAY_ACTION_TYPE.interactWithWorld, "executeWorldInteraction"],
+    [GAMEPLAY_ACTION_TYPE.useWorldTransition, "executeWorldTransition"],
     [GAMEPLAY_ACTION_TYPE.castSpell, "executeCastSpell"],
   ];
 

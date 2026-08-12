@@ -12,6 +12,7 @@ export const createPlayerSpellSystem = ({
   addChatMessage,
   applyExperienceToPlayerSkill,
   autosaveCurrentCharacter,
+  beginUseCooldown,
   getActiveChatChannelId,
   getEntitySurfaceOffsetY,
   getGameUiText,
@@ -28,7 +29,6 @@ export const createPlayerSpellSystem = ({
   showFloatingTextAboveTarget,
   showGameStatusMessage,
   spellUseSfx,
-  startUseCooldown,
 }) => {
   const isPlayerSpellLearned = (spellId) => {
     return playerState.spellbook.learnedSpellIds.includes(spellId);
@@ -90,23 +90,21 @@ export const createPlayerSpellSystem = ({
 
   const castSelfHealingSpell = (spellData) => {
     if (playerState.hp >= playerState.maxHp) {
-      showGameStatusMessage(getGameUiText("fullHealth"));
-      return false;
+      return { success: false, reason: "full-health" };
     }
 
     const restoredAmount = Math.min(getSpellPowerAmount(spellData), playerState.maxHp - playerState.hp);
     playerState.hp += restoredAmount;
-    showFloatingTextAbovePlayer(restoredAmount, spellData.textType);
-    return true;
+    return { success: true, restoredAmount };
   };
 
-  const castPlayerLightSpell = (spellData) => {
+  const castPlayerLightSpell = (spellData, now) => {
     if (!Number.isFinite(spellData?.durationMs) || !Number.isFinite(spellData?.lightRadius)) {
-      return false;
+      return { success: false, reason: "invalid-spell" };
     }
     playerState.spellEffects.light.radius = spellData.lightRadius;
-    playerState.spellEffects.light.expiresAt = Date.now() + spellData.durationMs;
-    return true;
+    playerState.spellEffects.light.expiresAt = now + spellData.durationMs;
+    return { success: true };
   };
 
   const applyMagicExperienceFromSpell = () => {
@@ -115,43 +113,49 @@ export const createPlayerSpellSystem = ({
     applyExperienceToPlayerSkill("magic", experienceAmount);
   };
 
-  const castPlayerSpell = (spellData) => {
+  const castPlayerSpell = (spellData, now) => {
     if (!spellData) {
-      return false;
+      return { success: false, reason: "spell-not-found" };
     }
     if (Array.isArray(spellData.allowedClassIds) && !spellData.allowedClassIds.includes(playerState.classId)) {
-      showGameStatusMessage(getGameUiText("spellWrongClass"));
-      return false;
+      return { success: false, reason: "wrong-class" };
     }
     if (playerState.skills.magic.level < spellData.requiredMagicLevel) {
-      showGameStatusMessage(getGameUiText("spellMagicLevelRequired")(spellData.requiredMagicLevel));
-      return false;
+      return {
+        success: false,
+        reason: "magic-level-required",
+        changes: { requiredMagicLevel: spellData.requiredMagicLevel },
+      };
     }
-    if (!isUseCooldownReady(spellData.cooldownGroup)) {
-      showGameStatusMessage(getGameUiText("exhausted"));
-      return false;
+    if (!isUseCooldownReady(spellData.cooldownGroup, now)) {
+      return { success: false, reason: "cooldown" };
     }
     if (playerState.mana < spellData.manaCost) {
-      showGameStatusMessage(getGameUiText("spellNotEnoughMana"));
-      return false;
+      return { success: false, reason: "not-enough-mana" };
     }
 
-    let didCastSpell = false;
+    let spellEffectResult = null;
     if (spellData.action === "healSelf") {
-      didCastSpell = castSelfHealingSpell(spellData);
+      spellEffectResult = castSelfHealingSpell(spellData);
     } else if (spellData.action === "lightSelf") {
-      didCastSpell = castPlayerLightSpell(spellData);
+      spellEffectResult = castPlayerLightSpell(spellData, now);
     }
-    if (!didCastSpell) {
-      return false;
+    if (!spellEffectResult?.success) {
+      return spellEffectResult ?? { success: false, reason: "unsupported-spell-action" };
     }
 
     playerState.mana -= spellData.manaCost;
-    startUseCooldown(spellData.cooldownGroup);
+    beginUseCooldown(spellData.cooldownGroup, now);
     applyMagicExperienceFromSpell();
-    refreshPlayerVitalsUi();
-    playGameSfx(spellUseSfx);
-    return true;
+    return {
+      success: true,
+      changes: {
+        spellId: spellData.spellId,
+        mana: playerState.mana,
+        restoredAmount: spellEffectResult.restoredAmount ?? 0,
+      },
+      events: [{ type: "spell-cast-resolved", spellId: spellData.spellId }],
+    };
   };
 
   const playPlayerSpellEffect = (spellData, success) => {
@@ -177,42 +181,59 @@ export const createPlayerSpellSystem = ({
     return true;
   };
 
-  const castLearnedPlayerSpellById = (spellId) => {
+  const executeLearnedPlayerSpellById = (spellId, requestedAt = Date.now()) => {
     const spellData = spellsDatabase[spellId] ?? null;
     if (!spellData || !isPlayerSpellLearned(spellId)) {
-      showGameStatusMessage(getGameUiText("spellNotLearned"));
+      return { success: false, reason: "spell-not-learned" };
+    }
+    return castPlayerSpell(spellData, requestedAt);
+  };
+
+  const presentPlayerSpellResult = (spellId, result) => {
+    const spellData = spellsDatabase[spellId] ?? null;
+    if (!result?.success) {
+      const failureMessageByReason = {
+        "spell-not-learned": getGameUiText("spellNotLearned"),
+        "wrong-class": getGameUiText("spellWrongClass"),
+        "magic-level-required": getGameUiText("spellMagicLevelRequired")(
+          result?.changes?.requiredMagicLevel ?? spellData?.requiredMagicLevel ?? 0,
+        ),
+        cooldown: getGameUiText("exhausted"),
+        "not-enough-mana": getGameUiText("spellNotEnoughMana"),
+        "full-health": getGameUiText("fullHealth"),
+      };
+      showGameStatusMessage(failureMessageByReason[result?.reason] ?? getGameUiText("spellNotLearned"));
       playPlayerSpellEffect(spellData, false);
       return false;
     }
 
-    const didCastSpell = castPlayerSpell(spellData);
-    playPlayerSpellEffect(spellData, didCastSpell);
-    if (!didCastSpell) {
-      return false;
+    const restoredAmount = result?.changes?.restoredAmount ?? 0;
+    if (restoredAmount > 0) {
+      showFloatingTextAbovePlayer(restoredAmount, spellData.textType);
     }
+    refreshPlayerVitalsUi();
+    playGameSfx(spellUseSfx);
+    playPlayerSpellEffect(spellData, true);
     announceSuccessfulPlayerSpell(spellData);
     return true;
   };
 
-  const castPlayerSpellFromHotkeyKey = (key) => {
+  const getPlayerSpellIdFromHotkeyKey = (key) => {
     const hotkeyIndex = SPELL_HOTKEY_KEYS.indexOf(key);
     if (hotkeyIndex === -1) {
-      return false;
+      return null;
     }
-    const spellId = playerState.spellbook.hotkeySpellIds[hotkeyIndex];
-    if (spellId) {
-      castLearnedPlayerSpellById(spellId);
-    }
-    return true;
+    return playerState.spellbook.hotkeySpellIds[hotkeyIndex] ?? null;
   };
 
 
   return {
     assignToHotkey: assignPlayerSpellToHotkey,
-    castByHotkeyKey: castPlayerSpellFromHotkeyKey,
-    castLearnedById: castLearnedPlayerSpellById,
+    executeLearnedById: executeLearnedPlayerSpellById,
+    getHotkeySpellId: getPlayerSpellIdFromHotkeyKey,
     getFromChatText: getSpellFromChatText,
     getLearned: getLearnedPlayerSpells,
     isLearned: isPlayerSpellLearned,
+    presentCastResult: presentPlayerSpellResult,
   };
 };

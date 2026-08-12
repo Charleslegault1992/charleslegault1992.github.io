@@ -16,7 +16,14 @@ export const isContainerItem = (item) => {
 };
 
 export const isOpenableContainerItem = (item) => {
-  return isContainerItem(item) && item.decayStage < 2;
+  if (!isContainerItem(item)) {
+    return false;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData?.decayType) {
+    return true;
+  }
+  return Number.isInteger(item.decayStage) && item.decayStage < 2;
 };
 
 export const isValidWorldItem = (item) => {

@@ -7,6 +7,7 @@ import {
   createCastSpellAction,
   createMovePlayerAction,
   createSpeakToNpcAction,
+  createUseWorldTransitionAction,
   createWorldInteractionAction,
   registerGameplayActionHandlers,
 } from "../src/actions/gameplayActions.js";
@@ -16,6 +17,7 @@ test("gameplay action builders create serializable transport contracts", () => {
     createMovePlayerAction({
       fromX: 64,
       fromY: 64,
+      fromZ: 0,
       toX: 128,
       toY: 64,
       direction: "right",
@@ -33,6 +35,13 @@ test("gameplay action builders create serializable transport contracts", () => {
       requestedAt: 103,
     }),
     createCastSpellAction("light", 104),
+    createUseWorldTransitionAction({
+      z: -1,
+      col: 3,
+      row: 4,
+      transitionType: "ropeUp",
+      requestedAt: 105,
+    }),
   ];
 
   assert.equal(actions.every(Boolean), true);
@@ -66,4 +75,3 @@ test("gameplay handlers preserve a domain rejection reason", () => {
   assert.equal(result.success, false);
   assert.equal(result.reason, "not-enough-mana");
 });
-

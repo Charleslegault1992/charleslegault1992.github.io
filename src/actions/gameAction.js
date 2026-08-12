@@ -19,8 +19,11 @@ export const createGameAction = (type, payload = {}) => {
   });
 };
 
-export const createGameActionResult = (action, status, reason = null, changes = null) => {
+export const createGameActionResult = (action, status, reason = null, changes = null, events = []) => {
   if (!action || !Object.values(GAME_ACTION_RESULT).includes(status)) {
+    return null;
+  }
+  if (!Array.isArray(events)) {
     return null;
   }
   return Object.freeze({
@@ -29,7 +32,8 @@ export const createGameActionResult = (action, status, reason = null, changes = 
     success: status === GAME_ACTION_RESULT.success,
     status,
     reason,
-    changes,
+    changes: structuredClone(changes),
+    events: structuredClone(events),
   });
 };
 
@@ -41,6 +45,6 @@ export const failGameAction = (action, reason) => {
   return createGameActionResult(action, GAME_ACTION_RESULT.failed, reason);
 };
 
-export const succeedGameAction = (action, changes = null) => {
-  return createGameActionResult(action, GAME_ACTION_RESULT.success, null, changes);
+export const succeedGameAction = (action, changes = null, events = []) => {
+  return createGameActionResult(action, GAME_ACTION_RESULT.success, null, changes, events);
 };

@@ -94,7 +94,12 @@ export const executeInsertItemsAction = (action, context) => {
     containerUid,
     insertedItems: structuredClone(itemEntries),
     addedWeight: insertionWeight,
-  });
+  }, [
+    {
+      type: "inventory-items-inserted",
+      containerUid,
+    },
+  ]);
 };
 
 export const executeMoveItemAction = (action, context) => {
@@ -115,7 +120,11 @@ export const executeMoveItemAction = (action, context) => {
   if (!moveResult?.success) {
     return rejectGameAction(action, moveResult?.reason ?? INVENTORY_ACTION_REASON.moveRejected);
   }
-  return succeedGameAction(action, moveResult.changes ?? null);
+  return succeedGameAction(
+    action,
+    moveResult.changes ?? null,
+    Array.isArray(moveResult.events) ? moveResult.events : [],
+  );
 };
 
 export const registerInventoryActionHandlers = (dispatcher) => {

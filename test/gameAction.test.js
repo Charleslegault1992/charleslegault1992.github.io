@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createGameAction } from "../src/actions/gameAction.js";
+import { createGameAction, succeedGameAction } from "../src/actions/gameAction.js";
 import { createGameActionDispatcher } from "../src/actions/gameActionDispatcher.js";
 
 test("the dispatcher rejects an action without a registered handler", () => {
@@ -23,4 +23,17 @@ test("an action payload is isolated from later caller mutations", () => {
   payload.itemEntries[0].quantity = 99;
 
   assert.equal(action.payload.itemEntries[0].quantity, 1);
+});
+
+test("an action result isolates its changes and events from domain objects", () => {
+  const action = createGameAction("test.result", {});
+  const changes = { player: { hp: 90 } };
+  const events = [{ type: "player-damaged", amount: 10 }];
+
+  const result = succeedGameAction(action, changes, events);
+  changes.player.hp = 1;
+  events[0].amount = 99;
+
+  assert.equal(result.changes.player.hp, 90);
+  assert.equal(result.events[0].amount, 10);
 });

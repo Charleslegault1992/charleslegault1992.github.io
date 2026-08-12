@@ -45,9 +45,26 @@ Modeles, creation, poids, cooldowns et transactions atomiques. Une transaction e
 
 ### `src/actions`
 
-Frontiere entre une intention du joueur et une mutation du jeu. Une action contient un type, un `requestId` et un payload serialisable. Le dispatcher trouve le handler autoritaire et retourne toujours un resultat structure avec `success`, `status`, `reason` et `changes`.
+Frontiere entre une intention du joueur et une mutation du jeu. Une action contient un type, un `requestId` et un payload serialisable. Le dispatcher trouve le handler autoritaire et retourne toujours un resultat structure avec `success`, `status`, `reason`, `changes` et `events`.
 
-Les actions d'inventaire et les intentions principales de gameplay utilisent cette frontiere: mouvement, attaque, parole NPC, interaction avec le monde et sorts. Le client local execute actuellement les handlers; un serveur pourra recevoir le meme contrat sans changer les controles ou les fenetres.
+Les actions d'inventaire et les intentions principales de gameplay utilisent cette frontiere: mouvement, attaque, parole NPC, interaction avec le monde, transitions et sorts. Les payloads et resultats sont clones afin qu'une reference partagee ne puisse pas traverser cette frontiere.
+
+### `src/simulation`
+
+Simulation autoritaire locale et adaptateur de transport:
+
+- `gameSimulation.js` valide l'etat courant, les distances et les cooldowns avant d'appeler une mutation;
+- `localGameTransport.js` simule le passage futur par le reseau avec des donnees clonees;
+- `gameActionEffectRouter.js` distribue les evenements confirmes vers le DOM, Pixi et l'audio.
+
+Le trajet d'une intention est maintenant:
+
+```text
+input -> action serialisable -> transport -> simulation -> resultat
+                                                       -> events -> effets clients
+```
+
+Un effet client qui echoue ne peut pas annuler une mutation autoritaire deja acceptee. Chaque abonne recoit sa propre copie du resultat.
 
 ### `src/world`
 
@@ -99,14 +116,16 @@ Pixi est charge avec un `import()` dynamique par la facade seulement quand le je
 - options, quetes, accueil, selection et creation de personnage;
 - bootstrap du client en phases explicites et orchestration ordonnee des systemes de logique/rendu;
 - actions serialisables pour le mouvement, le combat, les NPC, les interactables et les sorts.
+- transport local unique et simulation autoritaire pour les actions de gameplay et d'inventaire;
+- evenements de resultat separes pour les effets Pixi, DOM et audio.
 
 ## Prochaines extractions
 
-La prochaine frontiere majeure est le transport reseau autoritaire:
+La prochaine frontiere majeure est le serveur autoritaire:
 
-1. ajouter une couche de transport qui accepte les actions serialisables;
-2. separer les validations autoritaires des effets visuels locaux;
+1. implementer un transport WebSocket qui respecte le contrat actuel de `localGameTransport`;
+2. executer `gameSimulation` dans le processus serveur avec un etat appartenant au serveur;
 3. appliquer les snapshots et deltas recus du serveur dans les stores du client;
-4. conserver le dispatcher local comme adaptateur de developpement et de tests.
+4. conserver le transport local comme adaptateur de developpement et de tests.
 
 Chaque extraction doit passer les tests de domaine, le build de production et une verification des references JavaScript avant de commencer la suivante.

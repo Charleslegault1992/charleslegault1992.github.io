@@ -1,3 +1,11 @@
+0.324 - Simulation locale autoritaire
+    - Ajout d'un transport local unique pour les actions de gameplay et d'inventaire.
+    - Le mouvement, le combat, les sorts, les NPC, les coffres et les transitions passent maintenant par la simulation.
+    - Separation des evenements confirmes et des effets visuels ou audio du client.
+    - Les resultats sont clones et une erreur d'affichage ne peut plus faire echouer une action acceptee.
+    - Correction de l'ouverture des bags normaux et du deplacement des items entre equipement, containers et monde.
+    - Ajout de tests complets pour les cooldowns, transitions, dommages et deplacements d'items.
+
 0.323 - Architecture du client et actions de gameplay
     - Separation des options, des quetes et de la selection et creation des personnages.
     - Separation de la navigation, du joystick, du chat, des sorts, des NPC et de l'IA des monstres.

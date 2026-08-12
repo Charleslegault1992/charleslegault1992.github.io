@@ -5,7 +5,7 @@ import { createItemLocationController } from "../src/inventory/itemLocationContr
 
 const createControllerFixture = () => {
   const apple = { uid: 2, itemId: "apple", quantity: 1 };
-  const bag = { uid: 1, itemId: "bag", quantity: 1, decayStage: 0, content: [apple, null] };
+  const bag = { uid: 1, itemId: "bag", quantity: 1, content: [apple, null] };
   const worldItemsByUid = new Map([[3, { uid: 3, itemId: "cheese", quantity: 1 }]]);
   const equipment = { weapon: null };
   const controller = createItemLocationController({

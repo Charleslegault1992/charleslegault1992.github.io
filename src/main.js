@@ -89,22 +89,24 @@ import { getAtlasSource } from "./core/atlasUtils.js";
 import { startFixedStepGameLoop } from "./core/fixedStepGameLoop.js";
 import { createClientBootstrap } from "./core/clientBootstrap.js";
 import { createGameSystemsOrchestrator } from "./core/gameSystemsOrchestrator.js";
-import { createGameActionDispatcher } from "./actions/gameActionDispatcher.js";
 import {
   createAttackMonsterAction,
   createCastSpellAction,
   createMovePlayerAction,
   createSpeakToNpcAction,
+  createUseWorldTransitionAction,
   createWorldInteractionAction,
-  registerGameplayActionHandlers,
 } from "./actions/gameplayActions.js";
 import { createChatController } from "./chat/chatController.js";
 import {
   createInsertItemsAction,
   createMoveItemAction,
   INVENTORY_ACTION_REASON,
-  registerInventoryActionHandlers,
 } from "./inventory/inventoryActions.js";
+import { createGameSimulation } from "./simulation/gameSimulation.js";
+import { createLocalGameTransport } from "./simulation/localGameTransport.js";
+import { createGameActionEffectRouter } from "./simulation/gameActionEffectRouter.js";
+import { applyDamageToPlayer } from "./combat/playerHealth.js";
 import { createInventoryDragController } from "./inventory/inventoryDragController.js";
 import {
   createItemLocationController,
@@ -173,7 +175,6 @@ import {
   getWorldItemStackOffsetY,
   getWorldTileStack,
   isWorldItemTopOfTileStack,
-  moveItemUidToWorldTileStack,
   removeItemUidFromWorldTileStack,
 } from "./world/worldItemStacks.js";
 import { getEntityRenderSortY, getWorldRenderZIndex } from "./render/renderOrder.js";
@@ -352,9 +353,8 @@ let GAME_SCALE = 1;
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
 const itemCooldownOverlayElements = new Set();
-const gameActionDispatcher = createGameActionDispatcher();
-registerInventoryActionHandlers(gameActionDispatcher);
-registerGameplayActionHandlers(gameActionDispatcher);
+let gameSimulation = null;
+let gameTransport = null;
 
 /* ---------- BASE - ETAT DRAG ---------- */
 /* ---------- BASE - SPAWN JOUEUR ---------- */
@@ -562,7 +562,15 @@ const handleTransitionContextMenu = (target) => {
     return true;
   }
 
-  if (applyWorldTransition(transition)) {
+  const action = createUseWorldTransitionAction({
+    z: playerState.z,
+    col: target.tile.col,
+    row: target.tile.row,
+    transitionType,
+    requestedAt: Date.now(),
+  });
+  const result = gameTransport.send(action);
+  if (result?.success) {
     playGameSfx(GAME_SFX.ropeUse);
   }
   return true;
@@ -697,38 +705,46 @@ const addRewardChestCompletionEffect = (interactable) => {
 
 const executeRewardChestInteraction = (interactable) => {
   if (!interactable?.properties || !isPlayerNearTiledObject(interactable, 1)) {
-    return false;
+    return { success: false, reason: "out-of-range" };
   }
 
   const { interactableId, questId, rewardTableId } = interactable.properties;
   const questData = getQuestData(questId);
   const rewardTable = getRewardTableData(rewardTableId);
   if (typeof interactableId !== "string" || interactableId === "" || !questData || !Array.isArray(rewardTable?.items)) {
-    addRewardChestFailureFeedback("configuration");
-    return false;
+    return { success: false, reason: "configuration" };
   }
 
   if (hasPlayerClaimedInteractableReward(interactableId)) {
-    const localizedQuestData = getLocalizedQuestData(questId) ?? questData;
-    addLogMessage(getGameUiText("questAlreadyCompleted")(localizedQuestData.name), "system");
-    return false;
+    return { success: false, reason: "already-claimed", changes: { questId } };
   }
 
   const grantResult = grantRewardItemsToPlayer(rewardTable.items);
   if (!grantResult.success) {
-    addRewardChestFailureFeedback(grantResult.reason);
-    return false;
+    return { success: false, reason: grantResult.reason };
   }
 
   const now = Date.now();
   recordPlayerInteractableRewardClaim(interactableId, now);
   setPlayerQuestStatus(questId, QUEST_STATUS.completed, now);
-  renderQuestWindow();
-  addQuestCompletionFeedback(questData, rewardTable.items);
-  addRewardChestCompletionEffect(interactable);
-  playGameSfx(GAME_SFX.openChest);
-  setTimeout(() => playGameSfx(GAME_SFX.questDone), 180);
-  return true;
+  return {
+    success: true,
+    changes: { interactableId, questId, claimedAt: now },
+    events: [
+      {
+        type: "reward-chest-completed",
+        interactableId,
+        questId,
+        rewardItems: rewardTable.items,
+        position: {
+          x: interactable.x,
+          y: interactable.y,
+          width: interactable.width,
+          height: interactable.height,
+        },
+      },
+    ],
+  };
 };
 
 const handleRewardChestInteraction = (interactable) => {
@@ -744,11 +760,19 @@ const handleRewardChestInteraction = (interactable) => {
     row,
     requestedAt: Date.now(),
   });
-  const result = gameActionDispatcher.dispatch(action, {
-    executeWorldInteraction() {
-      return executeRewardChestInteraction(interactable);
-    },
-  });
+  const result = gameTransport.send(action);
+  if (!result?.success) {
+    if (result?.reason === "already-claimed") {
+      const questId = interactable?.properties?.questId;
+      const questData = getQuestData(questId);
+      const localizedQuestData = getLocalizedQuestData(questId) ?? questData;
+      if (localizedQuestData) {
+        addLogMessage(getGameUiText("questAlreadyCompleted")(localizedQuestData.name), "system");
+      }
+    } else {
+      addRewardChestFailureFeedback(result?.reason);
+    }
+  }
   return result?.success === true;
 };
 
@@ -841,37 +865,57 @@ const setPlayerWorldPosition = (x, y) => {
   return true;
 };
 
-const applyWorldTransition = (transition) => {
+const executePlayerWorldTransition = (transition) => {
   const targetZ = transition?.properties?.targetZ;
   const targetCol = transition?.properties?.targetCol;
   const targetRow = transition?.properties?.targetRow;
 
   if (!Number.isInteger(targetZ) || !Number.isInteger(targetCol) || !Number.isInteger(targetRow)) {
-    return false;
+    return { success: false, reason: "invalid-transition" };
   }
 
   if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return false;
+    return { success: false, reason: "world-not-loaded" };
   }
 
   const targetWorldMap = pixiWorldRenderState.worldMapsByZ.get(targetZ);
   if (!targetWorldMap) {
-    return false;
+    return { success: false, reason: "target-floor-not-found" };
   }
 
   const targetX = targetCol * TILE_SIZE;
   const targetY = targetRow * TILE_SIZE;
 
+  const previousZ = playerState.z;
   playerState.z = targetZ;
+
+  if (!setPlayerWorldPosition(targetX, targetY)) {
+    playerState.z = previousZ;
+    return { success: false, reason: "invalid-target-position" };
+  }
+
+  return {
+    success: true,
+    changes: { x: targetX, y: targetY, z: targetZ, previousZ },
+    events: [
+      {
+        type: "player-world-transitioned",
+        playerUid: playerState.uid,
+        x: targetX,
+        y: targetY,
+        z: targetZ,
+        previousZ,
+      },
+    ],
+  };
+};
+
+const presentPlayerWorldTransition = () => {
   pixiWorldRenderState.currentZ = playerState.z;
   loseSelectedMonsterTarget();
   stopPlayerNavigation();
   clearMonsters();
   clearGroundItemRender();
-
-  if (!setPlayerWorldPosition(targetX, targetY)) {
-    return false;
-  }
 
   pixiWorldRenderState.lastPlayerChunkX = null;
   pixiWorldRenderState.lastPlayerChunkY = null;
@@ -883,7 +927,6 @@ const applyWorldTransition = (transition) => {
   syncGroundEffectRenderForCurrentZ();
   updateWorldRender();
 
-  return true;
 };
 
 const findPlayerSpawnInWorldMap = (worldMap, spawnId) => {
@@ -1329,14 +1372,7 @@ const grantRewardItemsToPlayer = (rewardItems) => {
   }
 
   const action = createInsertItemsAction(backpack.uid, rewardItems);
-  const result = gameActionDispatcher.dispatch(action, {
-    findContainerByUid(containerUid) {
-      return containerUid === backpack.uid ? backpack : null;
-    },
-    getRemainingCapacity() {
-      return playerState.capacity - calculatePlayerCarriedWeight();
-    },
-  });
+  const result = gameTransport.send(action);
   if (!result?.success) {
     return result;
   }
@@ -1402,7 +1438,13 @@ const isItemInsideContainer = (containerItem, searchedItemUid) => {
 };
 
 const setWorldItemPosition = (destination, item) => {
-  if (!item || !destination || !Number.isInteger(destination.x) || !Number.isInteger(destination.y)) {
+  if (
+    !item ||
+    !destination ||
+    !Number.isInteger(destination.x) ||
+    !Number.isInteger(destination.y) ||
+    destination.z !== playerState.z
+  ) {
     return false;
   }
 
@@ -1427,13 +1469,15 @@ const setWorldItemPosition = (destination, item) => {
     return false;
   }
 
-  item.z = destination.z ?? playerState.z;
-
-  if (!canAddItemSurfaceToTile(item, destination.x, destination.y)) {
+  const positionedItem = { ...item, z: destination.z };
+  if (!canAddItemSurfaceToTile(positionedItem, destination.x, destination.y)) {
     return false;
   }
 
-  return moveItemUidToWorldTileStack(item, destination.x, destination.y);
+  item.z = destination.z;
+  item.x = destination.x;
+  item.y = destination.y;
+  return true;
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshInventoryUi = () => {
@@ -2305,23 +2349,23 @@ const didItemDragChangeState = (snapshot) => {
   );
 };
 
-const playCompletedItemDragSfx = (snapshot) => {
+const getCompletedItemDragSfx = (snapshot) => {
   if (!didItemDragChangeState(snapshot)) {
-    return false;
+    return null;
   }
   if (snapshot.destination.locationType === "equipmentSlot") {
-    return playGameSfx(GAME_SFX.itemEquip);
+    return GAME_SFX.itemEquip;
   }
   if (
     !ITEM_INVENTORY_LOCATION_TYPES.has(snapshot.source.locationType) &&
     !ITEM_INVENTORY_LOCATION_TYPES.has(snapshot.destination.locationType)
   ) {
-    return false;
+    return null;
   }
   if (getItemData(snapshot.sourceItem.itemId)?.type === "currency") {
-    return playGameSfx(GAME_SFX.moneyMove);
+    return GAME_SFX.moneyMove;
   }
-  return playGameSfx(GAME_SFX.itemMove);
+  return GAME_SFX.itemMove;
 };
 
 const tryStartItemDragActionNavigation = (source, sourceItem, destination) => {
@@ -2352,7 +2396,7 @@ const createInventoryMoveExecutionResult = (dragSfxSnapshot) => {
   if (!didItemDragChangeState(dragSfxSnapshot)) {
     return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
   }
-  playCompletedItemDragSfx(dragSfxSnapshot);
+  const sfx = getCompletedItemDragSfx(dragSfxSnapshot);
   return {
     success: true,
     changes: {
@@ -2360,6 +2404,7 @@ const createInventoryMoveExecutionResult = (dragSfxSnapshot) => {
       location: findItemLocationByUid(dragSfxSnapshot.sourceItem.uid),
       quantity: dragSfxSnapshot.sourceItem.quantity,
     },
+    events: sfx ? [{ type: "inventory-move-completed", sfx }] : [],
   };
 };
 
@@ -2372,11 +2417,6 @@ const executeInventoryMoveRequest = ({ source, destination, itemUid }) => {
   if (source.locationType === "worldItem" && !isWorldItemAvailableForInteraction(sourceItem)) {
     cancelItemDrag();
     return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
-  }
-
-  if (tryStartItemDragActionNavigation(source, sourceItem, destination)) {
-    cancelItemDrag();
-    return { success: true, changes: { navigationStarted: true, itemUid } };
   }
 
   if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
@@ -2461,14 +2501,17 @@ const completeItemDrag = (destination) => {
     return null;
   }
   const source = getDragSourceFromState();
+  const sourceItem = getDragSourceItem(source);
+  if (!sourceItem || tryStartItemDragActionNavigation(source, sourceItem, destination)) {
+    cancelItemDrag();
+    return null;
+  }
   const action = createMoveItemAction(source, destination, dragState.item.uid);
   if (!action) {
     cancelItemDrag();
     return null;
   }
-  return gameActionDispatcher.dispatch(action, {
-    executeMove: executeInventoryMoveRequest,
-  });
+  return gameTransport.send(action);
 };
 
 const renderItemIcon = (parentElement, item, slotSize) => {
@@ -4914,59 +4957,17 @@ const updateMovement = (now) => {
   const nextX = playerState.x + movement.deltaCol * MOVE_SPEED;
   const nextY = playerState.y + movement.deltaRow * MOVE_SPEED;
 
-  const currentTile = getTilePosition(playerState);
-  const nextTile = {
-    col: nextX / TILE_SIZE,
-    row: nextY / TILE_SIZE,
-  };
-
-  const movementCost = getTileMovementCost(currentTile, nextTile);
-  const animationMultiplier = getTileMovementAnimationMultiplier(currentTile, nextTile);
-
-  if (movementCost === null || animationMultiplier === null) {
-    if (isNavigationMovement) {
-      handleBlockedPlayerNavigationStep(now);
-    }
-    return;
-  }
-
-  const baseMoveCooldown = getPlayerMoveCooldown();
-  const moveDuration = baseMoveCooldown * animationMultiplier;
-  const moveCooldown = baseMoveCooldown * movementCost;
-  gameplayTimingState.nextPlayerMoveTime = now + moveCooldown;
-
   const moveAction = createMovePlayerAction({
     fromX: playerState.x,
     fromY: playerState.y,
+    fromZ: playerState.z,
     toX: nextX,
     toY: nextY,
     direction: movement.direction,
     isNavigationMovement,
     requestedAt: now,
   });
-  const moveResult = gameActionDispatcher.dispatch(moveAction, {
-    executeMovePlayer(payload) {
-      if (playerState.x !== payload.fromX || playerState.y !== payload.fromY) {
-        return { success: false, reason: "player-position-changed" };
-      }
-      const canMove =
-        canMoveTo(payload.fromX, payload.fromY, payload.toX, payload.toY) &&
-        !isMonsterAtPosition(payload.toX, payload.toY) &&
-        !isNpcAtPosition(payload.toX, payload.toY) &&
-        !isBlockingItemAtPosition(payload.toX, payload.toY);
-      if (!canMove) {
-        return { success: false, reason: "movement-blocked" };
-      }
-      playerState.oldX = payload.fromX;
-      playerState.oldY = payload.fromY;
-      playerState.moveStartTime = payload.requestedAt;
-      playerState.moveDuration = moveDuration;
-      playerState.x = payload.toX;
-      playerState.y = payload.toY;
-      playerState.direction = payload.direction;
-      return { success: true, changes: { x: payload.toX, y: payload.toY } };
-    },
-  });
+  const moveResult = gameTransport.send(moveAction);
 
   if (moveResult?.success) {
 
@@ -4974,13 +4975,7 @@ const updateMovement = (now) => {
       completePlayerNavigationStep();
     }
 
-    const currentWorldMap = getCurrentWorldMap();
-    const playerCol = playerState.x / TILE_SIZE;
-    const playerRow = playerState.y / TILE_SIZE;
-    const transition = findTransitionAtTile(currentWorldMap, playerCol, playerRow);
-
-    if (transition) {
-      applyWorldTransition(transition);
+    if (moveResult.events.some((event) => event.type === "player-world-transitioned")) {
       resetMovementKeys();
       updatePlayerSprite();
       return;
@@ -6207,12 +6202,7 @@ const handleNpcGreetingFromPointerTarget = (target) =>
 const getNpcReplySuggestions = (suggestions) => npcConversationSystem.getReplySuggestions(suggestions);
 const handleNpcPlayerSpeech = (text, player, now) => {
   const action = createSpeakToNpcAction(text, player?.uid, now);
-  const result = gameActionDispatcher.dispatch(action, {
-    executeSpeakToNpc(payload) {
-      const speakingPlayer = getPlayerEntityByUid(payload.playerUid);
-      return npcConversationSystem.handlePlayerSpeech(payload.text, speakingPlayer, payload.requestedAt);
-    },
-  });
+  const result = gameTransport.send(action);
   return result?.success === true;
 };
 const updateNpcConversations = (now) => npcConversationSystem.updateConversations(now);
@@ -6634,7 +6624,7 @@ const updateMonsterCombat = (now, activeMonsters) => {
     const attackResult = calculateDamageTakenByPlayer(monsterData.combat, now);
 
     if (attackResult.finalDamage > 0) {
-      playerState.hp -= attackResult.finalDamage;
+      applyDamageToPlayer(playerState, attackResult.finalDamage);
       const localizedMonsterData = getLocalizedMonsterData(monster.monsterId) ?? monsterData;
       const logMessage = getGameUiText("damageTaken")(attackResult.finalDamage, localizedMonsterData.name);
       addLogMessage(logMessage, "combat");
@@ -6649,7 +6639,6 @@ const updateMonsterCombat = (now, activeMonsters) => {
     refreshPlayerVitalsUi();
 
     if (playerState.hp <= 0) {
-      playerState.hp = 0;
       refreshPlayerVitalsUi();
       playerDead();
     }
@@ -6980,14 +6969,13 @@ const calculateDamageTakenByPlayer = (attackerCombatData, now) => {
 const getSpellFromChatText = (text) => playerSpellSystem.getFromChatText(text);
 const castLearnedPlayerSpellById = (spellId) => {
   const action = createCastSpellAction(spellId, Date.now());
-  const result = gameActionDispatcher.dispatch(action, {
-    executeCastSpell(payload) {
-      return playerSpellSystem.castLearnedById(payload.spellId);
-    },
-  });
-  return result?.success === true;
+  const result = gameTransport.send(action);
+  return playerSpellSystem.presentCastResult(spellId, result);
 };
-const castPlayerSpellFromHotkeyKey = (key) => playerSpellSystem.castByHotkeyKey(key);
+const castPlayerSpellFromHotkeyKey = (key) => {
+  const spellId = playerSpellSystem.getHotkeySpellId(key);
+  return spellId ? castLearnedPlayerSpellById(spellId) : false;
+};
 
 const getExperienceRewardFromMonster = (monster) => {
   if (!monster) {
@@ -7141,21 +7129,39 @@ const attackMonster = (monster, now) => {
   }
 
   if (!consumePlayerWeaponAmmunition()) {
-    return;
+    return { success: false, reason: "ammunition-required" };
   }
 
-  playPlayerWeaponProjectile(monster);
   const attackResult = calculatePlayerAttackResult(monster);
   const skillKey = getPlayerAttackSkillKey();
   applySkillExperienceFromAttack(attackResult, skillKey, now);
+  const targetRenderSnapshot = {
+    x: monster.x,
+    y: monster.y,
+    z: monster.z,
+    renderX: monster.renderX,
+    renderY: monster.renderY,
+  };
 
   if (attackResult.finalDamage > 0) {
     applyDamageToMonster(monster, attackResult);
-    playPlayerAttackResultSfx(attackResult);
-    return;
   }
-  showFloatingTextAboveMonster(monster, attackResult.text, attackResult.textType);
-  playPlayerAttackResultSfx(attackResult);
+  return {
+    success: true,
+    changes: {
+      monsterUid: monster.uid,
+      finalDamage: attackResult.finalDamage,
+      didHit: attackResult.didHit,
+    },
+    events: [
+      {
+        type: "player-attack-resolved",
+        monsterUid: monster.uid,
+        attackResult,
+        targetRenderSnapshot,
+      },
+    ],
+  };
 };
 
 const updateCombat = (now) => {
@@ -7178,17 +7184,7 @@ const updateCombat = (now) => {
     return;
   }
   const attackAction = createAttackMonsterAction(monster.uid, now);
-  gameActionDispatcher.dispatch(attackAction, {
-    executeAttackMonster(payload) {
-      const attackTarget = findMonsterByUid(payload.monsterUid);
-      if (!attackTarget || attackTarget.z !== playerState.z) {
-        return { success: false, reason: "target-lost" };
-      }
-      attackMonster(attackTarget, payload.requestedAt);
-      return true;
-    },
-  });
-  gameplayTimingState.nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+  gameTransport.send(attackAction);
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
 
@@ -7519,6 +7515,7 @@ playerSpellSystem = createPlayerSpellSystem({
   addChatMessage,
   applyExperienceToPlayerSkill,
   autosaveCurrentCharacter,
+  beginUseCooldown,
   getActiveChatChannelId: () => chatController.getActiveChannelId(),
   getEntitySurfaceOffsetY,
   getGameUiText,
@@ -7535,7 +7532,6 @@ playerSpellSystem = createPlayerSpellSystem({
   showFloatingTextAboveTarget,
   showGameStatusMessage,
   spellUseSfx: GAME_SFX.runeUse,
-  startUseCooldown,
 });
 
 playerNavigationController = createPlayerNavigationController({
@@ -7670,6 +7666,137 @@ containerWindowController = createContainerWindowController({
   syncItemUseSourceFeedback,
   refreshInventoryUi,
 });
+
+const getSimulationContainerByUid = (containerUid) => {
+  const location = findItemLocationByUid(containerUid);
+  return location ? itemLocationController.getItem(location) : null;
+};
+
+const getSimulationPlayerMoveTiming = (payload) => {
+  const currentTile = getTilePosition({ x: payload.fromX, y: payload.fromY });
+  const nextTile = getTilePosition({ x: payload.toX, y: payload.toY });
+  const movementCost = getTileMovementCost(currentTile, nextTile);
+  const animationMultiplier = getTileMovementAnimationMultiplier(currentTile, nextTile);
+  if (!Number.isFinite(movementCost) || !Number.isFinite(animationMultiplier)) {
+    return null;
+  }
+  const baseMoveCooldown = getPlayerMoveCooldown();
+  return {
+    duration: baseMoveCooldown * animationMultiplier,
+    cooldown: baseMoveCooldown * movementCost,
+  };
+};
+
+const canSimulationPlayerMove = (payload) => {
+  return (
+    canMoveTo(payload.fromX, payload.fromY, payload.toX, payload.toY) &&
+    !isMonsterAtPosition(payload.toX, payload.toY) &&
+    !isNpcAtPosition(payload.toX, payload.toY) &&
+    !isBlockingItemAtPosition(payload.toX, payload.toY)
+  );
+};
+
+const canSimulationPlayerAttackMonster = (attackingPlayer, monster) => {
+  if (!isNearPlayer(monster, getPlayerAttackRange())) {
+    return false;
+  }
+  const weaponCombatData = getEquippedWeaponCombatData();
+  return !weaponCombatData?.projectileItemId || hasPlayerLineOfSightToEntity(monster);
+};
+
+const findSimulationWorldInteractable = (payload) => {
+  const worldMap = pixiWorldRenderState.worldMapsByZ?.get(payload.z) ?? null;
+  const interactable = findInteractableAtTile(worldMap, payload.col, payload.row);
+  if (
+    interactable?.properties?.interactableId !== payload.interactableId ||
+    interactable?.properties?.interactableType !== payload.interactionType
+  ) {
+    return null;
+  }
+  return interactable;
+};
+
+const findSimulationAutomaticWorldTransition = (movingPlayer) => {
+  const worldMap = pixiWorldRenderState.worldMapsByZ?.get(movingPlayer.z) ?? null;
+  return findTransitionAtTile(worldMap, movingPlayer.x / TILE_SIZE, movingPlayer.y / TILE_SIZE);
+};
+
+const findSimulationWorldTransition = (payload) => {
+  const worldMap = pixiWorldRenderState.worldMapsByZ?.get(payload.z) ?? null;
+  const transition = findTransitionAtTile(worldMap, payload.col, payload.row);
+  return transition?.properties?.transitionType === payload.transitionType ? transition : null;
+};
+
+const executeSimulationWorldInteraction = (interactable, payload) => {
+  if (payload.interactionType === "rewardChest") {
+    return executeRewardChestInteraction(interactable);
+  }
+  return { success: false, reason: "unsupported-interaction" };
+};
+
+const handlePlayerAttackResolvedEffect = (event) => {
+  playPlayerWeaponProjectile(event.targetRenderSnapshot);
+  const monster = findMonsterByUid(event.monsterUid);
+  if (event.attackResult?.finalDamage <= 0 && monster) {
+    showFloatingTextAboveMonster(monster, event.attackResult.text, event.attackResult.textType);
+  }
+  playPlayerAttackResultSfx(event.attackResult);
+};
+
+const handleRewardChestCompletedEffect = (event) => {
+  const questData = getQuestData(event.questId);
+  if (!questData) {
+    return;
+  }
+  renderQuestWindow();
+  addQuestCompletionFeedback(questData, event.rewardItems);
+  addRewardChestCompletionEffect(event.position);
+  playGameSfx(GAME_SFX.openChest);
+  setTimeout(() => playGameSfx(GAME_SFX.questDone), 180);
+};
+
+gameSimulation = createGameSimulation({
+  state: {
+    player: playerState,
+    monstersByUid,
+    timing: gameplayTimingState,
+  },
+  rules: {
+    canPlayerAttackMonster: canSimulationPlayerAttackMonster,
+    canPlayerMove: canSimulationPlayerMove,
+    canPlayerUseWorldTransition: (movingPlayer, transition) => isNearPlayer(transition, 1),
+    getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
+    getPlayerMoveTiming: getSimulationPlayerMoveTiming,
+  },
+  commands: {
+    executeAttackMonster: (monster, payload) => attackMonster(monster, payload.requestedAt),
+    executeMoveItem: executeInventoryMoveRequest,
+    executeNpcSpeech: (payload, speakingPlayer) =>
+      npcConversationSystem.handlePlayerSpeech(payload.text, speakingPlayer, payload.requestedAt),
+    executeSpell: (payload) => playerSpellSystem.executeLearnedById(payload.spellId, payload.requestedAt),
+    executeWorldTransition: (transition) => executePlayerWorldTransition(transition),
+    executeWorldInteraction: executeSimulationWorldInteraction,
+    findContainerByUid: getSimulationContainerByUid,
+    findAutomaticWorldTransition: findSimulationAutomaticWorldTransition,
+    findWorldInteractable: findSimulationWorldInteractable,
+    findWorldTransition: findSimulationWorldTransition,
+    getPlayerByUid: getPlayerEntityByUid,
+    getRemainingCapacity: () => playerState.capacity - calculatePlayerCarriedWeight(),
+    getSpellById: (spellId) => spellsDatabase[spellId] ?? null,
+  },
+  onListenerError: (error) => console.error("Game action effect failed:", error),
+});
+
+gameTransport = createLocalGameTransport({ simulation: gameSimulation });
+gameTransport.subscribe(
+  createGameActionEffectRouter({
+    "inventory-items-inserted": () => refreshInventoryUi(),
+    "inventory-move-completed": (event) => playGameSfx(event.sfx),
+    "player-attack-resolved": handlePlayerAttackResolvedEffect,
+    "player-world-transitioned": () => presentPlayerWorldTransition(),
+    "reward-chest-completed": handleRewardChestCompletedEffect,
+  }),
+);
 
 const initializePlayerUi = () => {
   initializePlayerRenderRefs();
