@@ -1,3 +1,10 @@
+0.32 - Creation de personnage et apparence modulaire
+    - Separation du personnage en couches pour la tete, le corps, les pantalons et les bottes.
+    - Ajout du choix de tete et de corps avec un apercu centre dans la creation du personnage.
+    - Les couleurs des cheveux, du chandail, des pantalons et des bottes se mettent a jour en direct.
+    - Sauvegarde des nouvelles parties d'apparence avec chaque personnage et support des anciennes sauvegardes.
+    - Correction des palettes de cheveux et de peau sur les sprites feminins dans toutes les directions.
+
 0.319 - Correctifs des personnages et du rendu
     - Amelioration du cadrage des portraits dans la selection des personnages.
     - Correction de la position de Charles dans le monde.

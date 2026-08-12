@@ -35,10 +35,12 @@ import { getWorldMapsDebugSummary, loadWorldMaps } from "./worldLoader.js";
 import {
   createCharacterProfile,
   DEFAULT_CHARACTER_APPEARANCE_COLORS,
+  DEFAULT_CHARACTER_APPEARANCE_PARTS,
   deleteCharacterProfile,
   listCharacterProfiles,
   loadCharacterSaveDocument,
   normalizeCharacterAppearanceColors,
+  normalizeCharacterAppearanceParts,
   saveCharacterSnapshot,
   setActiveCharacterId,
 } from "./characterSaveStore.js";
@@ -355,6 +357,7 @@ minimapRenderState.cellSize = gameOptionsUiState.values.minimapCellSize;
 
 const characterSelectorUiState = {
   isOpen: false,
+  view: "list",
 };
 const gameRuntimeState = {
   isStarting: false,
@@ -1967,23 +1970,100 @@ const PLAYER_FRAME_WIDTH = TILE_SIZE;
 const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
 const PLAYER_ANIMATION_FRAMES = 4;
 const DEFAULT_PLAYER_APPEARANCE_ID = "male";
-const playerAppearanceTexturePromiseByCacheKey = new Map();
+const PLAYER_APPEARANCE_LAYER_ORDER = ["legs", "boots", "body", "head"];
+const playerAppearanceLayerTexturePromiseByCacheKey = new Map();
 const playerAppearanceSourceImagePromiseByUrl = new Map();
 const playerAppearancesDatabase = {
   male: {
     appearanceId: "male",
     label: "Boy",
-    textureUrl: new URL("./assets/images/joueurs/walkingsheet.png", import.meta.url).href,
   },
   female: {
     appearanceId: "female",
     label: "Girl",
-    textureUrl: new URL("./assets/images/joueurs/walkingsheetF.png", import.meta.url).href,
+  },
+};
+const playerAppearancePartsDatabase = {
+  head: {
+    partId: "head",
+    layerName: "head",
+    label: "1",
+    colorKey: "hair",
+    colorMask: "hair",
+    referenceBrightness: 105,
+    textureUrl: new URL("./assets/images/joueurs/head.png", import.meta.url).href,
+  },
+  head1: {
+    partId: "head1",
+    layerName: "head",
+    label: "2",
+    colorKey: "hair",
+    colorMask: "hair",
+    referenceBrightness: 105,
+    textureUrl: new URL("./assets/images/joueurs/head1.png", import.meta.url).href,
+  },
+  body: {
+    partId: "body",
+    layerName: "body",
+    label: "1",
+    colorKey: "clothes",
+    colorMask: "clothes",
+    referenceBrightness: 230,
+    textureUrl: new URL("./assets/images/joueurs/body.png", import.meta.url).href,
+  },
+  body2: {
+    partId: "body2",
+    layerName: "body",
+    label: "2",
+    colorKey: "clothes",
+    colorMask: "clothes",
+    referenceBrightness: 230,
+    textureUrl: new URL("./assets/images/joueurs/body2.png", import.meta.url).href,
+  },
+  legs: {
+    partId: "legs",
+    layerName: "legs",
+    label: "Legs",
+    colorKey: "pants",
+    colorMask: "all",
+    referenceBrightness: 120,
+    textureUrl: new URL("./assets/images/joueurs/legs.png", import.meta.url).href,
+  },
+  boots: {
+    partId: "boots",
+    layerName: "boots",
+    label: "Boots",
+    colorKey: "shoes",
+    colorMask: "all",
+    referenceBrightness: 75,
+    textureUrl: new URL("./assets/images/joueurs/boots.png", import.meta.url).href,
   },
 };
 
 const getPlayerAppearanceData = (appearanceId = playerState?.appearanceId) => {
   return playerAppearancesDatabase[appearanceId] ?? playerAppearancesDatabase[DEFAULT_PLAYER_APPEARANCE_ID];
+};
+
+const getPlayerAppearancePartData = (partId) => {
+  return playerAppearancePartsDatabase[partId] ?? null;
+};
+
+const clearPlayerAppearanceColorTextureCache = (colorKey, previousColor) => {
+  for (const partData of Object.values(playerAppearancePartsDatabase)) {
+    if (partData.colorKey === colorKey) {
+      playerAppearanceLayerTexturePromiseByCacheKey.delete(`${partData.partId}:${previousColor}`);
+    }
+  }
+};
+
+const getPlayerAppearancePartsByLayer = (appearanceParts) => {
+  const normalizedParts = normalizeCharacterAppearanceParts(appearanceParts);
+  return {
+    head: getPlayerAppearancePartData(normalizedParts.headId),
+    body: getPlayerAppearancePartData(normalizedParts.bodyId),
+    legs: getPlayerAppearancePartData(normalizedParts.legsId),
+    boots: getPlayerAppearancePartData(normalizedParts.bootsId),
+  };
 };
 
 const parseHexColor = (hexColor) => {
@@ -2010,11 +2090,8 @@ const loadPlayerAppearanceSourceImage = (textureUrl) => {
   return playerAppearanceSourceImagePromiseByUrl.get(textureUrl);
 };
 
-const collectAppearanceColorComponents = (pixelData, imageWidth, frameCol, frameRow, colorType) => {
-  const framePixelCount = PLAYER_FRAME_WIDTH * PLAYER_FRAME_HEIGHT;
-  const candidates = new Uint8Array(framePixelCount);
-  const pantsStartY = 90;
-  const shoesStartY = 109;
+const collectAppearanceHairPixels = (pixelData, imageWidth, frameCol, frameRow) => {
+  const selectedPixelIndexes = [];
 
   for (let localY = 0; localY < PLAYER_FRAME_HEIGHT; localY++) {
     for (let localX = 0; localX < PLAYER_FRAME_WIDTH; localX++) {
@@ -2025,93 +2102,42 @@ const collectAppearanceColorComponents = (pixelData, imageWidth, frameCol, frame
       const green = pixelData[pixelOffset + 1];
       const blue = pixelData[pixelOffset + 2];
       const alpha = pixelData[pixelOffset + 3];
-      const brightness = (red + green + blue) / 3;
-      const colorSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
-      const isFrontNeckArea = frameRow === 0 && localX >= 24 && localX <= 40 && localY >= 54;
-      const isHairColor =
+      const isHairPalette =
         alpha > 24 &&
-        !isFrontNeckArea &&
-        red > 25 &&
-        brightness < 120 &&
-        red > green * 1.12 &&
-        green > blue * 1.12;
-      const isClothesColor =
-        alpha > 24 && localY < pantsStartY && brightness >= 85 && colorSpread <= 30;
-      const isPantsColor =
-        alpha > 24 &&
-        localY >= pantsStartY &&
-        localY < shoesStartY &&
-        brightness >= 40 &&
-        brightness < 180 &&
-        colorSpread <= 30;
-      const isShoesColor = alpha > 24 && localY >= shoesStartY && isHairColor;
-      if (
-        (colorType === "hair" && isHairColor) ||
-        (colorType === "clothes" && isClothesColor) ||
-        (colorType === "pants" && isPantsColor) ||
-        (colorType === "shoes" && isShoesColor)
-      ) {
-        candidates[localY * PLAYER_FRAME_WIDTH + localX] = 1;
+        red >= 35 &&
+        green <= 2 &&
+        Math.abs(red - blue) <= 2;
+      if (isHairPalette) {
+        selectedPixelIndexes.push(pixelOffset);
       }
     }
   }
+  return selectedPixelIndexes;
+};
 
-  const visited = new Uint8Array(framePixelCount);
+const collectAppearanceClothesPixels = (pixelData) => {
   const selectedPixelIndexes = [];
-  for (let startIndex = 0; startIndex < framePixelCount; startIndex++) {
-    if (!candidates[startIndex] || visited[startIndex]) {
-      continue;
+  for (let pixelOffset = 0; pixelOffset < pixelData.length; pixelOffset += 4) {
+    const red = pixelData[pixelOffset];
+    const green = pixelData[pixelOffset + 1];
+    const blue = pixelData[pixelOffset + 2];
+    const alpha = pixelData[pixelOffset + 3];
+    const brightness = (red + green + blue) / 3;
+    const colorSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
+    if (alpha > 24 && brightness >= 45 && colorSpread <= 35) {
+      selectedPixelIndexes.push(pixelOffset);
     }
+  }
+  return selectedPixelIndexes;
+};
 
-    const component = [];
-    const pendingIndexes = [startIndex];
-    let minimumY = PLAYER_FRAME_HEIGHT;
-    let maximumBrightness = 0;
-    visited[startIndex] = 1;
-
-    while (pendingIndexes.length > 0) {
-      const localIndex = pendingIndexes.pop();
-      const localX = localIndex % PLAYER_FRAME_WIDTH;
-      const localY = Math.floor(localIndex / PLAYER_FRAME_WIDTH);
-      const imageX = frameCol * PLAYER_FRAME_WIDTH + localX;
-      const imageY = frameRow * PLAYER_FRAME_HEIGHT + localY;
-      const pixelOffset = (imageY * imageWidth + imageX) * 4;
-      const brightness = (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
-      component.push(pixelOffset);
-      minimumY = Math.min(minimumY, localY);
-      maximumBrightness = Math.max(maximumBrightness, brightness);
-
-      for (let offsetY = -1; offsetY <= 1; offsetY++) {
-        for (let offsetX = -1; offsetX <= 1; offsetX++) {
-          const neighborX = localX + offsetX;
-          const neighborY = localY + offsetY;
-          if (
-            (offsetX === 0 && offsetY === 0) ||
-            neighborX < 0 ||
-            neighborX >= PLAYER_FRAME_WIDTH ||
-            neighborY < 0 ||
-            neighborY >= PLAYER_FRAME_HEIGHT
-          ) {
-            continue;
-          }
-          if (colorType === "hair" && Math.abs(offsetX) + Math.abs(offsetY) !== 1) {
-            continue;
-          }
-          const neighborIndex = neighborY * PLAYER_FRAME_WIDTH + neighborX;
-          if (candidates[neighborIndex] && !visited[neighborIndex]) {
-            visited[neighborIndex] = 1;
-            pendingIndexes.push(neighborIndex);
-          }
-        }
-      }
-    }
-
-    const isHairComponent = colorType === "hair" && component.length >= 8 && minimumY <= 36;
-    const isClothesComponent = colorType === "clothes" && component.length >= 24 && maximumBrightness >= 165;
-    const isPantsComponent = colorType === "pants" && component.length >= 4;
-    const isShoesComponent = colorType === "shoes" && component.length >= 4;
-    if (isHairComponent || isClothesComponent || isPantsComponent || isShoesComponent) {
-      selectedPixelIndexes.push(...component);
+const collectAllOpaqueAppearancePixels = (pixelData) => {
+  const selectedPixelIndexes = [];
+  for (let pixelOffset = 0; pixelOffset < pixelData.length; pixelOffset += 4) {
+    const brightness =
+      (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
+    if (pixelData[pixelOffset + 3] > 24 && brightness > 14) {
+      selectedPixelIndexes.push(pixelOffset);
     }
   }
   return selectedPixelIndexes;
@@ -2128,87 +2154,91 @@ const recolorAppearancePixels = (pixelData, pixelIndexes, targetColor, reference
   }
 };
 
-const createPlayerAppearanceTextureUrl = async (appearanceId, appearanceColors) => {
-  const appearanceData = getPlayerAppearanceData(appearanceId);
-  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
-  const sourceImage = await loadPlayerAppearanceSourceImage(appearanceData.textureUrl);
+const createPlayerAppearancePartTextureUrl = async (partData, targetHexColor) => {
+  const sourceImage = await loadPlayerAppearanceSourceImage(partData.textureUrl);
   const canvas = document.createElement("canvas");
   canvas.width = sourceImage.naturalWidth;
   canvas.height = sourceImage.naturalHeight;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) {
-    return appearanceData.textureUrl;
+    return partData.textureUrl;
   }
 
   context.drawImage(sourceImage, 0, 0);
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const hairColor = parseHexColor(normalizedColors.hair);
-  const clothesColor = parseHexColor(normalizedColors.clothes);
-  const pantsColor = parseHexColor(normalizedColors.pants);
-  const shoesColor = parseHexColor(normalizedColors.shoes);
-  for (let frameRow = 0; frameRow < PLAYER_ANIMATION_FRAMES; frameRow++) {
-    for (let frameCol = 0; frameCol < PLAYER_ANIMATION_FRAMES; frameCol++) {
-      const hairPixelIndexes = collectAppearanceColorComponents(
-        imageData.data,
-        canvas.width,
-        frameCol,
-        frameRow,
-        "hair",
-      );
-      const clothesPixelIndexes = collectAppearanceColorComponents(
-        imageData.data,
-        canvas.width,
-        frameCol,
-        frameRow,
-        "clothes",
-      );
-      const pantsPixelIndexes = collectAppearanceColorComponents(
-        imageData.data,
-        canvas.width,
-        frameCol,
-        frameRow,
-        "pants",
-      );
-      const shoesPixelIndexes = collectAppearanceColorComponents(
-        imageData.data,
-        canvas.width,
-        frameCol,
-        frameRow,
-        "shoes",
-      );
-      recolorAppearancePixels(imageData.data, hairPixelIndexes, hairColor, 105);
-      recolorAppearancePixels(imageData.data, clothesPixelIndexes, clothesColor, 230);
-      recolorAppearancePixels(imageData.data, pantsPixelIndexes, pantsColor, 120);
-      recolorAppearancePixels(imageData.data, shoesPixelIndexes, shoesColor, 75);
+  let pixelIndexes = [];
+  if (partData.colorMask === "hair") {
+    for (let frameRow = 0; frameRow < PLAYER_ANIMATION_FRAMES; frameRow++) {
+      for (let frameCol = 0; frameCol < PLAYER_ANIMATION_FRAMES; frameCol++) {
+        pixelIndexes.push(...collectAppearanceHairPixels(imageData.data, canvas.width, frameCol, frameRow));
+      }
     }
+  } else if (partData.colorMask === "clothes") {
+    pixelIndexes = collectAppearanceClothesPixels(imageData.data);
+  } else {
+    pixelIndexes = collectAllOpaqueAppearancePixels(imageData.data);
   }
+  recolorAppearancePixels(
+    imageData.data,
+    pixelIndexes,
+    parseHexColor(targetHexColor),
+    partData.referenceBrightness,
+  );
   context.putImageData(imageData, 0, 0);
   return canvas.toDataURL("image/png");
 };
 
-const getPlayerAppearanceTextureUrl = (appearanceId, appearanceColors) => {
-  const appearanceData = getPlayerAppearanceData(appearanceId);
+const getPlayerAppearanceLayerTextureUrls = (appearanceParts, appearanceColors) => {
+  const partsByLayer = getPlayerAppearancePartsByLayer(appearanceParts);
   const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
-  const cacheKey = `${appearanceData.appearanceId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
-  if (!playerAppearanceTexturePromiseByCacheKey.has(cacheKey)) {
-    const texturePromise = createPlayerAppearanceTextureUrl(appearanceData.appearanceId, normalizedColors).catch(
-      () => appearanceData.textureUrl,
-    );
-    playerAppearanceTexturePromiseByCacheKey.set(cacheKey, texturePromise);
-  }
-  return playerAppearanceTexturePromiseByCacheKey.get(cacheKey);
+  const textureUrlPromises = PLAYER_APPEARANCE_LAYER_ORDER.map(async (layerName) => {
+    const partData = partsByLayer[layerName];
+    const targetColor = normalizedColors[partData.colorKey];
+    const cacheKey = `${partData.partId}:${targetColor}`;
+    if (!playerAppearanceLayerTexturePromiseByCacheKey.has(cacheKey)) {
+      playerAppearanceLayerTexturePromiseByCacheKey.set(
+        cacheKey,
+        createPlayerAppearancePartTextureUrl(partData, targetColor).catch(() => partData.textureUrl),
+      );
+    }
+    return [layerName, await playerAppearanceLayerTexturePromiseByCacheKey.get(cacheKey)];
+  });
+  return Promise.all(textureUrlPromises).then((entries) => Object.fromEntries(entries));
 };
 
-const applyPlayerAppearanceBackground = async (element, appearanceId, appearanceColors) => {
+const getOrCreatePlayerAppearancePreviewLayers = (element) => {
+  const layersByName = new Map();
+  for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
+    let layerElement = element.querySelector(`[data-appearance-layer="${layerName}"]`);
+    if (!layerElement) {
+      layerElement = document.createElement("span");
+      layerElement.classList.add("character-appearance-layer");
+      layerElement.dataset.appearanceLayer = layerName;
+      element.appendChild(layerElement);
+    }
+    layersByName.set(layerName, layerElement);
+  }
+  return layersByName;
+};
+
+const applyPlayerAppearanceBackground = async (element, appearanceParts, appearanceColors) => {
   if (!element) {
     return;
   }
+  const normalizedParts = normalizeCharacterAppearanceParts(appearanceParts);
   const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
-  const requestKey = `${appearanceId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
+  const requestKey = `${normalizedParts.headId}:${normalizedParts.bodyId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
   element.dataset.appearanceRequestKey = requestKey;
-  const textureUrl = await getPlayerAppearanceTextureUrl(appearanceId, normalizedColors);
-  if (element.dataset.appearanceRequestKey === requestKey) {
-    element.style.backgroundImage = `url("${textureUrl}")`;
+  const layersByName = getOrCreatePlayerAppearancePreviewLayers(element);
+  const textureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(normalizedParts, normalizedColors);
+  if (element.dataset.appearanceRequestKey !== requestKey) {
+    return;
+  }
+  for (const [layerName, textureUrl] of Object.entries(textureUrlsByLayer)) {
+    const layerElement = layersByName.get(layerName);
+    if (layerElement) {
+      layerElement.style.backgroundImage = `url("${textureUrl}")`;
+    }
   }
 };
 //#endregion  -----  PLAYER - CONFIG SPRITE  -----
@@ -2263,6 +2293,7 @@ const playerState = {
   moveDuration: 0,
   name: "Charles",
   appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
+  appearanceParts: normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS),
   appearanceColors: normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS),
   hp: 100,
   maxHp: 100,
@@ -2410,6 +2441,7 @@ const createCharacterSaveSnapshot = () => {
     uid: playerState.uid,
     name: playerState.name,
     appearanceId: playerState.appearanceId,
+    appearanceParts: normalizeCharacterAppearanceParts(playerState.appearanceParts),
     appearanceColors: normalizeCharacterAppearanceColors(playerState.appearanceColors),
     classId: playerState.classId,
     position: {
@@ -2536,6 +2568,10 @@ const applyCharacterSaveSnapshot = (characterSnapshot) => {
   playerState.uid = characterSnapshot.uid;
   playerState.name = characterSnapshot.name;
   playerState.appearanceId = getPlayerAppearanceData(characterSnapshot.appearanceId).appearanceId;
+  playerState.appearanceParts = normalizeCharacterAppearanceParts(
+    characterSnapshot.appearanceParts,
+    playerState.appearanceId,
+  );
   playerState.appearanceColors = normalizeCharacterAppearanceColors(characterSnapshot.appearanceColors);
   playerState.classId = characterSnapshot.classId;
   playerState.experience = characterSnapshot.progression.experience;
@@ -2609,6 +2645,10 @@ const loadInitialCharacterSnapshot = () => {
       playerState.uid = loadResult.entry.characterId;
       playerState.name = loadResult.entry.name;
       playerState.appearanceId = getPlayerAppearanceData(loadResult.entry.appearanceId).appearanceId;
+      playerState.appearanceParts = normalizeCharacterAppearanceParts(
+        loadResult.entry.appearanceParts,
+        playerState.appearanceId,
+      );
       playerState.appearanceColors = normalizeCharacterAppearanceColors(loadResult.entry.appearanceColors);
     }
     return null;
@@ -7699,6 +7739,10 @@ const GAME_UI_TEXT = {
     deleteCharacter: (name) => `Delete ${name}`,
     deleteCharacterConfirm: (name) => `Delete ${name}? This cannot be undone.`,
     newCharacter: "New character",
+    backToCharacters: "Back to characters",
+    sex: "Sex",
+    head: "Head",
+    body: "Body",
     characterName: "Character name",
     hairColor: "Hair",
     clothesColor: "Clothes",
@@ -7863,6 +7907,10 @@ const GAME_UI_TEXT = {
     deleteCharacter: (name) => `Supprimer ${name}`,
     deleteCharacterConfirm: (name) => `Supprimer ${name}? Cette action est irreversible.`,
     newCharacter: "Nouveau personnage",
+    backToCharacters: "Retour aux personnages",
+    sex: "Sexe",
+    head: "Tete",
+    body: "Corps",
     characterName: "Nom du personnage",
     hairColor: "Cheveux",
     clothesColor: "Linge",
@@ -8819,6 +8867,7 @@ const getCharacterSelectorErrorMessage = (reason) => {
 
 const closeCharacterSelector = () => {
   characterSelectorUiState.isOpen = false;
+  characterSelectorUiState.view = "list";
   renderCharacterSelector();
 };
 
@@ -8848,6 +8897,7 @@ const openCharacterSelector = () => {
     return;
   }
   characterSelectorUiState.isOpen = true;
+  characterSelectorUiState.view = "list";
   if (gameRuntimeState.isStarted) {
     questUiState.isOpen = false;
     gameOptionsUiState.isOpen = false;
@@ -8898,13 +8948,13 @@ const selectCharacterProfile = (characterId) => {
   reloadIntoSelectedCharacter();
 };
 
-const createNewCharacterProfile = (name, appearanceId, appearanceColors, errorElement) => {
+const createNewCharacterProfile = (name, appearanceId, appearanceColors, appearanceParts, errorElement) => {
   if (gameRuntimeState.isStarted && !saveCurrentCharacterBeforeSwitch()) {
     errorElement.textContent = getGameUiText("currentCharacterSaveFailed");
     return;
   }
 
-  const creationResult = createCharacterProfile(name, appearanceId, appearanceColors);
+  const creationResult = createCharacterProfile(name, appearanceId, appearanceColors, appearanceParts);
   if (!creationResult.success) {
     errorElement.textContent = getCharacterSelectorErrorMessage(creationResult.reason);
     return;
@@ -8954,9 +9004,13 @@ const renderCharacterSelector = () => {
   if (!characterSelectorUiState.isOpen) {
     return;
   }
+  const isCreatingCharacter = characterSelectorUiState.view === "create";
 
   const windowElement = document.createElement("section");
   windowElement.classList.add("boite-panneau", "character-selector-window");
+  if (isCreatingCharacter) {
+    windowElement.classList.add("character-selector-window-creation");
+  }
 
   const wrapperElement = document.createElement("div");
   wrapperElement.classList.add("boite-boite");
@@ -8965,7 +9019,7 @@ const renderCharacterSelector = () => {
   headerElement.classList.add("character-selector-header");
   const titleElement = document.createElement("div");
   titleElement.classList.add("boite-jeux-titre");
-  titleElement.textContent = getGameUiText("characters");
+  titleElement.textContent = getGameUiText(isCreatingCharacter ? "newCharacter" : "characters");
   const closeButtonElement = document.createElement("button");
   closeButtonElement.classList.add("character-selector-close-button");
   closeButtonElement.type = "button";
@@ -8973,6 +9027,19 @@ const renderCharacterSelector = () => {
   closeButtonElement.title = getGameUiText("closeCharacters");
   closeButtonElement.setAttribute("aria-label", getGameUiText("closeCharacters"));
   closeButtonElement.addEventListener("click", closeCharacterSelector);
+  if (isCreatingCharacter) {
+    const backButtonElement = document.createElement("button");
+    backButtonElement.classList.add("character-selector-back-button");
+    backButtonElement.type = "button";
+    backButtonElement.textContent = "<";
+    backButtonElement.title = getGameUiText("backToCharacters");
+    backButtonElement.setAttribute("aria-label", getGameUiText("backToCharacters"));
+    backButtonElement.addEventListener("click", () => {
+      characterSelectorUiState.view = "list";
+      renderCharacterSelector();
+    });
+    headerElement.append(backButtonElement);
+  }
   headerElement.append(titleElement, closeButtonElement);
 
   const separatorElement = document.createElement("div");
@@ -9003,12 +9070,11 @@ const renderCharacterSelector = () => {
       selectButtonElement.classList.add("character-selector-select-button");
       selectButtonElement.type = "button";
 
-      const appearanceData = getPlayerAppearanceData(characterProfile.appearanceId);
       const portraitElement = document.createElement("span");
       portraitElement.classList.add("character-selector-portrait");
       void applyPlayerAppearanceBackground(
         portraitElement,
-        appearanceData.appearanceId,
+        characterProfile.appearanceParts,
         characterProfile.appearanceColors,
       );
 
@@ -9044,8 +9110,30 @@ const renderCharacterSelector = () => {
     }
   }
 
+  const openCreationButtonElement = document.createElement("button");
+  openCreationButtonElement.classList.add("character-open-create-button");
+  openCreationButtonElement.type = "button";
+  openCreationButtonElement.textContent = getGameUiText("newCharacter");
+  openCreationButtonElement.addEventListener("click", () => {
+    characterSelectorUiState.view = "create";
+    renderCharacterSelector();
+  });
+
   const secondSeparatorElement = document.createElement("div");
   secondSeparatorElement.classList.add("separateur-panneau");
+
+  if (!isCreatingCharacter) {
+    wrapperElement.append(
+      headerElement,
+      separatorElement,
+      characterListElement,
+      secondSeparatorElement,
+      openCreationButtonElement,
+    );
+    windowElement.appendChild(wrapperElement);
+    characterSelector.appendChild(windowElement);
+    return;
+  }
 
   const formElement = document.createElement("form");
   formElement.classList.add("character-create-form");
@@ -9060,48 +9148,131 @@ const renderCharacterSelector = () => {
   nameInputElement.minLength = 2;
   nameInputElement.maxLength = 20;
   nameInputElement.autocomplete = "off";
-  const appearanceOptionsElement = document.createElement("div");
-  appearanceOptionsElement.classList.add("character-appearance-options");
   let selectedAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
   let selectedAppearanceColors = normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS);
-  const appearanceButtonsById = new Map();
-  const appearancePreviewElementsById = new Map();
+  let selectedAppearanceParts = normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS);
+  const appearanceOptionsElement = document.createElement("div");
+  appearanceOptionsElement.classList.add("character-creator-layout");
+  const mainPreviewElement = document.createElement("div");
+  mainPreviewElement.classList.add("character-creator-preview");
+  const controlsElement = document.createElement("div");
+  controlsElement.classList.add("character-creator-controls");
+  const refreshAppearanceControls = [];
 
   const refreshAppearancePreviews = () => {
-    for (const [appearanceId, previewElement] of appearancePreviewElementsById.entries()) {
-      void applyPlayerAppearanceBackground(previewElement, appearanceId, selectedAppearanceColors);
+    void applyPlayerAppearanceBackground(mainPreviewElement, selectedAppearanceParts, selectedAppearanceColors);
+    for (const refreshAppearanceControl of refreshAppearanceControls) {
+      refreshAppearanceControl();
     }
   };
 
-  const selectAppearance = (appearanceId) => {
-    selectedAppearanceId = getPlayerAppearanceData(appearanceId).appearanceId;
-    for (const [buttonAppearanceId, buttonElement] of appearanceButtonsById.entries()) {
-      const isSelected = buttonAppearanceId === selectedAppearanceId;
-      buttonElement.classList.toggle("character-appearance-option-active", isSelected);
-      buttonElement.setAttribute("aria-pressed", String(isSelected));
-    }
-  };
+  const createAppearanceChoiceGroup = ({ title, options, getSelectedId, onSelect }) => {
+    const groupElement = document.createElement("div");
+    groupElement.classList.add("character-creator-choice-group");
+    const titleElement = document.createElement("div");
+    titleElement.classList.add("character-creator-choice-title");
+    titleElement.textContent = title;
+    const buttonsElement = document.createElement("div");
+    buttonsElement.classList.add("character-creator-choice-buttons");
+    const buttonsById = new Map();
 
-  for (const appearanceData of Object.values(playerAppearancesDatabase)) {
-    const appearanceButtonElement = document.createElement("button");
-    appearanceButtonElement.classList.add("character-appearance-option");
-    appearanceButtonElement.type = "button";
-    appearanceButtonElement.setAttribute("aria-pressed", "false");
-    const appearancePreviewElement = document.createElement("span");
-    appearancePreviewElement.classList.add("character-appearance-preview");
-    const appearanceLabelElement = document.createElement("span");
-    appearanceLabelElement.classList.add("character-appearance-label");
-    appearanceLabelElement.textContent =
-      getLocalizedContentData("appearances", appearanceData.appearanceId, appearanceData).label;
-    appearanceButtonElement.append(appearancePreviewElement, appearanceLabelElement);
-    appearanceButtonElement.addEventListener("click", () => {
-      selectAppearance(appearanceData.appearanceId);
+    for (const option of options) {
+      const buttonElement = document.createElement("button");
+      buttonElement.classList.add("character-appearance-option");
+      buttonElement.type = "button";
+      buttonElement.setAttribute("aria-pressed", "false");
+      const labelElement = document.createElement("span");
+      labelElement.classList.add("character-appearance-label");
+      labelElement.textContent = option.label;
+      buttonElement.appendChild(labelElement);
+      buttonElement.addEventListener("click", () => {
+        onSelect(option.id);
+        refreshAppearancePreviews();
+      });
+      buttonsById.set(option.id, buttonElement);
+      buttonsElement.appendChild(buttonElement);
+    }
+
+    refreshAppearanceControls.push(() => {
+      const selectedId = getSelectedId();
+      for (const [optionId, buttonElement] of buttonsById.entries()) {
+        const isSelected = optionId === selectedId;
+        buttonElement.classList.toggle("character-appearance-option-active", isSelected);
+        buttonElement.setAttribute("aria-pressed", String(isSelected));
+      }
     });
-    appearanceButtonsById.set(appearanceData.appearanceId, appearanceButtonElement);
-    appearancePreviewElementsById.set(appearanceData.appearanceId, appearancePreviewElement);
-    appearanceOptionsElement.appendChild(appearanceButtonElement);
-  }
-  selectAppearance(selectedAppearanceId);
+    groupElement.append(titleElement, buttonsElement);
+    return groupElement;
+  };
+
+  const createAppearanceCycleControl = ({ title, options, getSelectedId, onSelect }) => {
+    const controlElement = document.createElement("div");
+    controlElement.classList.add("character-creator-cycle-control");
+    const previousButtonElement = document.createElement("button");
+    previousButtonElement.classList.add("character-creator-arrow-button");
+    previousButtonElement.type = "button";
+    previousButtonElement.textContent = "<";
+    previousButtonElement.setAttribute("aria-label", `${title} -`);
+    const valueElement = document.createElement("div");
+    valueElement.classList.add("character-creator-cycle-value");
+    const nextButtonElement = document.createElement("button");
+    nextButtonElement.classList.add("character-creator-arrow-button");
+    nextButtonElement.type = "button";
+    nextButtonElement.textContent = ">";
+    nextButtonElement.setAttribute("aria-label", `${title} +`);
+
+    const selectOffset = (offset) => {
+      const selectedIndex = options.findIndex((option) => option.id === getSelectedId());
+      const nextIndex = (selectedIndex + offset + options.length) % options.length;
+      onSelect(options[nextIndex].id);
+      refreshAppearancePreviews();
+    };
+    previousButtonElement.addEventListener("click", () => selectOffset(-1));
+    nextButtonElement.addEventListener("click", () => selectOffset(1));
+    refreshAppearanceControls.push(() => {
+      const selectedOption = options.find((option) => option.id === getSelectedId()) ?? options[0];
+      valueElement.textContent = `${title} ${selectedOption.label}`;
+    });
+    controlElement.append(previousButtonElement, valueElement, nextButtonElement);
+    return controlElement;
+  };
+
+  const sexChoiceElement = createAppearanceChoiceGroup({
+    title: getGameUiText("sex"),
+    options: Object.values(playerAppearancesDatabase).map((appearanceData) => ({
+      id: appearanceData.appearanceId,
+      label: getLocalizedContentData("appearances", appearanceData.appearanceId, appearanceData).label,
+    })),
+    getSelectedId: () => selectedAppearanceId,
+    onSelect: (appearanceId) => {
+      selectedAppearanceId = getPlayerAppearanceData(appearanceId).appearanceId;
+    },
+  });
+  controlsElement.append(
+    createAppearanceCycleControl({
+      title: getGameUiText("head"),
+      options: [playerAppearancePartsDatabase.head, playerAppearancePartsDatabase.head1].map((partData) => ({
+        id: partData.partId,
+        label: partData.label,
+      })),
+      getSelectedId: () => selectedAppearanceParts.headId,
+      onSelect: (headId) => {
+        selectedAppearanceParts = normalizeCharacterAppearanceParts({ ...selectedAppearanceParts, headId });
+      },
+    }),
+    createAppearanceCycleControl({
+      title: getGameUiText("body"),
+      options: [playerAppearancePartsDatabase.body, playerAppearancePartsDatabase.body2].map((partData) => ({
+        id: partData.partId,
+        label: partData.label,
+      })),
+      getSelectedId: () => selectedAppearanceParts.bodyId,
+      onSelect: (bodyId) => {
+        selectedAppearanceParts = normalizeCharacterAppearanceParts({ ...selectedAppearanceParts, bodyId });
+      },
+    }),
+  );
+  appearanceOptionsElement.append(sexChoiceElement, mainPreviewElement, controlsElement);
   refreshAppearancePreviews();
 
   const colorOptionsElement = document.createElement("div");
@@ -9115,7 +9286,8 @@ const renderCharacterSelector = () => {
     inputElement.classList.add("character-color-input");
     inputElement.type = "color";
     inputElement.value = selectedAppearanceColors[colorKey];
-    inputElement.addEventListener("change", () => {
+    inputElement.addEventListener("input", () => {
+      clearPlayerAppearanceColorTextureCache(colorKey, selectedAppearanceColors[colorKey]);
       selectedAppearanceColors = normalizeCharacterAppearanceColors({
         ...selectedAppearanceColors,
         [colorKey]: inputElement.value,
@@ -9153,17 +9325,12 @@ const renderCharacterSelector = () => {
       nameInputElement.value,
       selectedAppearanceId,
       selectedAppearanceColors,
+      selectedAppearanceParts,
       formErrorElement,
     );
   });
 
-  wrapperElement.append(
-    headerElement,
-    separatorElement,
-    characterListElement,
-    secondSeparatorElement,
-    formElement,
-  );
+  wrapperElement.append(headerElement, separatorElement, formElement);
   windowElement.appendChild(wrapperElement);
   characterSelector.appendChild(windowElement);
   nameInputElement.focus();
@@ -18158,12 +18325,12 @@ const startGame = async () => {
       gameWidth: GAME_WIDTH,
       gameHeight: GAME_HEIGHT,
     });
-    const playerTextureUrl = await getPlayerAppearanceTextureUrl(
-      playerState.appearanceId,
+    const playerTextureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(
+      playerState.appearanceParts,
       playerState.appearanceColors,
     );
     await loadPixiWorldEntityTextures({
-      playerTextureUrl,
+      playerTextureUrlsByLayer,
       itemTextureUrl: getAtlasPath("items"),
       monsterTextureUrl: getAtlasPath("monsters"),
       npcTextureUrlsById: getNpcTextureUrlsById(),

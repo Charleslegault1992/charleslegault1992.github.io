@@ -14,6 +14,7 @@ const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MAP_TOP_LAYER_NAME = "top";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
+const PLAYER_APPEARANCE_LAYER_ORDER = ["legs", "boots", "body", "head"];
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, -1],
   [0, -1],
@@ -55,7 +56,8 @@ let tileTextureByCacheKey = null;
 let renderedChunkContainersByKey = null;
 let worldEntityTextureByKey = null;
 let entityFrameTextureByCacheKey = null;
-let playerSprite = null;
+let playerContainer = null;
+let playerSpritesByLayer = null;
 let monsterVisualsByUid = null;
 let npcVisualsByUid = null;
 let worldItemVisualsByUid = null;
@@ -360,7 +362,7 @@ const getEntityFrameTexture = (textureKey, sourceX, sourceY, sourceWidth, source
 };
 
 export const loadPixiWorldEntityTextures = async ({
-  playerTextureUrl,
+  playerTextureUrlsByLayer,
   itemTextureUrl,
   monsterTextureUrl,
   npcTextureUrlsById = {},
@@ -370,10 +372,17 @@ export const loadPixiWorldEntityTextures = async ({
   }
 
   const textureUrlsByKey = new Map([
-    ["player", playerTextureUrl],
     ["items", itemTextureUrl],
     ["monsters", monsterTextureUrl],
   ]);
+
+  for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
+    const textureUrl = playerTextureUrlsByLayer?.[layerName];
+    if (typeof textureUrl !== "string" || textureUrl === "") {
+      return false;
+    }
+    worldEntityTextureByKey.set(`player:${layerName}`, await Assets.load(textureUrl));
+  }
 
   for (const [textureKey, textureUrl] of textureUrlsByKey.entries()) {
     if (typeof textureUrl !== "string" || textureUrl === "") {
@@ -398,30 +407,46 @@ export const setPixiPlayerFrame = ({ sourceX, sourceY, sourceWidth, sourceHeight
     return false;
   }
 
-  const texture = getEntityFrameTexture("player", sourceX, sourceY, sourceWidth, sourceHeight);
-  if (!texture) {
-    return false;
+  if (!playerContainer) {
+    playerContainer = new Container();
+    playerContainer.label = "player";
+    playerSpritesByLayer = new Map();
+    entityContainer.addChild(playerContainer);
   }
 
-  if (!playerSprite) {
-    playerSprite = new Sprite(texture);
-    playerSprite.label = "player";
-    entityContainer.addChild(playerSprite);
-  } else {
-    playerSprite.texture = texture;
+  for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
+    const texture = getEntityFrameTexture(
+      `player:${layerName}`,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+    );
+    if (!texture) {
+      return false;
+    }
+    let sprite = playerSpritesByLayer.get(layerName);
+    if (!sprite) {
+      sprite = new Sprite(texture);
+      sprite.label = `player:${layerName}`;
+      playerContainer.addChild(sprite);
+      playerSpritesByLayer.set(layerName, sprite);
+    } else {
+      sprite.texture = texture;
+    }
   }
 
   return true;
 };
 
 export const updatePixiPlayerTransform = ({ x, y, zIndex }) => {
-  if (!playerSprite || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zIndex)) {
+  if (!playerContainer || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zIndex)) {
     return false;
   }
 
-  playerSprite.x = x;
-  playerSprite.y = y;
-  playerSprite.zIndex = zIndex;
+  playerContainer.x = x;
+  playerContainer.y = y;
+  playerContainer.zIndex = zIndex;
   return true;
 };
 
@@ -1275,6 +1300,8 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
   renderedChunkContainersByKey = new Map();
   worldEntityTextureByKey = new Map();
   entityFrameTextureByCacheKey = new Map();
+  playerContainer = null;
+  playerSpritesByLayer = null;
   monsterVisualsByUid = new Map();
   npcVisualsByUid = new Map();
   worldItemVisualsByUid = new Map();

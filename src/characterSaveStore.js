@@ -5,7 +5,16 @@ const MIN_CHARACTER_NAME_LENGTH = 2;
 const MAX_CHARACTER_NAME_LENGTH = 20;
 const DEFAULT_CHARACTER_APPEARANCE_ID = "male";
 const CHARACTER_APPEARANCE_IDS = new Set(["male", "female"]);
+const CHARACTER_HEAD_IDS = new Set(["head", "head1"]);
+const CHARACTER_BODY_IDS = new Set(["body", "body2"]);
 const CHARACTER_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+export const DEFAULT_CHARACTER_APPEARANCE_PARTS = Object.freeze({
+  headId: "head",
+  bodyId: "body",
+  legsId: "legs",
+  bootsId: "boots",
+});
 
 export const DEFAULT_CHARACTER_APPEARANCE_COLORS = Object.freeze({
   hair: "#8a552c",
@@ -28,6 +37,23 @@ export const normalizeCharacterAppearanceColors = (appearanceColors) => {
     shoes: CHARACTER_COLOR_PATTERN.test(appearanceColors?.shoes)
       ? appearanceColors.shoes.toLowerCase()
       : DEFAULT_CHARACTER_APPEARANCE_COLORS.shoes,
+  };
+};
+
+export const normalizeCharacterAppearanceParts = (appearanceParts, appearanceId = DEFAULT_CHARACTER_APPEARANCE_ID) => {
+  const legacyDefaultParts =
+    appearanceId === "female"
+      ? { ...DEFAULT_CHARACTER_APPEARANCE_PARTS, headId: "head1", bodyId: "body2" }
+      : DEFAULT_CHARACTER_APPEARANCE_PARTS;
+  return {
+    headId: CHARACTER_HEAD_IDS.has(appearanceParts?.headId)
+      ? appearanceParts.headId
+      : legacyDefaultParts.headId,
+    bodyId: CHARACTER_BODY_IDS.has(appearanceParts?.bodyId)
+      ? appearanceParts.bodyId
+      : legacyDefaultParts.bodyId,
+    legsId: DEFAULT_CHARACTER_APPEARANCE_PARTS.legsId,
+    bootsId: DEFAULT_CHARACTER_APPEARANCE_PARTS.bootsId,
   };
 };
 
@@ -156,19 +182,26 @@ export const saveCharacterSnapshot = (characterSnapshot) => {
   const appearanceColors = normalizeCharacterAppearanceColors(
     characterSnapshot.appearanceColors ?? existingEntry?.appearanceColors,
   );
+  const appearanceId = CHARACTER_APPEARANCE_IDS.has(characterSnapshot.appearanceId)
+    ? characterSnapshot.appearanceId
+    : (existingEntry?.appearanceId ?? DEFAULT_CHARACTER_APPEARANCE_ID);
+  const appearanceParts = normalizeCharacterAppearanceParts(
+    characterSnapshot.appearanceParts ?? existingEntry?.appearanceParts,
+    appearanceId,
+  );
   collection.activeCharacterId = characterId;
   collection.charactersById[characterId] = {
     characterId,
     name: characterName,
-    appearanceId: CHARACTER_APPEARANCE_IDS.has(characterSnapshot.appearanceId)
-      ? characterSnapshot.appearanceId
-      : (existingEntry?.appearanceId ?? DEFAULT_CHARACTER_APPEARANCE_ID),
+    appearanceId,
     appearanceColors,
+    appearanceParts,
     createdAt: existingEntry?.createdAt ?? savedAt,
     savedAt,
     character: {
       ...characterSnapshot,
       appearanceColors,
+      appearanceParts,
     },
   };
 
@@ -223,6 +256,10 @@ export const listCharacterProfiles = () => {
         appearanceColors: normalizeCharacterAppearanceColors(
           entry.character?.appearanceColors ?? entry.appearanceColors,
         ),
+        appearanceParts: normalizeCharacterAppearanceParts(
+          entry.character?.appearanceParts ?? entry.appearanceParts,
+          entry.character?.appearanceId ?? entry.appearanceId ?? DEFAULT_CHARACTER_APPEARANCE_ID,
+        ),
         experience: entry.character?.progression?.experience ?? 0,
         savedAt: entry.savedAt,
         isActive: entry.characterId === collection.activeCharacterId,
@@ -237,6 +274,7 @@ export const createCharacterProfile = (
   name,
   appearanceId = DEFAULT_CHARACTER_APPEARANCE_ID,
   appearanceColors = DEFAULT_CHARACTER_APPEARANCE_COLORS,
+  appearanceParts = DEFAULT_CHARACTER_APPEARANCE_PARTS,
 ) => {
   const normalizedName = normalizeCharacterName(name);
   if (!isValidCharacterName(normalizedName)) {
@@ -262,12 +300,14 @@ export const createCharacterProfile = (
   const characterId = createCharacterId();
   const now = Date.now();
   const normalizedAppearanceColors = normalizeCharacterAppearanceColors(appearanceColors);
+  const normalizedAppearanceParts = normalizeCharacterAppearanceParts(appearanceParts, appearanceId);
   collection.activeCharacterId = characterId;
   collection.charactersById[characterId] = {
     characterId,
     name: normalizedName,
     appearanceId,
     appearanceColors: normalizedAppearanceColors,
+    appearanceParts: normalizedAppearanceParts,
     createdAt: now,
     savedAt: now,
     character: null,
@@ -283,6 +323,7 @@ export const createCharacterProfile = (
     name: normalizedName,
     appearanceId,
     appearanceColors: normalizedAppearanceColors,
+    appearanceParts: normalizedAppearanceParts,
   };
 };
 
