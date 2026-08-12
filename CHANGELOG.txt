@@ -1,3 +1,11 @@
+0.322 - Separation des controleurs principaux
+    - Separation de la session, du chargement et de la sauvegarde automatique des personnages.
+    - Separation complete de la mini carte avec son rendu, son zoom, ses etages et son auto walk.
+    - Separation de l'etat du drag, des emplacements d'items et des regles d'equipement.
+    - Separation des fenetres de containers avec leur ordre, leur taille et leur hierarchie.
+    - Ajout de tests pour les deplacements entre les containers, l'equipement et le monde.
+    - Nettoyage de main.js pour garder la composition des systemes au meme endroit.
+
 0.321 - Actions autoritaires et tests d'inventaire
     - Ajout d'une couche d'actions serialisables pour les insertions et les deplacements d'items.
     - Le drag and drop valide maintenant le UID, la source et la destination avant de modifier l'etat du jeu.

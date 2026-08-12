@@ -86,19 +86,22 @@ Ces structures peuvent coexister quand elles repondent a des besoins differents,
 
 Le bundle initial contient encore Pixi et le jeu complet. Le prochain gain de chargement important sera un `import()` dynamique du runtime de jeu apres la selection du personnage. Ce changement doit conserver `main.js` comme point de composition et ne demande pas de dupliquer le renderer.
 
+## Extractions completees
+
+- orchestration de sauvegarde et session du personnage;
+- controleur complet de minimap;
+- etat du drag/drop, emplacements d'items et transactions d'equipement;
+- fenetres de conteneurs.
+
 ## Prochaines extractions
 
 Ordre recommande pour reduire `main.js` sans casser les contrats:
 
-1. orchestration de sauvegarde et session du personnage;
-2. controleur complet de minimap;
-3. moteur de drag/drop et transactions d'equipement;
-4. fenetres de conteneurs;
-5. navigation et inputs desktop/mobile;
-6. IA et respawn des monstres;
-7. dialogues, commerce et banque des NPC;
-8. chat, sorts et hotkeys;
-9. ecrans options, quetes et selection de personnage;
-10. bootstrap final et chargement dynamique de Pixi.
+1. navigation et inputs desktop/mobile;
+2. IA et respawn des monstres;
+3. dialogues, commerce et banque des NPC;
+4. chat, sorts et hotkeys;
+5. ecrans options, quetes et selection de personnage;
+6. bootstrap final et chargement dynamique de Pixi.
 
 Chaque extraction doit passer le build de production et une verification des references JavaScript avant de commencer la suivante.

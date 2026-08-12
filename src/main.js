@@ -4,7 +4,6 @@ import {
   clearPixiMonsterVisuals,
   clearPixiWorldItemSelection,
   clearPixiWorldItemVisuals,
-  drawPixiMinimapRegion,
   initializePixiRenderer,
   loadPixiWorldEntityTextures,
   playPixiItemProjectile,
@@ -33,7 +32,6 @@ import {
   DEFAULT_CHARACTER_APPEARANCE_PARTS,
   deleteCharacterProfile,
   listCharacterProfiles,
-  loadCharacterSaveDocument,
   normalizeCharacterAppearanceColors,
   normalizeCharacterAppearanceParts,
   saveCharacterSnapshot,
@@ -57,9 +55,6 @@ import {
   GAME_WIDTH,
   MAX_ITEM_STACK_SIZE,
   MINIMAP_AUTOWALK_MAX_DISTANCE_TILES,
-  MINIMAP_DEFAULT_CELL_SIZE,
-  MINIMAP_DYNAMIC_REFRESH_MS,
-  MINIMAP_MONSTER_REVEAL_RANGE_TILES,
   MINIMAP_ZOOM_LEVELS,
   MOBILE_SPELL_LONG_PRESS_MS,
   MOBILE_SPELL_PRESS_MOVE_TOLERANCE_PX,
@@ -99,6 +94,11 @@ import {
   INVENTORY_ACTION_REASON,
   registerInventoryActionHandlers,
 } from "./inventory/inventoryActions.js";
+import { createInventoryDragController } from "./inventory/inventoryDragController.js";
+import {
+  createItemLocationController,
+  isValidContainerSlotParent as isValidContainerSlotParentRule,
+} from "./inventory/itemLocationController.js";
 import {
   activeLitTorchesByUid,
   decayingItems,
@@ -129,7 +129,7 @@ import {
   stackSplitMenuState,
   uiTimingState,
 } from "./state/clientRuntimeState.js";
-import { normalizePlayerSpellbook, playerState } from "./state/playerState.js";
+import { playerState } from "./state/playerState.js";
 import { createGroundItem, createItemInstance } from "./items/itemFactory.js";
 import {
   beginUseCooldown,
@@ -228,17 +228,17 @@ import {
   syncGroundEffectRenderForCurrentZ,
   updateGroundEffectDecay,
 } from "./world/groundEffects.js";
-import { getEquipmentSlotItem } from "./player/playerEquipment.js";
-import { isNearPlayer } from "./player/playerSpatial.js";
-import { advancePlayerRegeneration, resetPlayerRegenerationTimers, startPlayerRegenerationTimers } from "./player/playerRegeneration.js";
-import { removeCurrentEquipmentFromDecayTracking, restoreCharacterItem, serializeCharacterItem } from "./player/characterItemsPersistence.js";
-import { getCurrentWorldMap } from "./world/worldRuntime.js";
 import {
-  hydrateMinimapExploration,
-  isMinimapTileDiscovered,
-  revealMinimapAroundPlayer,
-  serializeMinimapExploration,
-} from "./minimap/minimapExploration.js";
+  canEquipItemInSlot,
+  getEquipmentSlotItem,
+  setEquipmentSlotItem as setPlayerEquipmentSlotItem,
+} from "./player/playerEquipment.js";
+import { isNearPlayer } from "./player/playerSpatial.js";
+import { advancePlayerRegeneration, startPlayerRegenerationTimers } from "./player/playerRegeneration.js";
+import { createCharacterSessionController } from "./player/characterSession.js";
+import { createContainerWindowController } from "./ui/containerWindowController.js";
+import { getCurrentWorldMap } from "./world/worldRuntime.js";
+import { createMinimapController } from "./minimap/minimapController.js";
 import {
   commitPlayerBackpackItemRemovalPlan,
   commitPlayerCurrencyValuePlan,
@@ -290,7 +290,6 @@ import {
   getChunkPositionFromWorldPosition,
   getTilePosition,
   getWorldChunkForTilePosition,
-  getWorldLayerGidAtTile,
   getWorldPosition,
   isTiledCollisionAtTile,
 } from "./world/worldCoordinates.js";
@@ -306,7 +305,7 @@ import {
   hasLineOfSightBetweenTiles,
 } from "./world/pathfinding.js";
 
-import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapZoomLevel, minimapFloorUpButton, minimapFloorDownButton, minimapFloorLevel, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
+import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapFloorUpButton, minimapFloorDownButton, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
 
 
 /* ==================================================== */
@@ -322,32 +321,6 @@ let GAME_SCALE = 1;
 
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
-const minimapRenderState = {
-  context: minimapCanvas?.getContext("2d") ?? null,
-  cellSize: MINIMAP_DEFAULT_CELL_SIZE,
-  centerCol: null,
-  centerRow: null,
-  firstCol: null,
-  firstRow: null,
-  visibleCols: null,
-  visibleRows: null,
-  isFollowingPlayer: true,
-  viewZ: null,
-  lastPlayerCol: null,
-  lastPlayerRow: null,
-  lastZ: null,
-  lastViewZ: null,
-  lastCenterCol: null,
-  lastCenterRow: null,
-  lastCellSize: null,
-  nextDynamicRenderAt: 0,
-  panPointerId: null,
-  panStartClientX: null,
-  panStartClientY: null,
-  panStartCenterCol: null,
-  panStartCenterRow: null,
-  didPan: false,
-};
 const itemCooldownOverlayElements = new Set();
 const gameActionDispatcher = createGameActionDispatcher();
 registerInventoryActionHandlers(gameActionDispatcher);
@@ -359,7 +332,6 @@ registerInventoryActionHandlers(gameActionDispatcher);
 const minChatHeight = 120;
 /* ---------- BASE - ETAT ITEM USE ---------- */
 
-minimapRenderState.cellSize = gameOptionsUiState.values.minimapCellSize;
 
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
 const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
@@ -377,187 +349,14 @@ const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload
 
 const corpseDecayCooldown = CORPSE_DECAY_COOLDOWN_MS;
 
-const createCharacterSaveSnapshot = () => {
-  syncActiveTorchFuel(Date.now());
-
-  const skills = {};
-  for (const [skillKey, skill] of Object.entries(playerState.skills)) {
-    skills[skillKey] = {
-      experience: skill.experience,
-    };
-  }
-
-  const equipment = {};
-  for (const [slotName, item] of Object.entries(playerState.equipment)) {
-    equipment[slotName] = serializeCharacterItem(item);
-  }
-
-  return {
-    uid: playerState.uid,
-    name: playerState.name,
-    appearanceId: playerState.appearanceId,
-    appearanceParts: normalizeCharacterAppearanceParts(playerState.appearanceParts),
-    appearanceColors: normalizeCharacterAppearanceColors(playerState.appearanceColors),
-    classId: playerState.classId,
-    position: {
-      x: playerState.x,
-      y: playerState.y,
-      z: playerState.z,
-      direction: playerState.direction,
-    },
-    spawn: {
-      z: playerState.spawn.z,
-      spawnId: playerState.spawn.spawnId,
-    },
-    vitals: {
-      hp: playerState.hp,
-      mana: playerState.mana,
-      sanity: playerState.sanity,
-    },
-    progression: {
-      experience: playerState.experience,
-      skills,
-    },
-    bank: {
-      goldBalance: playerState.bank.goldBalance,
-    },
-    spellbook: structuredClone(playerState.spellbook),
-    progress: {
-      questsById: structuredClone(playerState.progress.questsById),
-      rewardClaimsByInteractableId: structuredClone(playerState.progress.rewardClaimsByInteractableId),
-      minimapExplorationByChunkKey: serializeMinimapExploration(),
-    },
-    combatMode: playerState.combatMode,
-    equipment,
-  };
-};
-
-const applyCharacterSaveSnapshot = (characterSnapshot) => {
-  if (!characterSnapshot?.progression || !characterSnapshot?.equipment) {
-    return false;
-  }
-
-  removeCurrentEquipmentFromDecayTracking();
-
-  playerState.uid = characterSnapshot.uid;
-  playerState.name = characterSnapshot.name;
-  playerState.appearanceId = getPlayerAppearanceData(characterSnapshot.appearanceId).appearanceId;
-  playerState.appearanceParts = normalizeCharacterAppearanceParts(
-    characterSnapshot.appearanceParts,
-    playerState.appearanceId,
-  );
-  playerState.appearanceColors = normalizeCharacterAppearanceColors(characterSnapshot.appearanceColors);
-  playerState.classId = characterSnapshot.classId;
-  playerState.experience = characterSnapshot.progression.experience;
-  playerState.bank = {
-    goldBalance:
-      Number.isSafeInteger(characterSnapshot.bank?.goldBalance) && characterSnapshot.bank.goldBalance >= 0
-        ? characterSnapshot.bank.goldBalance
-        : 0,
-  };
-  playerState.spellbook = normalizePlayerSpellbook(characterSnapshot.spellbook);
-  playerState.spawn = structuredClone(characterSnapshot.spawn);
-  playerState.progress = {
-    questsById: structuredClone(characterSnapshot.progress?.questsById ?? {}),
-    rewardClaimsByInteractableId: structuredClone(characterSnapshot.progress?.rewardClaimsByInteractableId ?? {}),
-    minimapExplorationByChunkKey: structuredClone(characterSnapshot.progress?.minimapExplorationByChunkKey ?? {}),
-  };
-  hydrateMinimapExploration(playerState.progress.minimapExplorationByChunkKey);
-  playerState.combatMode = characterSnapshot.combatMode;
-
-  for (const [skillKey, skill] of Object.entries(playerState.skills)) {
-    const savedSkill = characterSnapshot.progression.skills?.[skillKey];
-    if (Number.isFinite(savedSkill?.experience)) {
-      skill.experience = savedSkill.experience;
-    }
-    skill.level = getSkillLevelFromExperience(skill.experience);
-  }
-
-  const restoredItemUids = new Set();
-  for (const slotName of Object.keys(playerState.equipment)) {
-    playerState.equipment[slotName] = restoreCharacterItem(characterSnapshot.equipment[slotName], restoredItemUids);
-  }
-
-  playerState.level = getLevelFromExperience(playerState.experience);
-  syncPlayerDerivedStats();
-  playerState.hp = clamp(characterSnapshot.vitals?.hp ?? playerState.maxHp, 0, playerState.maxHp);
-  playerState.mana = clamp(characterSnapshot.vitals?.mana ?? playerState.maxMana, 0, playerState.maxMana);
-  playerState.sanity = clamp(characterSnapshot.vitals?.sanity ?? 0, 0, playerState.maxSanity);
-  resetPlayerRegenerationTimers();
-  updatePlayerCarriedWeight();
-  return true;
-};
-
-const applyCharacterSavePosition = (characterSnapshot, worldMapsByZ) => {
-  const position = characterSnapshot?.position;
-  const worldMap = worldMapsByZ?.get(position?.z);
-  if (!worldMap || !Number.isInteger(position.x) || !Number.isInteger(position.y)) {
-    return false;
-  }
-
-  const col = position.x / TILE_SIZE;
-  const row = position.y / TILE_SIZE;
-  if (
-    !Number.isInteger(col) ||
-    !Number.isInteger(row) ||
-    !getWorldChunkForTilePosition(worldMap, col, row) ||
-    isTiledCollisionAtTile(worldMap, col, row)
-  ) {
-    return false;
-  }
-
-  playerState.z = position.z;
-  playerState.direction = position.direction;
-  pixiWorldRenderState.currentZ = playerState.z;
-  return setPlayerWorldPosition(position.x, position.y);
-};
-
-const loadInitialCharacterSnapshot = () => {
-  const loadResult = loadCharacterSaveDocument();
-  if (!loadResult.success) {
-    if (loadResult.reason === "not-initialized" && loadResult.entry) {
-      playerState.uid = loadResult.entry.characterId;
-      playerState.name = loadResult.entry.name;
-      playerState.appearanceId = getPlayerAppearanceData(loadResult.entry.appearanceId).appearanceId;
-      playerState.appearanceParts = normalizeCharacterAppearanceParts(
-        loadResult.entry.appearanceParts,
-        playerState.appearanceId,
-      );
-      playerState.appearanceColors = normalizeCharacterAppearanceColors(loadResult.entry.appearanceColors);
-    }
-    return null;
-  }
-
-  const characterSnapshot = loadResult.document.character;
-  if (!applyCharacterSaveSnapshot(characterSnapshot)) {
-    return null;
-  }
-  return characterSnapshot;
-};
-
-const saveCurrentCharacter = () => {
-  const saveResult = saveCharacterSnapshot(createCharacterSaveSnapshot());
-  showGameStatusMessage(
-    saveResult.success ? getGameUiText("characterSaved") : getGameUiText("characterSaveFailed"),
-  );
-  return saveResult.success;
-};
-
-const autosaveCurrentCharacter = () => {
-  if (!gameRuntimeState.isStarted || gameRuntimeState.isSwitchingCharacter) {
-    return false;
-  }
-  return saveCharacterSnapshot(createCharacterSaveSnapshot()).success;
-};
-
-const startCharacterAutosave = () => {
-  if (gameRuntimeState.autosaveIntervalId !== null) {
-    return;
-  }
-  gameRuntimeState.autosaveIntervalId = window.setInterval(() => {
-    autosaveCurrentCharacter();
-  }, CHARACTER_AUTOSAVE_INTERVAL_MS);
-};
+let characterSessionController = null;
+const createCharacterSaveSnapshot = () => characterSessionController.createSnapshot();
+const applyCharacterSavePosition = (characterSnapshot, worldMapsByZ) =>
+  characterSessionController.applySavedPosition(characterSnapshot, worldMapsByZ);
+const loadInitialCharacterSnapshot = () => characterSessionController.loadInitialSnapshot();
+const saveCurrentCharacter = () => characterSessionController.saveCurrent();
+const autosaveCurrentCharacter = () => characterSessionController.autosave();
+const startCharacterAutosave = () => characterSessionController.startAutosave();
 
 /* ---------- JOUEUR - AFFICHAGE ---------- */
 
@@ -699,380 +498,12 @@ const canMoveTo = (fromX, fromY, testX, testY) => {
 /* ==================================================== */
 /* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
-const getMinimapTileColor = (worldMap, col, row) => {
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  if (!chunk) {
-    return "#050505";
-  }
-  if (getWorldLayerGidAtTile(worldMap, "ground", col, row) <= 0) {
-    return "#0b0a09";
-  }
-  if (getWorldLayerGidAtTile(worldMap, "collision", col, row) > 0) {
-    return "#312e28";
-  }
-  if (
-    getWorldLayerGidAtTile(worldMap, "walls", col, row) > 0 ||
-    getWorldLayerGidAtTile(worldMap, "objects", col, row) > 0
-  ) {
-    return "#554b3b";
-  }
-  if (getWorldLayerGidAtTile(worldMap, "groundDetails", col, row) > 0) {
-    return "#756b56";
-  }
-  return "#91846a";
-};
-
-const getMinimapWorldMap = () => {
-  if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return null;
-  }
-  const viewZ = Number.isInteger(minimapRenderState.viewZ) ? minimapRenderState.viewZ : playerState.z;
-  return pixiWorldRenderState.worldMapsByZ.get(viewZ) ?? null;
-};
-
-const drawMinimapFog = (context, worldMap) => {
-  context.save();
-  context.fillStyle = "#000000";
-  for (let localRow = 0; localRow < minimapRenderState.visibleRows; localRow++) {
-    for (let localCol = 0; localCol < minimapRenderState.visibleCols; localCol++) {
-      const col = minimapRenderState.firstCol + localCol;
-      const row = minimapRenderState.firstRow + localRow;
-      if (!isMinimapTileDiscovered(worldMap.z, col, row)) {
-        context.fillRect(
-          localCol * minimapRenderState.cellSize,
-          localRow * minimapRenderState.cellSize,
-          minimapRenderState.cellSize,
-          minimapRenderState.cellSize,
-        );
-      }
-    }
-  }
-  context.restore();
-};
-
-const getMinimapCanvasPositionForTile = (col, row) => {
-  if (
-    !Number.isInteger(col) ||
-    !Number.isInteger(row) ||
-    !Number.isInteger(minimapRenderState.firstCol) ||
-    !Number.isInteger(minimapRenderState.firstRow)
-  ) {
-    return null;
-  }
-  const localCol = col - minimapRenderState.firstCol;
-  const localRow = row - minimapRenderState.firstRow;
-  if (
-    localCol < 0 ||
-    localRow < 0 ||
-    localCol >= minimapRenderState.visibleCols ||
-    localRow >= minimapRenderState.visibleRows
-  ) {
-    return null;
-  }
-  return {
-    x: (localCol + 0.5) * minimapRenderState.cellSize,
-    y: (localRow + 0.5) * minimapRenderState.cellSize,
-  };
-};
-
-const drawMinimapGrid = (context) => {
-  if (minimapRenderState.cellSize < 8) {
-    return;
-  }
-  context.save();
-  context.strokeStyle = "rgba(255, 255, 255, 0.08)";
-  context.lineWidth = 1;
-  context.beginPath();
-  for (let x = 0.5; x < minimapCanvas.width; x += minimapRenderState.cellSize) {
-    context.moveTo(x, 0);
-    context.lineTo(x, minimapCanvas.height);
-  }
-  for (let y = 0.5; y < minimapCanvas.height; y += minimapRenderState.cellSize) {
-    context.moveTo(0, y);
-    context.lineTo(minimapCanvas.width, y);
-  }
-  context.stroke();
-  context.restore();
-};
-
-const drawMinimapCreatureMarker = (context, creature, fillColor, markerShape = "circle") => {
-  if (creature?.z !== minimapRenderState.viewZ) {
-    return;
-  }
-  const col = Math.floor(creature.x / TILE_SIZE);
-  const row = Math.floor(creature.y / TILE_SIZE);
-  const position = getMinimapCanvasPositionForTile(col, row);
-  if (!position) {
-    return;
-  }
-  const radius = clamp(minimapRenderState.cellSize * 0.38, 1.5, 4);
-  context.save();
-  context.fillStyle = fillColor;
-  context.strokeStyle = "rgba(0, 0, 0, 0.9)";
-  context.lineWidth = 1;
-  context.beginPath();
-  if (markerShape === "diamond") {
-    context.moveTo(position.x, position.y - radius);
-    context.lineTo(position.x + radius, position.y);
-    context.lineTo(position.x, position.y + radius);
-    context.lineTo(position.x - radius, position.y);
-    context.closePath();
-  } else {
-    context.arc(position.x, position.y, radius, 0, Math.PI * 2);
-  }
-  context.fill();
-  context.stroke();
-  context.restore();
-};
-
-const drawMinimapNavigationMarker = (context) => {
-  if (
-    minimapRenderState.viewZ !== playerState.z ||
-    playerNavigationState.mode !== PLAYER_NAVIGATION_MODE.click ||
-    !playerNavigationState.destinationTile
-  ) {
-    return;
-  }
-  const destination = playerNavigationState.destinationTile;
-  const position = getMinimapCanvasPositionForTile(destination.col, destination.row);
-  if (!position) {
-    return;
-  }
-  const radius = clamp(minimapRenderState.cellSize * 0.52, 2.5, 6);
-  context.save();
-  context.strokeStyle = "#f7d44a";
-  context.lineWidth = 1.5;
-  context.beginPath();
-  context.arc(position.x, position.y, radius, 0, Math.PI * 2);
-  context.stroke();
-  context.restore();
-};
-
-const drawMinimapPlayerMarker = (context) => {
-  if (minimapRenderState.viewZ !== playerState.z) {
-    return;
-  }
-  const playerCol = Math.floor(playerState.x / TILE_SIZE);
-  const playerRow = Math.floor(playerState.y / TILE_SIZE);
-  const position = getMinimapCanvasPositionForTile(playerCol, playerRow);
-  if (!position) {
-    return;
-  }
-  const directionByName = {
-    up: { x: 0, y: -1 },
-    right: { x: 1, y: 0 },
-    down: { x: 0, y: 1 },
-    left: { x: -1, y: 0 },
-  };
-  const direction = directionByName[playerState.direction] ?? directionByName.down;
-  const perpendicular = { x: -direction.y, y: direction.x };
-  const radius = clamp(minimapRenderState.cellSize * 0.62, 2.5, 6);
-  context.save();
-  context.fillStyle = "#fff2a3";
-  context.strokeStyle = "#17130a";
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(position.x + direction.x * radius, position.y + direction.y * radius);
-  context.lineTo(
-    position.x - direction.x * radius * 0.65 + perpendicular.x * radius * 0.7,
-    position.y - direction.y * radius * 0.65 + perpendicular.y * radius * 0.7,
-  );
-  context.lineTo(
-    position.x - direction.x * radius * 0.65 - perpendicular.x * radius * 0.7,
-    position.y - direction.y * radius * 0.65 - perpendicular.y * radius * 0.7,
-  );
-  context.closePath();
-  context.fill();
-  context.stroke();
-  context.restore();
-};
-
-const drawMinimapDynamicMarkers = (context) => {
-  drawMinimapNavigationMarker(context);
-  const playerCol = Math.floor(playerState.x / TILE_SIZE);
-  const playerRow = Math.floor(playerState.y / TILE_SIZE);
-  for (const monsterUid of monsterElementsByUid.keys()) {
-    const monster = monstersByUid.get(monsterUid);
-    const monsterCol = Math.floor(monster?.x / TILE_SIZE);
-    const monsterRow = Math.floor(monster?.y / TILE_SIZE);
-    const monsterDistance = Math.max(Math.abs(monsterCol - playerCol), Math.abs(monsterRow - playerRow));
-    if (monster && monster.z === playerState.z && monsterDistance <= MINIMAP_MONSTER_REVEAL_RANGE_TILES) {
-      drawMinimapCreatureMarker(context, monster, "#d94c45");
-      if (monster.uid === combatTargetState.monsterUid) {
-        const position = getMinimapCanvasPositionForTile(
-          Math.floor(monster.x / TILE_SIZE),
-          Math.floor(monster.y / TILE_SIZE),
-        );
-        if (position) {
-          context.save();
-          context.strokeStyle = "#ffffff";
-          context.lineWidth = 1;
-          context.beginPath();
-          context.arc(position.x, position.y, clamp(minimapRenderState.cellSize * 0.58, 2.5, 6), 0, Math.PI * 2);
-          context.stroke();
-          context.restore();
-        }
-      }
-    }
-  }
-  for (const npcUid of npcElementsByUid.keys()) {
-    const npc = npcsByUid.get(npcUid);
-    if (npc) {
-      drawMinimapCreatureMarker(context, npc, "#59c6c8", "diamond");
-    }
-  }
-  drawMinimapPlayerMarker(context);
-};
-
-const updateMinimapControlUi = () => {
-  const zoomIndex = MINIMAP_ZOOM_LEVELS.indexOf(minimapRenderState.cellSize);
-  if (minimapZoomLevel) {
-    minimapZoomLevel.textContent = `${Math.round((minimapRenderState.cellSize / MINIMAP_DEFAULT_CELL_SIZE) * 100)}%`;
-  }
-  if (minimapFloorLevel) {
-    minimapFloorLevel.textContent = `Z ${minimapRenderState.viewZ}`;
-  }
-  if (minimapZoomOutButton) {
-    minimapZoomOutButton.disabled = zoomIndex <= 0;
-  }
-  if (minimapZoomInButton) {
-    minimapZoomInButton.disabled = zoomIndex >= MINIMAP_ZOOM_LEVELS.length - 1;
-  }
-  if (minimapFloorUpButton) {
-    minimapFloorUpButton.disabled = !pixiWorldRenderState.worldMapsByZ?.has(minimapRenderState.viewZ + 1);
-  }
-  if (minimapFloorDownButton) {
-    minimapFloorDownButton.disabled = !pixiWorldRenderState.worldMapsByZ?.has(minimapRenderState.viewZ - 1);
-  }
-};
-
-const renderPlayerMinimap = (forceRender = false) => {
-  const context = minimapRenderState.context;
-  if (!playerMinimap || !minimapCanvas || !context) {
-    return;
-  }
-
-  const playerCol = Math.floor(playerState.x / TILE_SIZE);
-  const playerRow = Math.floor(playerState.y / TILE_SIZE);
-  const now = performance.now();
-  if (minimapRenderState.lastZ !== null && minimapRenderState.lastZ !== playerState.z) {
-    minimapRenderState.isFollowingPlayer = true;
-  }
-  if (!Number.isInteger(minimapRenderState.viewZ) || minimapRenderState.isFollowingPlayer) {
-    minimapRenderState.viewZ = playerState.z;
-  }
-  const worldMap = getMinimapWorldMap();
-  if (!worldMap) {
-    return;
-  }
-  const didDiscoverTile = revealMinimapAroundPlayer(getCurrentWorldMap(), playerState);
-  if (
-    minimapRenderState.isFollowingPlayer ||
-    !Number.isInteger(minimapRenderState.centerCol) ||
-    !Number.isInteger(minimapRenderState.centerRow)
-  ) {
-    minimapRenderState.centerCol = playerCol;
-    minimapRenderState.centerRow = playerRow;
-  }
-
-  const cellSize = minimapRenderState.cellSize;
-  const visibleCols = Math.ceil(minimapCanvas.width / cellSize);
-  const visibleRows = Math.ceil(minimapCanvas.height / cellSize);
-  const firstCol = minimapRenderState.centerCol - Math.floor(visibleCols / 2);
-  const firstRow = minimapRenderState.centerRow - Math.floor(visibleRows / 2);
-  if (
-    !forceRender &&
-    !didDiscoverTile &&
-    minimapRenderState.lastPlayerCol === playerCol &&
-    minimapRenderState.lastPlayerRow === playerRow &&
-    minimapRenderState.lastZ === playerState.z &&
-    minimapRenderState.lastViewZ === minimapRenderState.viewZ &&
-    minimapRenderState.lastCenterCol === minimapRenderState.centerCol &&
-    minimapRenderState.lastCenterRow === minimapRenderState.centerRow &&
-    minimapRenderState.lastCellSize === cellSize &&
-    now < minimapRenderState.nextDynamicRenderAt
-  ) {
-    return;
-  }
-
-  minimapRenderState.firstCol = firstCol;
-  minimapRenderState.firstRow = firstRow;
-  minimapRenderState.visibleCols = visibleCols;
-  minimapRenderState.visibleRows = visibleRows;
-  context.fillStyle = "#050505";
-  context.fillRect(0, 0, minimapCanvas.width, minimapCanvas.height);
-
-  const didDrawTexturedMap = drawPixiMinimapRegion({
-    context,
-    worldMap,
-    firstCol,
-    firstRow,
-    visibleCols,
-    visibleRows,
-    cellSize,
-  });
-  if (!didDrawTexturedMap) {
-    for (let localRow = 0; localRow < visibleRows; localRow++) {
-      for (let localCol = 0; localCol < visibleCols; localCol++) {
-        context.fillStyle = getMinimapTileColor(worldMap, firstCol + localCol, firstRow + localRow);
-        context.fillRect(localCol * cellSize, localRow * cellSize, cellSize, cellSize);
-      }
-    }
-  }
-
-  drawMinimapGrid(context);
-  drawMinimapFog(context, worldMap);
-  drawMinimapDynamicMarkers(context);
-  updateMinimapControlUi();
-
-  minimapRenderState.lastPlayerCol = playerCol;
-  minimapRenderState.lastPlayerRow = playerRow;
-  minimapRenderState.lastZ = playerState.z;
-  minimapRenderState.lastViewZ = minimapRenderState.viewZ;
-  minimapRenderState.lastCenterCol = minimapRenderState.centerCol;
-  minimapRenderState.lastCenterRow = minimapRenderState.centerRow;
-  minimapRenderState.lastCellSize = cellSize;
-  minimapRenderState.nextDynamicRenderAt = now + MINIMAP_DYNAMIC_REFRESH_MS;
-};
-
-const setMinimapZoom = (cellSize) => {
-  if (!MINIMAP_ZOOM_LEVELS.includes(cellSize)) {
-    return false;
-  }
-  minimapRenderState.cellSize = cellSize;
-  gameOptionsUiState.values.minimapCellSize = cellSize;
-  saveGameOptions();
-  renderPlayerMinimap(true);
-  return true;
-};
-
-const adjustMinimapZoom = (direction) => {
-  const currentIndex = MINIMAP_ZOOM_LEVELS.indexOf(minimapRenderState.cellSize);
-  const nextIndex = clamp(currentIndex + direction, 0, MINIMAP_ZOOM_LEVELS.length - 1);
-  return setMinimapZoom(MINIMAP_ZOOM_LEVELS[nextIndex]);
-};
-
-const centerMinimapOnPlayer = () => {
-  minimapRenderState.isFollowingPlayer = true;
-  minimapRenderState.viewZ = playerState.z;
-  minimapRenderState.centerCol = Math.floor(playerState.x / TILE_SIZE);
-  minimapRenderState.centerRow = Math.floor(playerState.y / TILE_SIZE);
-  renderPlayerMinimap(true);
-};
-
-const changeMinimapFloor = (floorDelta) => {
-  if (!Number.isInteger(floorDelta) || !(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return false;
-  }
-  const nextZ = minimapRenderState.viewZ + floorDelta;
-  if (!pixiWorldRenderState.worldMapsByZ.has(nextZ)) {
-    return false;
-  }
-  minimapRenderState.viewZ = nextZ;
-  minimapRenderState.isFollowingPlayer = false;
-  renderPlayerMinimap(true);
-  return true;
-};
+let minimapController = null;
+const renderPlayerMinimap = (forceRender = false) => minimapController.render(forceRender);
+const setMinimapZoom = (cellSize, persist = true) => minimapController.setZoom(cellSize, persist);
+const adjustMinimapZoom = (direction) => minimapController.adjustZoom(direction);
+const centerMinimapOnPlayer = () => minimapController.centerOnPlayer();
+const changeMinimapFloor = (floorDelta) => minimapController.changeFloor(floorDelta);
 
 const handleTransitionContextMenu = (target) => {
   const transition = getTransitionFromPointerTarget(target);
@@ -2174,252 +1605,27 @@ const grantRewardItemsToPlayer = (rewardItems) => {
 
 /* ---------- DRAG - ETAT ---------- */
 
-const resetDragState = () => {
-  dragState.isDragging = false;
-  document.body.classList.remove("item-drag-active");
-  dragState.item = null;
-  dragState.sourceLocationType = null;
-  dragState.sourceSlotIndex = null;
-  dragState.sourceEquipmentSlotName = null;
-  dragState.sourceParentContainerUid = null;
-  dragState.sourceItemUid = null;
-};
-
-const cancelItemDrag = () => {
-  const draggingSlots = document.querySelectorAll(".container-slot-dragging");
-  draggingSlots.forEach((slot) => {
-    slot.classList.remove("container-slot-dragging");
-  });
-
-  clearPixiWorldItemSelection();
-
-  resetDragState();
-  resetDragStatePending();
-  resetInputComboState();
-};
-
-const resetDragStatePending = () => {
-  dragState.pendingSourceLocation = null;
-  dragState.pendingSlotElement = null;
-  dragState.startScreenX = null;
-  dragState.startScreenY = null;
-};
-
-/* ---------- DRAG - DEPART SOURCE ---------- */
-
-const startItemDrag = (source) => {
-  if (!source) {
-    return;
-  }
-  const item = getDragSourceItem(source);
-  if (!item) {
-    return;
-  }
-  resetDragState();
-  inputState.shouldBlockNextWorldClick = true;
-  dragState.isDragging = true;
-  document.body.classList.add("item-drag-active");
-  dragState.item = item;
-
-  if (source.locationType === "containerSlot") {
-    dragState.sourceLocationType = "containerSlot";
-    dragState.sourceParentContainerUid = source.parentContainerUid;
-    dragState.sourceSlotIndex = source.slotIndex;
-  } else if (source.locationType === "equipmentSlot") {
-    dragState.sourceLocationType = "equipmentSlot";
-    dragState.sourceEquipmentSlotName = source.equipmentSlotName;
-  } else if (source.locationType === "worldItem") {
-    dragState.sourceLocationType = "worldItem";
-    dragState.sourceItemUid = source.itemUid;
-  } else {
-    resetDragState();
-    return;
-  }
-};
-
-/* ---------- DRAG - LECTURE SOURCE ---------- */
-const getDragSourceFromState = () => {
-  if (!dragState.isDragging) {
-    return null;
-  }
-  if (dragState.sourceLocationType === "containerSlot") {
-    return {
-      locationType: dragState.sourceLocationType,
-      parentContainerUid: dragState.sourceParentContainerUid,
-      slotIndex: dragState.sourceSlotIndex,
-    };
-  } else if (dragState.sourceLocationType === "equipmentSlot") {
-    return {
-      locationType: dragState.sourceLocationType,
-      equipmentSlotName: dragState.sourceEquipmentSlotName,
-    };
-  } else if (dragState.sourceLocationType === "worldItem") {
-    return {
-      locationType: dragState.sourceLocationType,
-      itemUid: dragState.sourceItemUid,
-    };
-  } else {
-    return null;
-  }
-};
-
-const getDragSourceItem = (source) => {
-  if (!source) {
-    return null;
-  }
-
-  if (source.locationType === "containerSlot") {
-    const parentContainer = getParentContainerFromContainerSlotLocation(source);
-
-    if (!isValidContainerSlotParent(parentContainer)) {
-      return null;
-    }
-    return parentContainer.content[source.slotIndex];
-  } else if (source.locationType === "equipmentSlot") {
-    const item = getEquipmentSlotItem(source.equipmentSlotName);
-    return item;
-  } else if (source.locationType === "worldItem") {
-    const item = findWorldItemByUid(source.itemUid);
-    if (!item) {
-      return null;
-    }
-    return item;
-  } else {
-    return null;
-  }
-};
+let inventoryDragController = null;
+let itemLocationController = null;
+const resetDragState = () => inventoryDragController.reset();
+const cancelItemDrag = () => inventoryDragController.cancel();
+const resetDragStatePending = () => inventoryDragController.resetPending();
+const startItemDrag = (source) => inventoryDragController.start(source);
+const getDragSourceFromState = () => inventoryDragController.getSource();
+const getDragSourceItem = (source) => itemLocationController.getItem(source);
 
 /* ---------- DRAG - MODIFICATION SOURCE ---------- */
 
-const isValidContainerSlotParent = (parentContainer) => {
-  if (parentContainer && parentContainer.content && isOpenableContainerItem(parentContainer)) {
-    return true;
-  }
-  return false;
-};
-
-const removeItemFromContainerSlot = (source, item) => {
-  const wasRemoved = setContainerSlotItem(source, null);
-  if (wasRemoved) {
-    return item;
-  } else {
-    return null;
-  }
-};
-
-const removeItemFromEquipmentSlot = (source, item) => {
-  const wasRemoved = setEquipmentSlotItem(source, null);
-
-  if (!wasRemoved) {
-    return null;
-  }
-
-  return item;
-};
-
-const removeItemFromWorldItem = (source, item) => {
-  const wasRemoved = removeGroundItem(source.itemUid);
-  if (wasRemoved) {
-    return item;
-  } else {
-    return null;
-  }
-};
-
-const removeItemFromDragSource = (source) => {
-  if (!source) {
-    return null;
-  }
-  const item = getDragSourceItem(source);
-  if (!item) {
-    return null;
-  }
-  if (source.locationType === "containerSlot") {
-    return removeItemFromContainerSlot(source, item);
-  } else if (source.locationType === "equipmentSlot") {
-    return removeItemFromEquipmentSlot(source, item);
-  } else if (source.locationType === "worldItem") {
-    return removeItemFromWorldItem(source, item);
-  } else {
-    return null;
-  }
-};
-
-const setEquipmentSlotItem = (itemLocation, item) => {
-  if (!itemLocation || itemLocation.locationType !== "equipmentSlot" || !itemLocation.equipmentSlotName) {
-    return false;
-  }
-  const equipmentSlotName = itemLocation.equipmentSlotName;
-  if (!(equipmentSlotName in playerState.equipment)) {
-    return false;
-  }
-  playerState.equipment[equipmentSlotName] = item;
-  return true;
-};
+const isValidContainerSlotParent = (parentContainer) => isValidContainerSlotParentRule(parentContainer);
+const removeItemFromDragSource = (source) => itemLocationController.removeItem(source);
+const setEquipmentSlotItem = (itemLocation, item) => setPlayerEquipmentSlotItem(itemLocation, item);
 
 /* ---------- DRAG - DESTINATION ---------- */
 
-const placeItemInContainerSlot = (destination, item) => {
-  const existingItem = getItemFromLocation(destination);
-  const wasPlaced = setContainerSlotItem(destination, item);
-
-  if (!wasPlaced) {
-    return null;
-  }
-
-  if (existingItem) {
-    return existingItem;
-  }
-
-  return true;
-};
-
-const placeItemInEquipmentSlot = (destination, item) => {
-  if (
-    !destination.equipmentSlotName ||
-    !(destination.equipmentSlotName in playerState.equipment) ||
-    !canPlaceItemInEquipmentSlot(item, destination.equipmentSlotName)
-  ) {
-    return null;
-  }
-
-  const existingItem = getItemFromLocation(destination);
-
-  const wasPlaced = setEquipmentSlotItem(destination, item);
-  if (!wasPlaced) {
-    return null;
-  }
-
-  if (existingItem) {
-    return existingItem;
-  }
-
-  return true;
-};
-
-const placeItemOnWorldTile = (destination, item) => {
-  const wasPositioned = setWorldItemPosition(destination, item);
-  if (!wasPositioned) {
-    return false;
-  }
-  addGroundItem(item);
-  return true;
-};
-
-const placeItemInDragDestination = (destination, item) => {
-  if (!destination || !item) {
-    return null;
-  }
-  if (destination.locationType === "containerSlot") {
-    return placeItemInContainerSlot(destination, item);
-  } else if (destination.locationType === "equipmentSlot") {
-    return placeItemInEquipmentSlot(destination, item);
-  } else if (destination.locationType === "worldTile") {
-    return placeItemOnWorldTile(destination, item);
-  } else {
-    return null;
-  }
-};
+const placeItemInContainerSlot = (destination, item) => itemLocationController.placeItem(destination, item);
+const placeItemInEquipmentSlot = (destination, item) => itemLocationController.placeItem(destination, item);
+const placeItemOnWorldTile = (destination, item) => itemLocationController.placeItem(destination, item);
+const placeItemInDragDestination = (destination, item) => itemLocationController.placeItem(destination, item);
 
 const isItemInsideContainer = (containerItem, searchedItemUid) => {
   if (!containerItem || !containerItem.content) {
@@ -2494,43 +1700,7 @@ const refreshItemUiAfterDrag = () => {
   cancelItemDrag();
 };
 
-const canPlaceItemInEquipmentSlot = (item, slotName) => {
-  if (!item || !slotName) {
-    return false;
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData || !Array.isArray(itemData.equipmentSlot)) {
-    return false;
-  }
-  if (!itemData.equipmentSlot.includes(slotName)) {
-    return false;
-  }
-
-  if (slotName === "weapon" && itemData.combat?.ammunitionItemId) {
-    const offhandItem = playerState.equipment.shield;
-    if (offhandItem && offhandItem.itemId !== itemData.combat.ammunitionItemId) {
-      return false;
-    }
-  }
-
-  if (slotName === "shield" && Number.isFinite(itemData.combat?.shieldDefense)) {
-    const equippedWeapon = playerState.equipment.weapon;
-    const equippedWeaponData = equippedWeapon ? getItemData(equippedWeapon.itemId) : null;
-    if (equippedWeaponData?.combat?.ammunitionItemId) {
-      return false;
-    }
-  }
-
-  if (slotName === "shield" && itemData.type === "ammunition") {
-    const equippedWeapon = playerState.equipment.weapon;
-    const equippedWeaponData = equippedWeapon ? getItemData(equippedWeapon.itemId) : null;
-    if (equippedWeaponData?.combat?.ammunitionItemId !== item.itemId) {
-      return false;
-    }
-  }
-
-  return true;
-};
+const canPlaceItemInEquipmentSlot = (item, slotName) => canEquipItemInSlot(item, slotName);
 
 const findFirstStackableContainerSlot = (containerItem, itemToAdd) => {
   if (!containerItem?.content || !itemToAdd) {
@@ -2680,17 +1850,8 @@ const closeFarOpenedContainers = () => {
   }
 };
 
-const getParentContainerFromContainerSlotLocation = (itemLocation) => {
-  if (!itemLocation || itemLocation.locationType !== "containerSlot" || !("parentContainerUid" in itemLocation)) {
-    return null;
-  }
-  const parentContainerLocation = findItemLocationByUid(itemLocation.parentContainerUid);
-  if (!parentContainerLocation) {
-    return null;
-  }
-  const parentContainer = getItemFromLocation(parentContainerLocation);
-  return parentContainer;
-};
+const getParentContainerFromContainerSlotLocation = (itemLocation) =>
+  itemLocationController.getParentContainer(itemLocation);
 
 const rollbackDraggedItem = (rollbackDestination, item) => {
   if (!rollbackDestination || !item) {
@@ -2703,14 +1864,7 @@ const rollbackDraggedItem = (rollbackDestination, item) => {
   return true;
 };
 
-const setContainerSlotItem = (itemLocation, item) => {
-  const parentContainer = getParentContainerFromContainerSlotLocation(itemLocation);
-  if (isValidContainerSlotParent(parentContainer)) {
-    parentContainer.content[itemLocation.slotIndex] = item;
-    return true;
-  }
-  return false;
-};
+const setContainerSlotItem = (itemLocation, item) => itemLocationController.setContainerItem(itemLocation, item);
 
 const updateOpenedContainerSourceType = (item, sourceType) => {
   const openedContainerWrapper = findOpenedContainerWrapperByUid(item.uid);
@@ -3216,23 +2370,7 @@ const isDropStackToStack = (sourceItem, destinationItem) => {
   return false;
 };
 
-const getItemFromLocation = (itemLocation) => {
-  if (!itemLocation || !itemLocation.locationType) {
-    return null;
-  }
-  if (itemLocation.locationType === "worldItem") {
-    return findWorldItemByUid(itemLocation.itemUid);
-  } else if (itemLocation.locationType === "equipmentSlot") {
-    return playerState.equipment[itemLocation.equipmentSlotName];
-  } else if (itemLocation.locationType === "containerSlot") {
-    const parentContainer = getParentContainerFromContainerSlotLocation(itemLocation);
-    if (!parentContainer || !parentContainer.content) {
-      return null;
-    }
-    return parentContainer.content[itemLocation.slotIndex] || null;
-  }
-  return null;
-};
+const getItemFromLocation = (itemLocation) => itemLocationController.getItem(itemLocation);
 
 const findItemLocationInsideContainer = (containerItem, searchedUid) => {
   if (!containerItem || !isContainerItem(containerItem) || !containerItem.content) {
@@ -3321,37 +2459,8 @@ const refreshAllByUid = (uid) => {
   refreshInventoryUi();
 };
 
-const isOpenedContainerChildOf = (openedWindow, containerToClose) => {
-  if (!openedWindow || !containerToClose) {
-    return false;
-  }
-  let openedWindowParent = openedWindow.parent;
-  while (openedWindowParent) {
-    if (openedWindowParent.item.uid === containerToClose.uid) {
-      return true;
-    }
-
-    openedWindowParent = openedWindowParent.parent;
-  }
-  return false;
-};
-
-const closeContainerAndChildren = (containerToClose) => {
-  if (!containerToClose) {
-    return;
-  }
-  let wasClosed = false;
-  for (let index = openedContainers.length - 1; index >= 0; index--) {
-    const wrapper = openedContainers[index];
-    if (wrapper.item.uid === containerToClose.uid || isOpenedContainerChildOf(wrapper, containerToClose)) {
-      openedContainers.splice(index, 1);
-      wasClosed = true;
-    }
-  }
-  if (wasClosed) {
-    renderContainerDock();
-  }
-};
+const closeContainerAndChildren = (containerToClose) =>
+  containerWindowController.closeWithChildren(containerToClose);
 
 const removeAllByUid = (uid) => {
   const location = findItemLocationByUid(uid);
@@ -3793,7 +2902,7 @@ const applyGameOptions = () => {
   game.classList.toggle("game-hide-health-bars", !gameOptionsUiState.values.showHealthBars);
   setGameAudioSettings(gameOptionsUiState.values);
   if (MINIMAP_ZOOM_LEVELS.includes(gameOptionsUiState.values.minimapCellSize)) {
-    minimapRenderState.cellSize = gameOptionsUiState.values.minimapCellSize;
+    setMinimapZoom(gameOptionsUiState.values.minimapCellSize, false);
   }
   applyGameLanguageUi();
   if (gameRuntimeState.isStarted) {
@@ -4459,12 +3568,7 @@ const openCharacterSelector = () => {
 };
 
 const saveCurrentCharacterBeforeSwitch = () => {
-  const saveResult = saveCharacterSnapshot(createCharacterSaveSnapshot());
-  if (!saveResult.success) {
-    showGameStatusMessage(getGameUiText("currentCharacterSaveFailed"));
-    return false;
-  }
-  return true;
+  return characterSessionController.saveBeforeSwitch();
 };
 
 const selectCharacterProfile = (characterId) => {
@@ -5033,360 +4137,17 @@ const getLocalizedSpellData = (spellId) => {
 /* ==================================================== */
 /* ---------- CONTENEURS - SLOTS ET FENETRES ---------- */
 
-const renderContainerSlots = (containerBody, containerItem) => {
-  if (!containerItem || !containerBody) {
-    return;
-  }
-
-  containerBody.innerHTML = ``;
-
-  const dataItem = getItemData(containerItem.itemId);
-  if (!dataItem) {
-    return null;
-  }
-  const slotGrid = document.createElement("div");
-  slotGrid.classList.add("container-slot-grid");
-  for (let i = 0; i < dataItem.capacity; i++) {
-    const slotItem = containerItem.content[i];
-    const slot = document.createElement("div");
-    slot.classList.add("container-slot");
-    slot.setAttribute("data-container-slot-index", i);
-    slot.setAttribute("data-container-uid", containerItem.uid);
-
-    if (slotItem) {
-      renderItemIcon(slot, slotItem, 40);
-      slot.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (dragState.isDragging) {
-          inputState.shouldBlockNextContextMenu = true;
-          cancelItemDrag();
-          return;
-        }
-        if (shouldBlockContextMenuAction()) {
-          return;
-        }
-        const source = {
-          locationType: "containerSlot",
-          parentContainerUid: containerItem.uid,
-          slotIndex: i,
-        };
-
-        handleUseItemFromSource(source);
-      });
-    }
-    slotGrid.appendChild(slot);
-  }
-
-  containerBody.appendChild(slotGrid);
-};
-
-const syncOpenedContainerOrderFromDock = () => {
-  if (!playerContainers) {
-    return;
-  }
-  const openedContainersByUid = new Map(
-    openedContainers.map((container) => {
-      return [container.item.uid, container];
-    }),
-  );
-  const orderedContainers = [];
-  for (const element of playerContainers.querySelectorAll(".container-window")) {
-    const containerUid = Number(element.dataset.containerUid);
-    const container = openedContainersByUid.get(containerUid);
-    if (container) {
-      orderedContainers.push(container);
-    }
-  }
-  if (orderedContainers.length === openedContainers.length) {
-    openedContainers.splice(0, openedContainers.length, ...orderedContainers);
-  }
-};
-
-const startContainerWindowDockDrag = (event, windowElement, headerElement) => {
-  if (
-    dragState.isDragging ||
-    event.button !== 0 ||
-    event.target.closest("button") ||
-    !playerContainers.contains(windowElement)
-  ) {
-    return;
-  }
-  event.preventDefault();
-  event.stopPropagation();
-  windowElement.classList.add("container-window-dragging");
-  const draggedPointerId = event.pointerId;
-  let lastPointerY = event.clientY;
-
-  const moveWindow = (moveEvent) => {
-    if (moveEvent.pointerId !== draggedPointerId) {
-      return;
-    }
-    moveEvent.preventDefault();
-    if (moveEvent.clientY > lastPointerY) {
-      let nextWindow = windowElement.nextElementSibling;
-      while (nextWindow?.classList.contains("container-window")) {
-        if (moveEvent.clientY < nextWindow.getBoundingClientRect().top) {
-          break;
-        }
-        playerContainers.insertBefore(windowElement, nextWindow.nextElementSibling);
-        nextWindow = windowElement.nextElementSibling;
-      }
-    } else if (moveEvent.clientY < lastPointerY) {
-      let previousWindow = windowElement.previousElementSibling;
-      while (previousWindow?.classList.contains("container-window")) {
-        if (moveEvent.clientY > previousWindow.getBoundingClientRect().bottom) {
-          break;
-        }
-        playerContainers.insertBefore(windowElement, previousWindow);
-        previousWindow = windowElement.previousElementSibling;
-      }
-    }
-    lastPointerY = moveEvent.clientY;
-  };
-
-  const finishWindowMove = (finishEvent) => {
-    if (finishEvent.type !== "blur" && finishEvent.pointerId !== draggedPointerId) {
-      return;
-    }
-    windowElement.classList.remove("container-window-dragging");
-    document.removeEventListener("pointermove", moveWindow, true);
-    document.removeEventListener("pointerup", finishWindowMove, true);
-    document.removeEventListener("pointercancel", finishWindowMove, true);
-    window.removeEventListener("blur", finishWindowMove);
-    syncOpenedContainerOrderFromDock();
-  };
-
-  document.addEventListener("pointermove", moveWindow, true);
-  document.addEventListener("pointerup", finishWindowMove, true);
-  document.addEventListener("pointercancel", finishWindowMove, true);
-  window.addEventListener("blur", finishWindowMove, { once: true });
-};
-
-const startContainerWindowResize = (event, windowElement, container, resizeHandle) => {
-  if (dragState.isDragging || event.button !== 0) {
-    return;
-  }
-  event.preventDefault();
-  event.stopPropagation();
-  const startPointerY = event.clientY;
-  const startHeight = windowElement.getBoundingClientRect().height;
-  resizeHandle.setPointerCapture(event.pointerId);
-
-  const resizeWindow = (moveEvent) => {
-    const contentMaxHeight = Number.isFinite(container.maxWindowHeight)
-      ? container.maxWindowHeight
-      : playerContainers.clientHeight;
-    const maxHeight = Math.max(70, Math.min(contentMaxHeight, playerContainers.clientHeight));
-    const nextHeight = clamp(startHeight + moveEvent.clientY - startPointerY, 70, maxHeight);
-    windowElement.style.height = `${nextHeight}px`;
-    container.windowHeight = nextHeight;
-  };
-
-  const finishResize = (finishEvent) => {
-    resizeHandle.removeEventListener("pointermove", resizeWindow);
-    resizeHandle.removeEventListener("pointerup", finishResize);
-    resizeHandle.removeEventListener("pointercancel", finishResize);
-    if (resizeHandle.hasPointerCapture(finishEvent.pointerId)) {
-      resizeHandle.releasePointerCapture(finishEvent.pointerId);
-    }
-  };
-
-  resizeHandle.addEventListener("pointermove", resizeWindow);
-  resizeHandle.addEventListener("pointerup", finishResize, { once: true });
-  resizeHandle.addEventListener("pointercancel", finishResize, { once: true });
-};
-
-const applyContainerWindowHeightBounds = (windowElement, bodyElement, container) => {
-  if (!windowElement || !bodyElement || !container) {
-    return;
-  }
-  const currentWindowHeight = windowElement.getBoundingClientRect().height;
-  const windowChromeHeight = currentWindowHeight - bodyElement.clientHeight;
-  const slotGridHeight = bodyElement.querySelector(".container-slot-grid")?.getBoundingClientRect().height ?? 0;
-  const bodyStyle = window.getComputedStyle(bodyElement);
-  const bodyVerticalPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
-  const contentHeight = Math.ceil(windowChromeHeight + bodyVerticalPadding + slotGridHeight);
-  const maxWindowHeight = Math.max(70, Math.min(contentHeight, playerContainers.clientHeight));
-  const requestedHeight = Number.isFinite(container.windowHeight) ? container.windowHeight : maxWindowHeight;
-  const resolvedHeight = clamp(requestedHeight, 70, maxWindowHeight);
-
-  container.maxWindowHeight = maxWindowHeight;
-  container.windowHeight = resolvedHeight;
-  windowElement.style.maxHeight = `${maxWindowHeight}px`;
-  windowElement.style.height = `${resolvedHeight}px`;
-};
-
-const renderContainerDock = () => {
-  if (!playerContainers) {
-    return;
-  }
-  playerContainers.innerHTML = ``;
-  openedContainers.forEach((container) => {
-    let backButton = null;
-    let body = null;
-    const div = document.createElement("div");
-    div.classList.add("container-window");
-    div.classList.add(`container-window-${container.sourceType}`);
-    div.dataset.containerUid = container.item.uid;
-    const header = document.createElement("div");
-    header.classList.add("container-window-header");
-    header.addEventListener("pointerdown", (event) => {
-      startContainerWindowDockDrag(event, div, header);
-    });
-    const button = document.createElement("button");
-    button.classList.add("container-minimize-button");
-    const closeButton = document.createElement("button");
-    closeButton.classList.add("container-minimize-button");
-    closeButton.innerText = "X";
-    const title = document.createElement("div");
-    title.classList.add("boite-jeux-titre");
-    title.textContent = getLocalizedItemName(container.item.itemId);
-    header.appendChild(title);
-    if (container.parent !== null) {
-      backButton = document.createElement("button");
-      backButton.classList.add("container-back-button");
-      backButton.innerText = `‹`;
-      backButton.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const parentWrapper = container.parent;
-        closeContainer(container.item);
-        const parentAlreadyOpen = findOpenedContainerWrapperByUid(parentWrapper.item.uid);
-        if (parentAlreadyOpen) {
-          parentAlreadyOpen.isMinimized = false;
-          renderContainerDock();
-          return;
-        }
-        openContainer(parentWrapper.item, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
-      });
-      header.append(backButton);
-    }
-    closeButton.addEventListener("click", (e) => {
-      e.preventDefault();
-      closeContainer(container.item);
-      e.stopPropagation();
-    });
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      toggleContainerMinimized(container.item);
-      e.stopPropagation();
-    });
-
-    header.append(button, closeButton);
-
-    if (container.isMinimized === true) {
-      div.classList.add("container-window-minimized");
-      button.textContent = "+";
-      div.append(header);
-    } else {
-      if (Number.isFinite(container.windowHeight)) {
-        div.style.height = `${container.windowHeight}px`;
-      }
-      const separateur = document.createElement("div");
-      separateur.classList.add("separateur-panneau");
-      button.textContent = "-";
-      body = document.createElement("div");
-      body.classList.add("container-window-body");
-      renderContainerSlots(body, container.item);
-      const resizeHandle = document.createElement("div");
-      resizeHandle.classList.add("container-window-resize-handle");
-      resizeHandle.addEventListener("pointerdown", (event) => {
-        startContainerWindowResize(event, div, container, resizeHandle);
-      });
-      div.append(header, separateur, body, resizeHandle);
-    }
-
-    playerContainers.append(div);
-    if (body) {
-      applyContainerWindowHeightBounds(div, body, container);
-    }
-  });
-  mobileGameControls?.classList.toggle("mobile-game-controls-container-open", openedContainers.length > 0);
-  syncMobileBackpackButton();
-  syncItemUseSourceFeedback();
-};
-
-const closeAllContainer = () => {
-  if (openedContainers.length > 0) {
-    openedContainers.length = 0;
-  }
-  refreshInventoryUi();
-};
-
-const closeContainer = (containerItem) => {
-  const index = findOpenedContainerIndexByUid(containerItem.uid);
-  if (index === -1) {
-    return;
-  }
-  openedContainers.splice(index, 1);
-  renderContainerDock();
-};
-
-const openContainer = (containerItem, title, source, parent) => {
-  if (!isContainerItem(containerItem) || !isOpenableContainerItem(containerItem)) {
-    return;
-  }
-
-  if (source === "world") {
-    let rootItem = null;
-    if (parent) {
-      rootItem = getOpenedContainerRootWrapper(parent).item;
-    } else {
-      rootItem = containerItem;
-    }
-    if (rootItem.z !== playerState.z) {
-      return;
-    }
-    if (!isNearPlayer(rootItem, 1)) {
-      return;
-    }
-  }
-
-  const alreadyOpen = findOpenedContainerWrapperByUid(containerItem.uid);
-  if (alreadyOpen) {
-    closeContainer(containerItem);
-    return;
-  }
-  openedContainers.push({
-    item: containerItem,
-    title: title,
-    isMinimized: false,
-    sourceType: source,
-    parent: parent,
-    windowHeight: null,
-    maxWindowHeight: null,
-  });
-
-  if (isMobileGameLayout()) {
-    setOpenMobilePanel(null);
-  }
-  renderContainerDock();
-};
-
-const findOpenedContainerItemByUid = (containerUid) => {
-  const openedContainer = findOpenedContainerWrapperByUid(containerUid);
-  if (!openedContainer) {
-    return null;
-  }
-  return openedContainer.item;
-};
-
-const findOpenedContainerIndexByUid = (containerUid) => {
-  return openedContainers.findIndex((container) => {
-    return container.item.uid === containerUid;
-  });
-};
-
-const toggleContainerMinimized = (containerItem) => {
-  const openedContainer = findOpenedContainerWrapperByUid(containerItem.uid);
-  if (!openedContainer) {
-    return;
-  }
-  openedContainer.isMinimized = !openedContainer.isMinimized;
-  renderContainerDock();
-};
+let containerWindowController = null;
+const renderContainerSlots = (containerBody, containerItem) =>
+  containerWindowController.renderSlots(containerBody, containerItem);
+const renderContainerDock = () => containerWindowController.render();
+const closeAllContainer = () => containerWindowController.closeAll();
+const closeContainer = (containerItem) => containerWindowController.close(containerItem);
+const openContainer = (containerItem, title, source, parent) =>
+  containerWindowController.open(containerItem, title, source, parent);
+const findOpenedContainerItemByUid = (containerUid) => containerWindowController.findItemByUid(containerUid);
+const findOpenedContainerIndexByUid = (containerUid) => containerWindowController.findIndexByUid(containerUid);
+const toggleContainerMinimized = (containerItem) => containerWindowController.toggleMinimized(containerItem);
 //#endregion  -----  UI - CONTENEURS  -----
 
 /* ==================================================== */
@@ -5604,25 +4365,10 @@ const syncItemUseTargetIndicators = () => {
   clearPixiItemUseTargets();
 };
 
-const getOpenedContainerRootWrapper = (containerWrapper) => {
-  if (!containerWrapper) {
-    return null;
-  }
-  let rootWrapper = containerWrapper;
-  while (rootWrapper.parent) {
-    rootWrapper = rootWrapper.parent;
-  }
-  return rootWrapper;
-};
-
-const findOpenedContainerWrapperByUid = (containerUid) => {
-  for (const container of openedContainers) {
-    if (container.item.uid === containerUid) {
-      return container;
-    }
-  }
-  return null;
-};
+const getOpenedContainerRootWrapper = (containerWrapper) =>
+  containerWindowController.getRootWrapper(containerWrapper);
+const findOpenedContainerWrapperByUid = (containerUid) =>
+  containerWindowController.findWrapperByUid(containerUid);
 
 const handleOpenContainerUse = (source, item, itemData, context = {}) => {
   if (source.locationType === "equipmentSlot") {
@@ -8506,102 +7252,10 @@ const startPlayerClickNavigation = (destinationTile) => {
   return refreshPlayerClickNavigationPath();
 };
 
-const handleMinimapNavigationClick = (event) => {
-  if (!gameRuntimeState.isStarted || characterSelectorUiState.isOpen || !minimapCanvas) {
-    return false;
-  }
-  if (minimapRenderState.viewZ !== playerState.z) {
-    showGameStatusMessage(getGameUiText("minimapWrongFloor"));
-    return false;
-  }
-  const canvasRect = minimapCanvas.getBoundingClientRect();
-  if (canvasRect.width <= 0 || canvasRect.height <= 0) {
-    return false;
-  }
-
-  const canvasX = (event.clientX - canvasRect.left) * (minimapCanvas.width / canvasRect.width);
-  const canvasY = (event.clientY - canvasRect.top) * (minimapCanvas.height / canvasRect.height);
-  const minimapCol = Math.floor(canvasX / minimapRenderState.cellSize);
-  const minimapRow = Math.floor(canvasY / minimapRenderState.cellSize);
-  if (
-    minimapCol < 0 ||
-    minimapCol >= minimapRenderState.visibleCols ||
-    minimapRow < 0 ||
-    minimapRow >= minimapRenderState.visibleRows ||
-    !Number.isInteger(minimapRenderState.firstCol) ||
-    !Number.isInteger(minimapRenderState.firstRow)
-  ) {
-    return false;
-  }
-
-  const playerTile = getTilePosition(playerState);
-  const destinationTile = {
-    col: minimapRenderState.firstCol + minimapCol,
-    row: minimapRenderState.firstRow + minimapRow,
-  };
-  const distance = Math.max(
-    Math.abs(destinationTile.col - playerTile.col),
-    Math.abs(destinationTile.row - playerTile.row),
-  );
-  if (distance > MINIMAP_AUTOWALK_MAX_DISTANCE_TILES) {
-    showGameStatusMessage(getGameUiText("destinationTooFar"));
-    return false;
-  }
-  return startPlayerClickNavigation(destinationTile);
-};
-
-const startMinimapPan = (event) => {
-  if (event.button !== 0 || !minimapCanvas) {
-    return;
-  }
-  const playerTile = getTilePosition(playerState);
-  minimapRenderState.panPointerId = event.pointerId;
-  minimapRenderState.panStartClientX = event.clientX;
-  minimapRenderState.panStartClientY = event.clientY;
-  minimapRenderState.panStartCenterCol = minimapRenderState.centerCol ?? playerTile.col;
-  minimapRenderState.panStartCenterRow = minimapRenderState.centerRow ?? playerTile.row;
-  minimapRenderState.didPan = false;
-  minimapCanvas.setPointerCapture(event.pointerId);
-};
-
-const updateMinimapPan = (event) => {
-  if (event.pointerId !== minimapRenderState.panPointerId || !minimapCanvas) {
-    return;
-  }
-  const deltaClientX = event.clientX - minimapRenderState.panStartClientX;
-  const deltaClientY = event.clientY - minimapRenderState.panStartClientY;
-  if (!minimapRenderState.didPan && Math.abs(deltaClientX) + Math.abs(deltaClientY) < 4) {
-    return;
-  }
-  const canvasRect = minimapCanvas.getBoundingClientRect();
-  if (canvasRect.width <= 0 || canvasRect.height <= 0) {
-    return;
-  }
-  const deltaCanvasX = deltaClientX * (minimapCanvas.width / canvasRect.width);
-  const deltaCanvasY = deltaClientY * (minimapCanvas.height / canvasRect.height);
-  minimapRenderState.didPan = true;
-  minimapRenderState.isFollowingPlayer = false;
-  minimapRenderState.centerCol = minimapRenderState.panStartCenterCol - Math.round(deltaCanvasX / minimapRenderState.cellSize);
-  minimapRenderState.centerRow = minimapRenderState.panStartCenterRow - Math.round(deltaCanvasY / minimapRenderState.cellSize);
-  minimapCanvas.classList.add("minimap-canvas-panning");
-  renderPlayerMinimap(true);
-};
-
-const finishMinimapPan = (event, shouldNavigate) => {
-  if (event.pointerId !== minimapRenderState.panPointerId || !minimapCanvas) {
-    return;
-  }
-  const didPan = minimapRenderState.didPan;
-  if (minimapCanvas.hasPointerCapture(event.pointerId)) {
-    minimapCanvas.releasePointerCapture(event.pointerId);
-  }
-  minimapCanvas.classList.remove("minimap-canvas-panning");
-  minimapRenderState.panPointerId = null;
-  minimapRenderState.didPan = false;
-  if (shouldNavigate && !didPan) {
-    handleMinimapNavigationClick(event);
-  }
-};
+const handleMinimapNavigationClick = (event) => minimapController.navigateFromPointer(event);
+const startMinimapPan = (event) => minimapController.startPan(event);
+const updateMinimapPan = (event) => minimapController.updatePan(event);
+const finishMinimapPan = (event, shouldNavigate) => minimapController.finishPan(event, shouldNavigate);
 
 const startPlayerFollowNavigation = () => {
   if (!playerNavigationState.followEnabled || combatTargetState.monsterUid === null) {
@@ -12632,6 +11286,57 @@ const setupTestPlayerInventory = () => {
 };
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
+characterSessionController = createCharacterSessionController({
+  syncActiveTorchFuel,
+  setPlayerWorldPosition,
+  showStatusMessage: showGameStatusMessage,
+  getUiText: getGameUiText,
+  autosaveIntervalMs: CHARACTER_AUTOSAVE_INTERVAL_MS,
+});
+
+minimapController = createMinimapController({
+  playerNavigationState,
+  playerNavigationMode: PLAYER_NAVIGATION_MODE,
+  saveGameOptions,
+  showStatusMessage: showGameStatusMessage,
+  startPlayerClickNavigation,
+});
+
+itemLocationController = createItemLocationController({
+  equipment: playerState.equipment,
+  findContainerByUid: (containerUid) => {
+    const location = findItemLocationByUid(containerUid);
+    return location ? itemLocationController.getItem(location) : null;
+  },
+  findWorldItemByUid,
+  removeWorldItem: removeGroundItem,
+  addWorldItem: addGroundItem,
+  positionWorldItem: setWorldItemPosition,
+  canEquipItem: canPlaceItemInEquipmentSlot,
+  setEquipmentItem: setEquipmentSlotItem,
+});
+
+inventoryDragController = createInventoryDragController({
+  dragState,
+  inputState,
+  resolveItem: getDragSourceItem,
+  clearWorldSelection: clearPixiWorldItemSelection,
+  resetInputComboState,
+});
+
+containerWindowController = createContainerWindowController({
+  inputState,
+  renderItemIcon,
+  shouldBlockContextMenuAction,
+  cancelItemDrag,
+  handleUseItemFromSource,
+  isMobileGameLayout,
+  setOpenMobilePanel,
+  syncMobileBackpackButton,
+  syncItemUseSourceFeedback,
+  refreshInventoryUi,
+});
+
 const initializePlayerUi = () => {
   initializePlayerRenderRefs();
   applyGameOptions();
@@ -12720,4 +11425,3 @@ if (shouldEnterGameImmediately) {
 }
 
 //#endregion  -----  INITIALISATION DU JEU  -----
-
