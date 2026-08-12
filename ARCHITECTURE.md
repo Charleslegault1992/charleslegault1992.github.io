@@ -47,7 +47,7 @@ Modeles, creation, poids, cooldowns et transactions atomiques. Une transaction e
 
 Frontiere entre une intention du joueur et une mutation du jeu. Une action contient un type, un `requestId` et un payload serialisable. Le dispatcher trouve le handler autoritaire et retourne toujours un resultat structure avec `success`, `status`, `reason` et `changes`.
 
-Les actions d'inventaire utilisent deja cette frontiere pour les insertions et le drag/drop. Le client local execute actuellement les handlers; un serveur pourra recevoir le meme contrat sans changer les controles ou les fenetres.
+Les actions d'inventaire et les intentions principales de gameplay utilisent cette frontiere: mouvement, attaque, parole NPC, interaction avec le monde et sorts. Le client local execute actuellement les handlers; un serveur pourra recevoir le meme contrat sans changer les controles ou les fenetres.
 
 ### `src/world`
 
@@ -84,7 +84,7 @@ Ces structures peuvent coexister quand elles repondent a des besoins differents,
 - Les entites utilisent des index spatiaux et un ordre de rendu stable.
 - Les effets au sol sont separes des items interactifs.
 
-Le bundle initial contient encore Pixi et le jeu complet. Le prochain gain de chargement important sera un `import()` dynamique du runtime de jeu apres la selection du personnage. Ce changement doit conserver `main.js` comme point de composition et ne demande pas de dupliquer le renderer.
+Pixi est charge avec un `import()` dynamique par la facade seulement quand le jeu demarre. L'accueil et la selection de personnage ne creent donc pas le renderer avant que le joueur entre dans le monde.
 
 ## Extractions completees
 
@@ -92,16 +92,21 @@ Le bundle initial contient encore Pixi et le jeu complet. Le prochain gain de ch
 - controleur complet de minimap;
 - etat du drag/drop, emplacements d'items et transactions d'equipement;
 - fenetres de conteneurs.
+- navigation du joueur, follow, actions differees et joystick mobile;
+- IA, aggro, pathfinding local et respawn des monstres;
+- conversations, commerce, apprentissage de sorts et banque des NPC;
+- stockage/rendu du chat, lancement des sorts et assignation des hotkeys.
+- options, quetes, accueil, selection et creation de personnage;
+- bootstrap du client en phases explicites et orchestration ordonnee des systemes de logique/rendu;
+- actions serialisables pour le mouvement, le combat, les NPC, les interactables et les sorts.
 
 ## Prochaines extractions
 
-Ordre recommande pour reduire `main.js` sans casser les contrats:
+La prochaine frontiere majeure est le transport reseau autoritaire:
 
-1. navigation et inputs desktop/mobile;
-2. IA et respawn des monstres;
-3. dialogues, commerce et banque des NPC;
-4. chat, sorts et hotkeys;
-5. ecrans options, quetes et selection de personnage;
-6. bootstrap final et chargement dynamique de Pixi.
+1. ajouter une couche de transport qui accepte les actions serialisables;
+2. separer les validations autoritaires des effets visuels locaux;
+3. appliquer les snapshots et deltas recus du serveur dans les stores du client;
+4. conserver le dispatcher local comme adaptateur de developpement et de tests.
 
-Chaque extraction doit passer le build de production et une verification des references JavaScript avant de commencer la suivante.
+Chaque extraction doit passer les tests de domaine, le build de production et une verification des references JavaScript avant de commencer la suivante.

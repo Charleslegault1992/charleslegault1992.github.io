@@ -1,3 +1,11 @@
+0.323 - Architecture du client et actions de gameplay
+    - Separation des options, des quetes et de la selection et creation des personnages.
+    - Separation de la navigation, du joystick, du chat, des sorts, des NPC et de l'IA des monstres.
+    - Ajout d'un demarrage par phases et d'un orchestrateur ordonne pour la logique et le rendu.
+    - Ajout d'actions serialisables pour le mouvement, le combat, les NPC, les coffres et les sorts.
+    - Chargement de Pixi seulement au demarrage du jeu apres la selection du personnage.
+    - Ajout de tests pour le bootstrap, les systemes, les actions de gameplay et les respawns bloques.
+
 0.322 - Separation des controleurs principaux
     - Separation de la session, du chargement et de la sauvegarde automatique des personnages.
     - Separation complete de la mini carte avec son rendu, son zoom, ses etages et son auto walk.

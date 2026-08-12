@@ -47,6 +47,7 @@ import {
   unlockGameAudio,
 } from "./audioManager.js";
 import { spellsDatabase } from "./spellDatabase.js";
+import { createPlayerSpellSystem } from "./spells/playerSpellSystem.js";
 import {
   CHUNK_SIZE_TILES,
   CORPSE_DECAY_COOLDOWN_MS,
@@ -84,10 +85,20 @@ import {
   getRandomInt,
   isEmpty,
 } from "./core/mathUtils.js";
-import { MinHeap } from "./core/MinHeap.js";
 import { getAtlasSource } from "./core/atlasUtils.js";
 import { startFixedStepGameLoop } from "./core/fixedStepGameLoop.js";
+import { createClientBootstrap } from "./core/clientBootstrap.js";
+import { createGameSystemsOrchestrator } from "./core/gameSystemsOrchestrator.js";
 import { createGameActionDispatcher } from "./actions/gameActionDispatcher.js";
+import {
+  createAttackMonsterAction,
+  createCastSpellAction,
+  createMovePlayerAction,
+  createSpeakToNpcAction,
+  createWorldInteractionAction,
+  registerGameplayActionHandlers,
+} from "./actions/gameplayActions.js";
+import { createChatController } from "./chat/chatController.js";
 import {
   createInsertItemsAction,
   createMoveItemAction,
@@ -177,6 +188,9 @@ import {
   updatePlayerSprite,
 } from "./render/playerRenderer.js";
 import { createMonster, getMonsterData } from "./monsters/monsterModel.js";
+import { createMonsterAiSystem } from "./monsters/monsterAiSystem.js";
+import { createMonsterRespawnSystem } from "./monsters/monsterRespawnSystem.js";
+import { createNpcConversationSystem } from "./npcs/npcConversationSystem.js";
 import {
   addMonsterToState,
   findMonsterAtPosition,
@@ -236,7 +250,23 @@ import {
 import { isNearPlayer } from "./player/playerSpatial.js";
 import { advancePlayerRegeneration, startPlayerRegenerationTimers } from "./player/playerRegeneration.js";
 import { createCharacterSessionController } from "./player/characterSession.js";
+import {
+  createPlayerNavigationController,
+  keysPressed,
+  PLAYER_ACTION_DISTANCE_TYPE,
+  PLAYER_ACTION_TYPE,
+  PLAYER_NAVIGATION_MODE,
+  playerNavigationState,
+  resetMovementKeys,
+} from "./player/playerNavigationController.js";
 import { createContainerWindowController } from "./ui/containerWindowController.js";
+import {
+  createCharacterSelectorController,
+  ENTER_GAME_AFTER_RELOAD_SESSION_KEY,
+} from "./ui/characterSelectorController.js";
+import { createGameOptionsController } from "./ui/gameOptionsController.js";
+import { createMobileJoystickController } from "./ui/mobileJoystickController.js";
+import { createQuestWindowController } from "./ui/questWindowController.js";
 import { getCurrentWorldMap } from "./world/worldRuntime.js";
 import { createMinimapController } from "./minimap/minimapController.js";
 import {
@@ -324,6 +354,7 @@ let GAME_SCALE = 1;
 const itemCooldownOverlayElements = new Set();
 const gameActionDispatcher = createGameActionDispatcher();
 registerInventoryActionHandlers(gameActionDispatcher);
+registerGameplayActionHandlers(gameActionDispatcher);
 
 /* ---------- BASE - ETAT DRAG ---------- */
 /* ---------- BASE - SPAWN JOUEUR ---------- */
@@ -334,7 +365,6 @@ const minChatHeight = 120;
 
 
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
-const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 
@@ -350,6 +380,18 @@ const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload
 const corpseDecayCooldown = CORPSE_DECAY_COOLDOWN_MS;
 
 let characterSessionController = null;
+let chatController = null;
+let monsterRespawnSystem = null;
+let monsterAiSystem = null;
+let npcConversationSystem = null;
+let playerNavigationController = null;
+let playerSpellSystem = null;
+let mobileJoystickController = null;
+let gameOptionsController = null;
+let questWindowController = null;
+let characterSelectorController = null;
+let clientBootstrap = null;
+let gameSystemsOrchestrator = null;
 const createCharacterSaveSnapshot = () => characterSessionController.createSnapshot();
 const applyCharacterSavePosition = (characterSnapshot, worldMapsByZ) =>
   characterSessionController.applySavedPosition(characterSnapshot, worldMapsByZ);
@@ -653,7 +695,7 @@ const addRewardChestCompletionEffect = (interactable) => {
   });
 };
 
-const handleRewardChestInteraction = (interactable) => {
+const executeRewardChestInteraction = (interactable) => {
   if (!interactable?.properties || !isPlayerNearTiledObject(interactable, 1)) {
     return false;
   }
@@ -689,335 +731,41 @@ const handleRewardChestInteraction = (interactable) => {
   return true;
 };
 
+const handleRewardChestInteraction = (interactable) => {
+  const interactableId = interactable?.properties?.interactableId;
+  const interactionType = interactable?.properties?.interactableType;
+  const col = interactable?.col ?? Math.floor(interactable?.x / TILE_SIZE);
+  const row = interactable?.row ?? Math.floor(interactable?.y / TILE_SIZE);
+  const action = createWorldInteractionAction({
+    interactableId,
+    interactionType,
+    z: playerState.z,
+    col,
+    row,
+    requestedAt: Date.now(),
+  });
+  const result = gameActionDispatcher.dispatch(action, {
+    executeWorldInteraction() {
+      return executeRewardChestInteraction(interactable);
+    },
+  });
+  return result?.success === true;
+};
+
 const interactableContextMenuHandlers = {
   rewardChest: handleRewardChestInteraction,
 };
 
-const getOrCreateMonsterSpawnState = (spawnId) => {
-  if (typeof spawnId !== "string" || spawnId === "") {
-    return null;
-  }
-
-  if (!monsterSpawnStateById.has(spawnId)) {
-    monsterSpawnStateById.set(spawnId, {
-      aliveCount: 0,
-      pendingRespawnCount: 0,
-    });
-  }
-
-  return monsterSpawnStateById.get(spawnId);
-};
-
-const getRandomTilePositionInTiledObject = (tiledObject) => {
-  if (!Number.isInteger(tiledObject?.col) || !Number.isInteger(tiledObject?.row)) {
-    return null;
-  }
-
-  const widthTiles = Math.max(Math.ceil((tiledObject.width || TILE_SIZE) / TILE_SIZE), 1);
-  const heightTiles = Math.max(Math.ceil((tiledObject.height || TILE_SIZE) / TILE_SIZE), 1);
-
-  const col = tiledObject.col + getRandomInt(0, widthTiles - 1);
-  const row = tiledObject.row + getRandomInt(0, heightTiles - 1);
-
-  return { col, row };
-};
-
-const getRandomMonsterSpawnTile = (worldMap, spawnZone, maxAttempts = 20, blockNearPlayers = false) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !spawnZone || !Number.isInteger(maxAttempts) || maxAttempts <= 0) {
-    return null;
-  }
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const tilePosition = getRandomTilePositionInTiledObject(spawnZone);
-    if (!tilePosition) {
-      return null;
-    }
-
-    if (canSpawnMonsterAtTile(worldMap, tilePosition.col, tilePosition.row, blockNearPlayers)) {
-      return tilePosition;
-    }
-  }
-
-  return null;
-};
-
-const spawnMonsterFromZone = (worldMap, spawnZone, { blockNearPlayers = false } = {}) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !spawnZone) {
-    return null;
-  }
-
-  const spawnId = spawnZone.properties?.spawnId;
-  const monsterId = spawnZone.properties?.monsterId;
-  const maxCount = spawnZone.properties?.maxCount;
-
-  if (
-    typeof spawnId !== "string" ||
-    spawnId === "" ||
-    typeof monsterId !== "string" ||
-    monsterId === "" ||
-    !Number.isInteger(maxCount) ||
-    maxCount <= 0
-  ) {
-    return null;
-  }
-
-  const spawnState = getOrCreateMonsterSpawnState(spawnId);
-  if (!spawnState || spawnState.aliveCount >= maxCount) {
-    return null;
-  }
-
-  const tilePosition = getRandomMonsterSpawnTile(worldMap, spawnZone, 20, blockNearPlayers);
-  if (!tilePosition) {
-    return null;
-  }
-
-  const x = tilePosition.col * TILE_SIZE;
-  const y = tilePosition.row * TILE_SIZE;
-
-  const monster = createMonster(monsterId, x, y, worldMap.z);
-  if (!monster) {
-    return null;
-  }
-
-  monster.spawnId = spawnId;
-
-  if (!addMonsterToState(monster)) {
-    return null;
-  }
-
-  spawnState.aliveCount++;
-  monsterHpRefresh(monster);
-
-  renderMonsters([monster]);
-
-  return monster;
-};
-
-const decreaseMonsterSpawnAliveCount = (monster) => {
-  const spawnId = monster?.spawnId;
-  if (typeof spawnId !== "string" || spawnId === "") {
-    return false;
-  }
-
-  const spawnState = monsterSpawnStateById.get(spawnId);
-  if (!spawnState) {
-    return false;
-  }
-
-  spawnState.aliveCount = Math.max(spawnState.aliveCount - 1, 0);
-  return true;
-};
-
-const getMonsterSpawnRespawnMs = (spawnZone) => {
-  const respawnMs = spawnZone?.properties?.respawnMs;
-  if (!Number.isInteger(respawnMs) || respawnMs <= 0) {
-    return null;
-  }
-  return respawnMs;
-};
-
-const registerMonsterSpawnDefinition = (worldMap, spawnZone) => {
-  const spawnId = spawnZone?.properties?.spawnId;
-  const monsterId = spawnZone?.properties?.monsterId;
-  const maxCount = spawnZone?.properties?.maxCount;
-  const respawnMs = getMonsterSpawnRespawnMs(spawnZone);
-
-  if (
-    !(worldMap?.chunksByKey instanceof Map) ||
-    typeof spawnId !== "string" ||
-    spawnId === "" ||
-    typeof monsterId !== "string" ||
-    monsterId === "" ||
-    !Number.isInteger(maxCount) ||
-    maxCount <= 0 ||
-    !Number.isInteger(respawnMs)
-  ) {
-    return null;
-  }
-
-  const existingDefinition = monsterSpawnDefinitionsById.get(spawnId);
-  if (existingDefinition) {
-    if (existingDefinition.z !== worldMap.z || existingDefinition.monsterId !== monsterId) {
-      console.error(`Duplicate monster spawnId with conflicting data: ${spawnId}`);
-      return null;
-    }
-    return existingDefinition;
-  }
-
-  const spawnDefinition = {
-    spawnId,
-    monsterId,
-    maxCount,
-    respawnMs,
-    z: worldMap.z,
-    worldMap,
-    spawnZone,
-  };
-
-  monsterSpawnDefinitionsById.set(spawnId, spawnDefinition);
-  getOrCreateMonsterSpawnState(spawnId);
-  return spawnDefinition;
-};
-
-const compareMonsterRespawnEvents = (firstEvent, secondEvent) => {
-  if (firstEvent.dueAt !== secondEvent.dueAt) {
-    return firstEvent.dueAt - secondEvent.dueAt;
-  }
-  return firstEvent.order - secondEvent.order;
-};
-
-const monsterRespawnEventQueue = new MinHeap(compareMonsterRespawnEvents);
-
-const scheduleMonsterRespawnAt = (spawnId, dueAt) => {
-  const spawnDefinition = monsterSpawnDefinitionsById.get(spawnId);
-  const spawnState = getOrCreateMonsterSpawnState(spawnId);
-  if (!spawnDefinition || !spawnState || !Number.isFinite(dueAt)) {
-    return false;
-  }
-
-  if (spawnState.aliveCount + spawnState.pendingRespawnCount >= spawnDefinition.maxCount) {
-    return false;
-  }
-
-  spawnState.pendingRespawnCount++;
-  monsterRespawnEventQueue.push({
-    spawnId,
-    dueAt,
-    order: respawnTimingState.nextEventOrder++,
-  });
-  return true;
-};
-
-const scheduleMonsterRespawn = (spawnId, now) => {
-  const spawnDefinition = monsterSpawnDefinitionsById.get(spawnId);
-  if (!spawnDefinition || !Number.isFinite(now)) {
-    return false;
-  }
-  return scheduleMonsterRespawnAt(spawnId, now + spawnDefinition.respawnMs);
-};
-
-const isPlayerBlockingMonsterRespawnAtTile = (player, worldMap, col, row) => {
-  if (
-    !player ||
-    player.z !== worldMap?.z ||
-    player.hp <= 0 ||
-    !Number.isInteger(col) ||
-    !Number.isInteger(row)
-  ) {
-    return false;
-  }
-
-  const playerCol = Math.floor(player.x / TILE_SIZE);
-  const playerRow = Math.floor(player.y / TILE_SIZE);
-  return (
-    Math.abs(playerCol - col) <= MONSTER_RESPAWN_CONFIG.playerBlockRangeX &&
-    Math.abs(playerRow - row) <= MONSTER_RESPAWN_CONFIG.playerBlockRangeY
-  );
-};
-
-const isAnyPlayerBlockingMonsterRespawnAtTile = (worldMap, col, row) => {
-  return isPlayerBlockingMonsterRespawnAtTile(playerState, worldMap, col, row);
-};
-
-const canSpawnMonsterAtTile = (worldMap, col, row, blockNearPlayers = false) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return false;
-  }
-
-  if (isTiledCollisionAtTile(worldMap, col, row)) {
-    return false;
-  }
-
-  const x = col * TILE_SIZE;
-  const y = row * TILE_SIZE;
-
-  if (isBlockingItemAtPosition(x, y, worldMap.z)) {
-    return false;
-  }
-
-  if (isMonsterAtPosition(x, y, worldMap.z)) {
-    return false;
-  }
-
-  if (isNpcAtPosition(x, y, worldMap.z)) {
-    return false;
-  }
-
-  if (isPlayerAtPosition(x, y, worldMap.z)) {
-    return false;
-  }
-
-  if (blockNearPlayers && isAnyPlayerBlockingMonsterRespawnAtTile(worldMap, col, row)) {
-    return false;
-  }
-
-  return true;
-};
-
-const processMonsterRespawnEvent = (event, now) => {
-  const spawnDefinition = monsterSpawnDefinitionsById.get(event?.spawnId);
-  const spawnState = monsterSpawnStateById.get(event?.spawnId);
-  if (!spawnDefinition || !spawnState) {
-    return false;
-  }
-
-  if (spawnState.aliveCount >= spawnDefinition.maxCount) {
-    spawnState.pendingRespawnCount = Math.max(spawnState.pendingRespawnCount - 1, 0);
-    return false;
-  }
-
-  const monster = spawnMonsterFromZone(spawnDefinition.worldMap, spawnDefinition.spawnZone, {
-    blockNearPlayers: true,
-  });
-  if (monster) {
-    spawnState.pendingRespawnCount = Math.max(spawnState.pendingRespawnCount - 1, 0);
-    return true;
-  }
-
-  event.dueAt = now + MONSTER_RESPAWN_CONFIG.blockedRetryMs;
-  event.order = respawnTimingState.nextEventOrder++;
-  monsterRespawnEventQueue.push(event);
-  return false;
-};
-
-const updateMonsterRespawns = (now) => {
-  if (!Number.isFinite(now)) {
-    return;
-  }
-
-  let processedEventCount = 0;
-  while (
-    monsterRespawnEventQueue.size > 0 &&
-    monsterRespawnEventQueue.peek().dueAt <= now &&
-    processedEventCount < MONSTER_RESPAWN_CONFIG.maxEventsPerLogicStep
-  ) {
-    const event = monsterRespawnEventQueue.pop();
-    processMonsterRespawnEvent(event, now);
-    processedEventCount++;
-  }
-};
-
-const getMonsterSpawnZonesFromWorldMap = (worldMap) => {
-  if (!(worldMap?.chunksByKey instanceof Map)) {
-    return [];
-  }
-
-  const monsterSpawnZones = [];
-
-  for (const chunk of worldMap.chunksByKey.values()) {
-    if (!Array.isArray(chunk.spawns)) {
-      continue;
-    }
-
-    for (const spawn of chunk.spawns) {
-      if (spawn.properties?.spawnType === "monster") {
-        monsterSpawnZones.push(spawn);
-      }
-    }
-  }
-
-  return monsterSpawnZones;
-};
+const getOrCreateMonsterSpawnState = (spawnId) => monsterRespawnSystem.getOrCreateSpawnState(spawnId);
+const spawnMonsterFromZone = (worldMap, spawnZone, options) =>
+  monsterRespawnSystem.spawnFromZone(worldMap, spawnZone, options);
+const decreaseMonsterSpawnAliveCount = (monster) => monsterRespawnSystem.decreaseAliveCount(monster);
+const registerMonsterSpawnDefinition = (worldMap, spawnZone) =>
+  monsterRespawnSystem.registerSpawnDefinition(worldMap, spawnZone);
+const scheduleMonsterRespawnAt = (spawnId, dueAt) => monsterRespawnSystem.scheduleAt(spawnId, dueAt);
+const scheduleMonsterRespawn = (spawnId, now) => monsterRespawnSystem.schedule(spawnId, now);
+const updateMonsterRespawns = (now) => monsterRespawnSystem.update(now);
+const getMonsterSpawnZonesFromWorldMap = (worldMap) => monsterRespawnSystem.getSpawnZones(worldMap);
 
 const getInteractableFromPointerTarget = (target) => {
   if (!target?.tile || !target.pointerInsideMap) {
@@ -2852,227 +2600,13 @@ const refreshLocalizedWorldLabels = () => {
   renderContainerDock();
 };
 
-const applyGameLanguageUi = () => {
-  const language = getCurrentGameLanguage();
-  document.documentElement.lang = language;
-  if (gameWelcomePlayButton) {
-    gameWelcomePlayButton.textContent = getGameUiText("play");
-  }
-  for (const languageButton of gameWelcomeLanguageButtons) {
-    const isActive = languageButton.dataset.gameLanguage === language;
-    languageButton.classList.toggle("game-welcome-language-button-active", isActive);
-    languageButton.setAttribute("aria-pressed", String(isActive));
-  }
-  for (const textElement of document.querySelectorAll("[data-game-text]")) {
-    textElement.textContent = getGameUiText(textElement.dataset.gameText);
-  }
-  for (const titleElement of document.querySelectorAll("[data-game-title]")) {
-    const title = getGameUiText(titleElement.dataset.gameTitle);
-    titleElement.title = title;
-    titleElement.setAttribute("aria-label", title);
-  }
-};
-
-const GAME_OPTION_DEFINITIONS = [
-  { key: "showFps", labelKey: "showFps" },
-  { key: "showCreatureNames", labelKey: "showCreatureNames" },
-  { key: "showHealthBars", labelKey: "showHealthBars" },
-  { key: "musicEnabled", labelKey: "musicEnabled" },
-  { key: "sfxEnabled", labelKey: "sfxEnabled" },
-];
-
-const GAME_VOLUME_OPTION_DEFINITIONS = [
-  { key: "musicVolume", labelKey: "musicVolume" },
-  { key: "sfxVolume", labelKey: "sfxVolume" },
-];
-
-const saveGameOptions = () => {
-  try {
-    localStorage.setItem(GAME_OPTIONS_STORAGE_KEY, JSON.stringify(gameOptionsUiState.values));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const applyGameOptions = () => {
-  fpsCounter.style.display = gameOptionsUiState.values.showFps ? "" : "none";
-  lightCanvas.style.removeProperty("display");
-  game.classList.toggle("game-hide-creature-names", !gameOptionsUiState.values.showCreatureNames);
-  game.classList.toggle("game-hide-health-bars", !gameOptionsUiState.values.showHealthBars);
-  setGameAudioSettings(gameOptionsUiState.values);
-  if (MINIMAP_ZOOM_LEVELS.includes(gameOptionsUiState.values.minimapCellSize)) {
-    setMinimapZoom(gameOptionsUiState.values.minimapCellSize, false);
-  }
-  applyGameLanguageUi();
-  if (gameRuntimeState.isStarted) {
-    renderPlayerMinimap(true);
-  }
-};
-
-const setGameOption = (optionKey, enabled) => {
-  if (!(optionKey in DEFAULT_GAME_OPTIONS) || typeof enabled !== "boolean") {
-    return false;
-  }
-  gameOptionsUiState.values[optionKey] = enabled;
-  saveGameOptions();
-  applyGameOptions();
-  return true;
-};
-
-const setGameVolumeOption = (optionKey, volume) => {
-  if (!(optionKey in DEFAULT_GAME_OPTIONS) || !Number.isFinite(volume)) {
-    return false;
-  }
-  gameOptionsUiState.values[optionKey] = clamp(volume, 0, 1);
-  saveGameOptions();
-  applyGameOptions();
-  return true;
-};
-
-const refreshGameLanguageDependentUi = () => {
-  applyGameLanguageUi();
-  if (characterSelectorUiState.isOpen) {
-    renderCharacterSelector();
-  }
-  if (gameRuntimeState.isStarted) {
-    playerStatsUi.root = null;
-    updatePlayerStats();
-    refreshChatUi();
-    updatePlayerInventory();
-    refreshLocalizedWorldLabels();
-  } else if (gameOptionsUiState.isOpen) {
-    renderOptionsWindow();
-  }
-};
-
-const setGameLanguage = (language) => {
-  if (!SUPPORTED_GAME_LANGUAGES.has(language)) {
-    return false;
-  }
-  gameOptionsUiState.values.language = language;
-  saveGameOptions();
-  refreshGameLanguageDependentUi();
-  return true;
-};
-
-const closeOptionsWindow = () => {
-  gameOptionsUiState.isOpen = false;
-  updatePlayerInventory();
-};
-
-const renderOptionsWindow = () => {
-  if (!gameOptionsWindow) {
-    return;
-  }
-
-  gameOptionsWindow.hidden = !gameOptionsUiState.isOpen;
-  gameOptionsWindow.textContent = "";
-  if (!gameOptionsUiState.isOpen) {
-    return;
-  }
-
-  const wrapperElement = document.createElement("div");
-  wrapperElement.classList.add("boite-boite");
-  const headerElement = document.createElement("div");
-  headerElement.classList.add("options-window-header");
-  const titleElement = document.createElement("div");
-  titleElement.classList.add("boite-jeux-titre");
-  titleElement.textContent = getGameUiText("options");
-  const closeButtonElement = document.createElement("button");
-  closeButtonElement.classList.add("options-window-close-button");
-  closeButtonElement.type = "button";
-  closeButtonElement.textContent = "x";
-  closeButtonElement.title = getGameUiText("closeOptions");
-  closeButtonElement.setAttribute("aria-label", getGameUiText("closeOptions"));
-  closeButtonElement.addEventListener("click", closeOptionsWindow);
-  headerElement.append(titleElement, closeButtonElement);
-
-  const separatorElement = document.createElement("div");
-  separatorElement.classList.add("separateur-panneau");
-  const optionListElement = document.createElement("div");
-  optionListElement.classList.add("options-list");
-
-  for (const optionDefinition of GAME_OPTION_DEFINITIONS) {
-    const optionElement = document.createElement("label");
-    optionElement.classList.add("options-row");
-    const labelElement = document.createElement("span");
-    labelElement.textContent = getGameUiText(optionDefinition.labelKey);
-    const inputElement = document.createElement("input");
-    inputElement.classList.add("options-toggle");
-    inputElement.type = "checkbox";
-    inputElement.checked = gameOptionsUiState.values[optionDefinition.key];
-    inputElement.addEventListener("change", () => {
-      setGameOption(optionDefinition.key, inputElement.checked);
-    });
-    optionElement.append(labelElement, inputElement);
-    optionListElement.appendChild(optionElement);
-  }
-
-  for (const optionDefinition of GAME_VOLUME_OPTION_DEFINITIONS) {
-    const optionElement = document.createElement("label");
-    optionElement.classList.add("options-row");
-    const labelElement = document.createElement("span");
-    labelElement.textContent = getGameUiText(optionDefinition.labelKey);
-    const inputElement = document.createElement("input");
-    inputElement.classList.add("options-volume-slider");
-    inputElement.type = "range";
-    inputElement.min = "0";
-    inputElement.max = "1";
-    inputElement.step = "0.05";
-    inputElement.value = String(gameOptionsUiState.values[optionDefinition.key]);
-    inputElement.addEventListener("input", () => {
-      setGameVolumeOption(optionDefinition.key, Number(inputElement.value));
-    });
-    optionElement.append(labelElement, inputElement);
-    optionListElement.appendChild(optionElement);
-  }
-
-  const languageOptionElement = document.createElement("label");
-  languageOptionElement.classList.add("options-row");
-  const languageLabelElement = document.createElement("span");
-  languageLabelElement.textContent = getGameUiText("language");
-  const languageSelectElement = document.createElement("select");
-  languageSelectElement.classList.add("options-language-select");
-  for (const language of [
-    { id: "en", labelKey: "english" },
-    { id: "fr", labelKey: "french" },
-  ]) {
-    const languageOption = document.createElement("option");
-    languageOption.value = language.id;
-    languageOption.textContent = getGameUiText(language.labelKey);
-    languageSelectElement.appendChild(languageOption);
-  }
-  languageSelectElement.value = getCurrentGameLanguage();
-  languageSelectElement.addEventListener("change", () => {
-    setGameLanguage(languageSelectElement.value);
-  });
-  languageOptionElement.append(languageLabelElement, languageSelectElement);
-  optionListElement.appendChild(languageOptionElement);
-
-  const resetButtonElement = document.createElement("button");
-  resetButtonElement.classList.add("options-reset-button");
-  resetButtonElement.type = "button";
-  resetButtonElement.textContent = getGameUiText("restoreDefaults");
-  resetButtonElement.addEventListener("click", () => {
-    gameOptionsUiState.values = { ...DEFAULT_GAME_OPTIONS };
-    saveGameOptions();
-    applyGameOptions();
-    refreshGameLanguageDependentUi();
-  });
-
-  wrapperElement.append(headerElement, separatorElement, optionListElement, resetButtonElement);
-  gameOptionsWindow.appendChild(wrapperElement);
-};
-
-const toggleOptionsWindow = () => {
-  gameOptionsUiState.isOpen = !gameOptionsUiState.isOpen;
-  if (gameOptionsUiState.isOpen) {
-    questUiState.isOpen = false;
-    spellUiState.isOpen = false;
-  }
-  updatePlayerInventory();
-};
+const applyGameLanguageUi = () => gameOptionsController.applyLanguageUi();
+const saveGameOptions = () => gameOptionsController.save();
+const applyGameOptions = () => gameOptionsController.apply();
+const refreshGameLanguageDependentUi = () => gameOptionsController.refreshLanguageDependentUi();
+const setGameLanguage = (language) => gameOptionsController.setLanguage(language);
+const renderOptionsWindow = () => gameOptionsController.render();
+const toggleOptionsWindow = () => gameOptionsController.toggle();
 
 const showPvpUnavailableMessage = () => {
   showGameStatusMessage(getGameUiText("pvpUnavailable"));
@@ -3106,30 +2640,10 @@ const bindEquipmentMenuButtons = () => {
 
 /* ---------- UI - SORTS ET HOTKEYS ---------- */
 
-const isPlayerSpellLearned = (spellId) => {
-  return playerState.spellbook.learnedSpellIds.includes(spellId);
-};
-
-const getLearnedPlayerSpells = () => {
-  return playerState.spellbook.learnedSpellIds.map(getLocalizedSpellData).filter(Boolean);
-};
-
-const assignPlayerSpellToHotkey = (hotkeyIndex, spellId) => {
-  if (
-    !Number.isInteger(hotkeyIndex) ||
-    hotkeyIndex < 0 ||
-    hotkeyIndex >= SPELL_HOTKEY_KEYS.length ||
-    (spellId !== null && !isPlayerSpellLearned(spellId))
-  ) {
-    return false;
-  }
-  playerState.spellbook.hotkeySpellIds[hotkeyIndex] = spellId;
-  spellUiState.selectedSpellId = null;
-  spellUiState.mobileAssignHotkeyIndex = null;
-  autosaveCurrentCharacter();
-  renderSpellWindow();
-  return true;
-};
+const isPlayerSpellLearned = (spellId) => playerSpellSystem.isLearned(spellId);
+const getLearnedPlayerSpells = () => playerSpellSystem.getLearned();
+const assignPlayerSpellToHotkey = (hotkeyIndex, spellId) =>
+  playerSpellSystem.assignToHotkey(hotkeyIndex, spellId);
 
 const renderSpellWindow = () => {
   if (!playerSpells) {
@@ -3412,627 +2926,16 @@ const toggleSpellWindow = () => {
 
 /* ---------- UI - QUETES ---------- */
 
-const getPlayerQuestEntries = () => {
-  if (!playerState.progress?.questsById) {
-    return [];
-  }
-  return Object.values(playerState.progress.questsById)
-    .filter((questState) => getQuestData(questState.questId))
-    .sort((firstQuest, secondQuest) => {
-      if (firstQuest.status !== secondQuest.status) {
-        return firstQuest.status === QUEST_STATUS.started ? -1 : 1;
-      }
-      return firstQuest.startedAt - secondQuest.startedAt;
-    });
-};
+const renderQuestWindow = () => questWindowController.render();
+const toggleQuestWindow = () => questWindowController.toggle();
+const bindQuestUiButton = () => questWindowController.bindButton();
 
-const renderQuestWindow = () => {
-  if (!playerQuests) {
-    return;
-  }
-
-  playerQuests.hidden = !questUiState.isOpen;
-  playerQuests.innerHTML = "";
-  if (!questUiState.isOpen) {
-    return;
-  }
-
-  const wrapperElement = document.createElement("div");
-  wrapperElement.classList.add("boite-boite");
-  const headerElement = document.createElement("div");
-  headerElement.classList.add("quest-window-header");
-  const titleElement = document.createElement("div");
-  titleElement.classList.add("boite-jeux-titre");
-  titleElement.textContent = getGameUiText("quests");
-  const closeButtonElement = document.createElement("button");
-  closeButtonElement.classList.add("quest-window-close-button");
-  closeButtonElement.type = "button";
-  closeButtonElement.textContent = "x";
-  closeButtonElement.title = getGameUiText("closeQuests");
-  closeButtonElement.setAttribute("aria-label", getGameUiText("closeQuests"));
-  closeButtonElement.addEventListener("click", () => {
-    questUiState.isOpen = false;
-    updatePlayerInventory();
-  });
-  headerElement.append(titleElement, closeButtonElement);
-
-  const separatorElement = document.createElement("div");
-  separatorElement.classList.add("separateur-panneau");
-  const questListElement = document.createElement("div");
-  questListElement.classList.add("quest-list");
-  const questEntries = getPlayerQuestEntries();
-
-  if (questEntries.length === 0) {
-    const emptyElement = document.createElement("div");
-    emptyElement.classList.add("quest-list-empty");
-    emptyElement.textContent = getGameUiText("noQuests");
-    questListElement.appendChild(emptyElement);
-  } else {
-    for (const questState of questEntries) {
-      const questData = getLocalizedQuestData(questState.questId);
-      const questRowElement = document.createElement("div");
-      questRowElement.classList.add("quest-list-row", `quest-list-row-${questState.status}`);
-      const questNameElement = document.createElement("span");
-      questNameElement.classList.add("quest-list-name");
-      questNameElement.textContent = questData.name;
-      const questStatusElement = document.createElement("span");
-      questStatusElement.classList.add("quest-list-status");
-      questStatusElement.textContent =
-        questState.status === QUEST_STATUS.completed
-          ? getGameUiText("questCompleted")
-          : getGameUiText("questStarted");
-      questRowElement.append(questNameElement, questStatusElement);
-      questListElement.appendChild(questRowElement);
-    }
-  }
-
-  wrapperElement.append(headerElement, separatorElement, questListElement);
-  playerQuests.appendChild(wrapperElement);
-};
-
-const toggleQuestWindow = () => {
-  questUiState.isOpen = !questUiState.isOpen;
-  if (questUiState.isOpen) {
-    gameOptionsUiState.isOpen = false;
-    spellUiState.isOpen = false;
-  }
-  updatePlayerInventory();
-};
-
-const bindQuestUiButton = () => {
-  const questButton = playerInventory.querySelector('[data-ui-action="toggle-quests"]');
-  if (!questButton) {
-    return;
-  }
-  questButton.addEventListener("click", toggleQuestWindow);
-};
-
-const getCharacterSelectorErrorMessage = (reason) => {
-  const messagesByReason = {
-    "invalid-name": getGameUiText("invalidCharacterName"),
-    "invalid-appearance": getGameUiText("invalidAppearance"),
-    "duplicate-name": getGameUiText("duplicateCharacterName"),
-    "storage-error": getGameUiText("characterStorageError"),
-    "corrupted-save": getGameUiText("corruptedSave"),
-    "unsupported-save": getGameUiText("unsupportedSave"),
-    "not-found": getGameUiText("characterNotFound"),
-  };
-  return messagesByReason[reason] ?? getGameUiText("characterOperationFailed");
-};
-
-const closeCharacterSelector = () => {
-  characterSelectorUiState.isOpen = false;
-  characterSelectorUiState.view = "list";
-  renderCharacterSelector();
-};
-
-const reloadIntoSelectedCharacter = () => {
-  gameRuntimeState.isSwitchingCharacter = true;
-  try {
-    sessionStorage.setItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY, "true");
-  } catch {
-    // The reload still uses the active character saved in local storage.
-  }
-  window.location.reload();
-};
-
-const startSelectedCharacterGame = async () => {
-  if (gameRuntimeState.isStarting || gameRuntimeState.isStarted) {
-    return false;
-  }
-  closeCharacterSelector();
-  if (gameWelcome) {
-    gameWelcome.hidden = true;
-  }
-  return startGame();
-};
-
-const openCharacterSelector = () => {
-  if (characterSelectorUiState.isOpen) {
-    return;
-  }
-  characterSelectorUiState.isOpen = true;
-  characterSelectorUiState.view = "list";
-  if (gameRuntimeState.isStarted) {
-    questUiState.isOpen = false;
-    gameOptionsUiState.isOpen = false;
-    renderQuestWindow();
-    renderOptionsWindow();
-    resetMobileJoystick();
-    setOpenMobilePanel(null);
-    stopPlayerNavigation();
-    cancelItemDrag();
-    cancelItemUse();
-  }
-  renderCharacterSelector();
-};
-
-const saveCurrentCharacterBeforeSwitch = () => {
-  return characterSessionController.saveBeforeSwitch();
-};
-
-const selectCharacterProfile = (characterId) => {
-  if (!gameRuntimeState.isStarted) {
-    const selectionResult = setActiveCharacterId(characterId);
-    if (!selectionResult.success) {
-      showGameStatusMessage(getCharacterSelectorErrorMessage(selectionResult.reason));
-      return;
-    }
-    startSelectedCharacterGame();
-    return;
-  }
-
-  if (characterId === playerState.uid) {
-    closeCharacterSelector();
-    return;
-  }
-  if (!saveCurrentCharacterBeforeSwitch()) {
-    return;
-  }
-
-  const selectionResult = setActiveCharacterId(characterId);
-  if (!selectionResult.success) {
-    showGameStatusMessage(getCharacterSelectorErrorMessage(selectionResult.reason));
-    return;
-  }
-  reloadIntoSelectedCharacter();
-};
-
-const createNewCharacterProfile = (name, appearanceId, appearanceColors, appearanceParts, errorElement) => {
-  if (gameRuntimeState.isStarted && !saveCurrentCharacterBeforeSwitch()) {
-    errorElement.textContent = getGameUiText("currentCharacterSaveFailed");
-    return;
-  }
-
-  const creationResult = createCharacterProfile(name, appearanceId, appearanceColors, appearanceParts);
-  if (!creationResult.success) {
-    errorElement.textContent = getCharacterSelectorErrorMessage(creationResult.reason);
-    return;
-  }
-  if (gameRuntimeState.isStarted) {
-    reloadIntoSelectedCharacter();
-  } else {
-    startSelectedCharacterGame();
-  }
-};
-
-const deleteExistingCharacterProfile = (characterProfile) => {
-  if (!characterProfile || !window.confirm(getGameUiText("deleteCharacterConfirm")(characterProfile.name))) {
-    return;
-  }
-
-  const deletionResult = deleteCharacterProfile(characterProfile.characterId);
-  if (!deletionResult.success) {
-    showGameStatusMessage(getCharacterSelectorErrorMessage(deletionResult.reason));
-    return;
-  }
-
-  if (deletionResult.wasActive && gameRuntimeState.isStarted) {
-    if (deletionResult.activeCharacterId === null) {
-      gameRuntimeState.isSwitchingCharacter = true;
-      try {
-        sessionStorage.removeItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY);
-      } catch {
-        // The welcome screen is still the default after a normal reload.
-      }
-      window.location.reload();
-      return;
-    }
-    reloadIntoSelectedCharacter();
-    return;
-  }
-  renderCharacterSelector();
-};
-
-const renderCharacterSelector = () => {
-  if (!characterSelector) {
-    return;
-  }
-
-  characterSelector.hidden = !characterSelectorUiState.isOpen;
-  characterSelector.textContent = "";
-  if (!characterSelectorUiState.isOpen) {
-    return;
-  }
-  const isCreatingCharacter = characterSelectorUiState.view === "create";
-
-  const windowElement = document.createElement("section");
-  windowElement.classList.add("boite-panneau", "character-selector-window");
-  if (isCreatingCharacter) {
-    windowElement.classList.add("character-selector-window-creation");
-  }
-
-  const wrapperElement = document.createElement("div");
-  wrapperElement.classList.add("boite-boite");
-
-  const headerElement = document.createElement("div");
-  headerElement.classList.add("character-selector-header");
-  const titleElement = document.createElement("div");
-  titleElement.classList.add("boite-jeux-titre");
-  titleElement.textContent = getGameUiText(isCreatingCharacter ? "newCharacter" : "characters");
-  const closeButtonElement = document.createElement("button");
-  closeButtonElement.classList.add("character-selector-close-button");
-  closeButtonElement.type = "button";
-  closeButtonElement.textContent = "x";
-  closeButtonElement.title = getGameUiText("closeCharacters");
-  closeButtonElement.setAttribute("aria-label", getGameUiText("closeCharacters"));
-  closeButtonElement.addEventListener("click", closeCharacterSelector);
-  if (isCreatingCharacter) {
-    const backButtonElement = document.createElement("button");
-    backButtonElement.classList.add("character-selector-back-button");
-    backButtonElement.type = "button";
-    backButtonElement.textContent = "<";
-    backButtonElement.title = getGameUiText("backToCharacters");
-    backButtonElement.setAttribute("aria-label", getGameUiText("backToCharacters"));
-    backButtonElement.addEventListener("click", () => {
-      characterSelectorUiState.view = "list";
-      renderCharacterSelector();
-    });
-    headerElement.append(backButtonElement);
-  }
-  headerElement.append(titleElement, closeButtonElement);
-
-  const separatorElement = document.createElement("div");
-  separatorElement.classList.add("separateur-panneau");
-
-  const characterListElement = document.createElement("div");
-  characterListElement.classList.add("character-selector-list");
-  const profileResult = listCharacterProfiles();
-  if (!profileResult.success) {
-    const errorElement = document.createElement("div");
-    errorElement.classList.add("character-selector-empty");
-    errorElement.textContent = getCharacterSelectorErrorMessage(profileResult.reason);
-    characterListElement.appendChild(errorElement);
-  } else if (profileResult.characters.length === 0) {
-    const emptyElement = document.createElement("div");
-    emptyElement.classList.add("character-selector-empty");
-    emptyElement.textContent = getGameUiText("noCharacters");
-    characterListElement.appendChild(emptyElement);
-  } else {
-    for (const characterProfile of profileResult.characters) {
-      const rowElement = document.createElement("div");
-      rowElement.classList.add("character-selector-row");
-      if (characterProfile.isActive) {
-        rowElement.classList.add("character-selector-row-active");
-      }
-
-      const selectButtonElement = document.createElement("button");
-      selectButtonElement.classList.add("character-selector-select-button");
-      selectButtonElement.type = "button";
-
-      const portraitElement = document.createElement("span");
-      portraitElement.classList.add("character-selector-portrait");
-      void applyPlayerAppearanceBackground(
-        portraitElement,
-        characterProfile.appearanceParts,
-        characterProfile.appearanceColors,
-      );
-
-      const identityElement = document.createElement("span");
-      identityElement.classList.add("character-selector-identity");
-      const nameElement = document.createElement("span");
-      nameElement.classList.add("character-selector-name");
-      nameElement.textContent = characterProfile.name;
-      const levelElement = document.createElement("span");
-      levelElement.classList.add("character-selector-level");
-      levelElement.textContent = `${getGameUiText("levelLabel")} ${getLevelFromExperience(characterProfile.experience)}`;
-      identityElement.append(nameElement, levelElement);
-
-      const statusElement = document.createElement("span");
-      statusElement.classList.add("character-selector-current-label");
-      statusElement.textContent = characterProfile.isActive ? getGameUiText("current") : getGameUiText("select");
-      selectButtonElement.append(portraitElement, identityElement, statusElement);
-      selectButtonElement.addEventListener("click", () => {
-        selectCharacterProfile(characterProfile.characterId);
-      });
-
-      const deleteButtonElement = document.createElement("button");
-      deleteButtonElement.classList.add("character-selector-delete-button");
-      deleteButtonElement.type = "button";
-      deleteButtonElement.textContent = getGameUiText("delete");
-      deleteButtonElement.title = getGameUiText("deleteCharacter")(characterProfile.name);
-      deleteButtonElement.addEventListener("click", () => {
-        deleteExistingCharacterProfile(characterProfile);
-      });
-
-      rowElement.append(selectButtonElement, deleteButtonElement);
-      characterListElement.appendChild(rowElement);
-    }
-  }
-
-  const openCreationButtonElement = document.createElement("button");
-  openCreationButtonElement.classList.add("character-open-create-button");
-  openCreationButtonElement.type = "button";
-  openCreationButtonElement.textContent = getGameUiText("newCharacter");
-  openCreationButtonElement.addEventListener("click", () => {
-    characterSelectorUiState.view = "create";
-    renderCharacterSelector();
-  });
-
-  const secondSeparatorElement = document.createElement("div");
-  secondSeparatorElement.classList.add("separateur-panneau");
-
-  if (!isCreatingCharacter) {
-    wrapperElement.append(
-      headerElement,
-      separatorElement,
-      characterListElement,
-      secondSeparatorElement,
-      openCreationButtonElement,
-    );
-    windowElement.appendChild(wrapperElement);
-    characterSelector.appendChild(windowElement);
-    return;
-  }
-
-  const formElement = document.createElement("form");
-  formElement.classList.add("character-create-form");
-  const formTitleElement = document.createElement("div");
-  formTitleElement.classList.add("character-create-title");
-  formTitleElement.textContent = getGameUiText("newCharacter");
-  const nameInputElement = document.createElement("input");
-  nameInputElement.classList.add("character-create-input");
-  nameInputElement.type = "text";
-  nameInputElement.name = "characterName";
-  nameInputElement.placeholder = getGameUiText("characterName");
-  nameInputElement.minLength = 2;
-  nameInputElement.maxLength = 20;
-  nameInputElement.autocomplete = "off";
-  let selectedAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
-  let selectedAppearanceColors = normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS);
-  let selectedAppearanceParts = normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS);
-  const appearanceOptionsElement = document.createElement("div");
-  appearanceOptionsElement.classList.add("character-creator-layout");
-  const mainPreviewElement = document.createElement("div");
-  mainPreviewElement.classList.add("character-creator-preview");
-  const controlsElement = document.createElement("div");
-  controlsElement.classList.add("character-creator-controls");
-  const refreshAppearanceControls = [];
-
-  const refreshAppearancePreviews = () => {
-    void applyPlayerAppearanceBackground(mainPreviewElement, selectedAppearanceParts, selectedAppearanceColors);
-    for (const refreshAppearanceControl of refreshAppearanceControls) {
-      refreshAppearanceControl();
-    }
-  };
-
-  const createAppearanceChoiceGroup = ({ title, options, getSelectedId, onSelect }) => {
-    const groupElement = document.createElement("div");
-    groupElement.classList.add("character-creator-choice-group");
-    const titleElement = document.createElement("div");
-    titleElement.classList.add("character-creator-choice-title");
-    titleElement.textContent = title;
-    const buttonsElement = document.createElement("div");
-    buttonsElement.classList.add("character-creator-choice-buttons");
-    const buttonsById = new Map();
-
-    for (const option of options) {
-      const buttonElement = document.createElement("button");
-      buttonElement.classList.add("character-appearance-option");
-      buttonElement.type = "button";
-      buttonElement.setAttribute("aria-pressed", "false");
-      const labelElement = document.createElement("span");
-      labelElement.classList.add("character-appearance-label");
-      labelElement.textContent = option.label;
-      buttonElement.appendChild(labelElement);
-      buttonElement.addEventListener("click", () => {
-        onSelect(option.id);
-        refreshAppearancePreviews();
-      });
-      buttonsById.set(option.id, buttonElement);
-      buttonsElement.appendChild(buttonElement);
-    }
-
-    refreshAppearanceControls.push(() => {
-      const selectedId = getSelectedId();
-      for (const [optionId, buttonElement] of buttonsById.entries()) {
-        const isSelected = optionId === selectedId;
-        buttonElement.classList.toggle("character-appearance-option-active", isSelected);
-        buttonElement.setAttribute("aria-pressed", String(isSelected));
-      }
-    });
-    groupElement.append(titleElement, buttonsElement);
-    return groupElement;
-  };
-
-  const createAppearanceCycleControl = ({ title, options, getSelectedId, onSelect }) => {
-    const controlElement = document.createElement("div");
-    controlElement.classList.add("character-creator-cycle-control");
-    const previousButtonElement = document.createElement("button");
-    previousButtonElement.classList.add("character-creator-arrow-button");
-    previousButtonElement.type = "button";
-    previousButtonElement.textContent = "<";
-    previousButtonElement.setAttribute("aria-label", `${title} -`);
-    const valueElement = document.createElement("div");
-    valueElement.classList.add("character-creator-cycle-value");
-    const nextButtonElement = document.createElement("button");
-    nextButtonElement.classList.add("character-creator-arrow-button");
-    nextButtonElement.type = "button";
-    nextButtonElement.textContent = ">";
-    nextButtonElement.setAttribute("aria-label", `${title} +`);
-
-    const selectOffset = (offset) => {
-      const selectedIndex = options.findIndex((option) => option.id === getSelectedId());
-      const nextIndex = (selectedIndex + offset + options.length) % options.length;
-      onSelect(options[nextIndex].id);
-      refreshAppearancePreviews();
-    };
-    previousButtonElement.addEventListener("click", () => selectOffset(-1));
-    nextButtonElement.addEventListener("click", () => selectOffset(1));
-    refreshAppearanceControls.push(() => {
-      const selectedOption = options.find((option) => option.id === getSelectedId()) ?? options[0];
-      valueElement.textContent = `${title} ${selectedOption.label}`;
-    });
-    controlElement.append(previousButtonElement, valueElement, nextButtonElement);
-    return controlElement;
-  };
-
-  const sexChoiceElement = createAppearanceChoiceGroup({
-    title: getGameUiText("sex"),
-    options: Object.values(playerAppearancesDatabase).map((appearanceData) => ({
-      id: appearanceData.appearanceId,
-      label: getLocalizedContentData("appearances", appearanceData.appearanceId, appearanceData).label,
-    })),
-    getSelectedId: () => selectedAppearanceId,
-    onSelect: (appearanceId) => {
-      selectedAppearanceId = getPlayerAppearanceData(appearanceId).appearanceId;
-    },
-  });
-  controlsElement.append(
-    createAppearanceCycleControl({
-      title: getGameUiText("head"),
-      options: [playerAppearancePartsDatabase.head, playerAppearancePartsDatabase.head1].map((partData) => ({
-        id: partData.partId,
-        label: partData.label,
-      })),
-      getSelectedId: () => selectedAppearanceParts.headId,
-      onSelect: (headId) => {
-        selectedAppearanceParts = normalizeCharacterAppearanceParts({ ...selectedAppearanceParts, headId });
-      },
-    }),
-    createAppearanceCycleControl({
-      title: getGameUiText("body"),
-      options: [playerAppearancePartsDatabase.body, playerAppearancePartsDatabase.body2].map((partData) => ({
-        id: partData.partId,
-        label: partData.label,
-      })),
-      getSelectedId: () => selectedAppearanceParts.bodyId,
-      onSelect: (bodyId) => {
-        selectedAppearanceParts = normalizeCharacterAppearanceParts({ ...selectedAppearanceParts, bodyId });
-      },
-    }),
-  );
-  appearanceOptionsElement.append(sexChoiceElement, mainPreviewElement, controlsElement);
-  refreshAppearancePreviews();
-
-  const colorOptionsElement = document.createElement("div");
-  colorOptionsElement.classList.add("character-color-options");
-  const createColorControl = (colorKey, labelText) => {
-    const labelElement = document.createElement("label");
-    labelElement.classList.add("character-color-control");
-    const labelTextElement = document.createElement("span");
-    labelTextElement.textContent = labelText;
-    const inputElement = document.createElement("input");
-    inputElement.classList.add("character-color-input");
-    inputElement.type = "color";
-    inputElement.value = selectedAppearanceColors[colorKey];
-    inputElement.addEventListener("input", () => {
-      clearPlayerAppearanceColorTextureCache(colorKey, selectedAppearanceColors[colorKey]);
-      selectedAppearanceColors = normalizeCharacterAppearanceColors({
-        ...selectedAppearanceColors,
-        [colorKey]: inputElement.value,
-      });
-      refreshAppearancePreviews();
-    });
-    labelElement.append(labelTextElement, inputElement);
-    return labelElement;
-  };
-  colorOptionsElement.append(
-    createColorControl("hair", getGameUiText("hairColor")),
-    createColorControl("clothes", getGameUiText("clothesColor")),
-    createColorControl("pants", getGameUiText("pantsColor")),
-    createColorControl("shoes", getGameUiText("shoesColor")),
-  );
-
-  const createButtonElement = document.createElement("button");
-  createButtonElement.classList.add("character-create-button");
-  createButtonElement.type = "submit";
-  createButtonElement.textContent = getGameUiText("create");
-  const formErrorElement = document.createElement("div");
-  formErrorElement.classList.add("character-selector-error");
-
-  formElement.append(
-    formTitleElement,
-    appearanceOptionsElement,
-    colorOptionsElement,
-    nameInputElement,
-    createButtonElement,
-    formErrorElement,
-  );
-  formElement.addEventListener("submit", (event) => {
-    event.preventDefault();
-    createNewCharacterProfile(
-      nameInputElement.value,
-      selectedAppearanceId,
-      selectedAppearanceColors,
-      selectedAppearanceParts,
-      formErrorElement,
-    );
-  });
-
-  wrapperElement.append(headerElement, separatorElement, formElement);
-  windowElement.appendChild(wrapperElement);
-  characterSelector.appendChild(windowElement);
-  nameInputElement.focus();
-};
-
-const toggleCharacterSelector = () => {
-  if (characterSelectorUiState.isOpen) {
-    closeCharacterSelector();
-  } else {
-    openCharacterSelector();
-  }
-};
-
-const initializeGameWelcome = () => {
-  if (!gameWelcome || !gameWelcomePlayButton) {
-    return true;
-  }
-
-  let shouldEnterGame = false;
-  try {
-    shouldEnterGame = sessionStorage.getItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY) === "true";
-    sessionStorage.removeItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY);
-  } catch {
-    shouldEnterGame = false;
-  }
-  gameWelcome.hidden = shouldEnterGame;
-  applyGameLanguageUi();
-
-  gameWelcome.addEventListener("mousedown", (event) => {
-    event.stopPropagation();
-  });
-  gameWelcome.addEventListener("mouseup", (event) => {
-    event.stopPropagation();
-  });
-  gameWelcome.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
-  gameWelcome.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  gameWelcomePlayButton.addEventListener("click", () => {
-    unlockGameAudio();
-    openCharacterSelector();
-  });
-  for (const languageButton of gameWelcomeLanguageButtons) {
-    languageButton.addEventListener("click", () => {
-      setGameLanguage(languageButton.dataset.gameLanguage);
-    });
-  }
-  return shouldEnterGame;
-};
+const closeCharacterSelector = () => characterSelectorController.close();
+const openCharacterSelector = () => characterSelectorController.open();
+const saveCurrentCharacterBeforeSwitch = () => characterSelectorController.saveBeforeSwitch();
+const renderCharacterSelector = () => characterSelectorController.render();
+const toggleCharacterSelector = () => characterSelectorController.toggle();
+const initializeGameWelcome = () => characterSelectorController.initializeWelcome();
 
 const togglePlayerFollow = () => {
   playerNavigationState.followEnabled = !playerNavigationState.followEnabled;
@@ -5946,172 +4849,12 @@ const updateLight = (source) => {
 /* ==================================================== */
 //#region     -----  JOUEUR - MOUVEMENT  -----
 /* ==================================================== */
-const PLAYER_NAVIGATION_MODE = {
-  click: "click",
-  follow: "follow",
-  action: "action",
-};
-const PLAYER_ACTION_TYPE = {
-  itemDrag: "itemDrag",
-  useWorldItem: "useWorldItem",
-  targetItemUse: "targetItemUse",
-  npcGreeting: "npcGreeting",
-};
-const PLAYER_ACTION_DISTANCE_TYPE = {
-  square: "square",
-  weighted: "weighted",
-};
-const PLAYER_AUTO_WALK_MAX_PATH_COST = MINIMAP_AUTOWALK_MAX_DISTANCE_TILES * 3;
-const PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS = 300;
-const PLAYER_ACTION_PATH_REFRESH_COOLDOWN_MS = 300;
-const PLAYER_ACTION_EXECUTION_DELAY_MS = 100;
-
-const playerNavigationState = {
-  mode: null,
-  path: [],
-  destinationTile: null,
-  followEnabled: false,
-  pendingAction: null,
-  actionExecuteAt: 0,
-  nextPathRefreshAt: 0,
-  lastFollowTargetTileKey: null,
-  lastActionTargetTileKey: null,
-  lastFailureKey: null,
-};
-
-const keysPressed = {
-  right: false,
-  left: false,
-  up: false,
-  down: false,
-};
-
-const resetMovementKeys = () => {
-  keysPressed.right = false;
-  keysPressed.left = false;
-  keysPressed.up = false;
-  keysPressed.down = false;
-};
-
-const resetMobileJoystickDiagonalHold = () => {
-  if (mobileGameUiState.joystickDiagonalTimeoutId !== null) {
-    clearTimeout(mobileGameUiState.joystickDiagonalTimeoutId);
-  }
-  mobileGameUiState.joystickDiagonalCandidate = null;
-  mobileGameUiState.joystickDiagonalReady = false;
-  mobileGameUiState.joystickDiagonalTimeoutId = null;
-  mobileGameUiState.joystickClientX = null;
-  mobileGameUiState.joystickClientY = null;
-};
-
-const resetMobileJoystick = () => {
-  mobileGameUiState.joystickPointerId = null;
-  mobileGameUiState.joystickWasMoving = false;
-  resetMobileJoystickDiagonalHold();
-  resetMovementKeys();
-  if (mobileJoystickKnob) {
-    mobileJoystickKnob.style.transform = "translate(0px, 0px)";
-  }
-  if (mobileJoystick) {
-    mobileJoystick.style.removeProperty("top");
-    mobileJoystick.style.removeProperty("bottom");
-    mobileJoystick.style.removeProperty("left");
-  }
-  mobileJoystick?.classList.remove("mobile-joystick-diagonal-pending", "mobile-joystick-diagonal-ready");
-};
-
-const placeMobileJoystickAtPointer = (clientX, clientY) => {
-  if (!mobileJoystickZone || !mobileJoystick || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-    return;
-  }
-  const zoneRect = mobileJoystickZone.getBoundingClientRect();
-  const joystickWidth = mobileJoystick.offsetWidth;
-  const joystickHeight = mobileJoystick.offsetHeight;
-  const left = clamp(clientX - zoneRect.left - joystickWidth / 2, 0, zoneRect.width - joystickWidth);
-  const top = clamp(clientY - zoneRect.top - joystickHeight / 2, 0, zoneRect.height - joystickHeight);
-  mobileJoystick.style.left = `${left}px`;
-  mobileJoystick.style.top = `${top}px`;
-  mobileJoystick.style.bottom = "auto";
-};
-
-const updateMobileJoystickFromPointer = (clientX, clientY) => {
-  if (!mobileJoystick || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
-    return;
-  }
-
-  const joystickRect = mobileJoystick.getBoundingClientRect();
-  const centerX = joystickRect.left + joystickRect.width / 2;
-  const centerY = joystickRect.top + joystickRect.height / 2;
-  const maxDistance = joystickRect.width * 0.32;
-  const rawDeltaX = clientX - centerX;
-  const rawDeltaY = clientY - centerY;
-  const rawDistance = Math.hypot(rawDeltaX, rawDeltaY);
-  const distanceScale = rawDistance > maxDistance ? maxDistance / rawDistance : 1;
-  const deltaX = rawDeltaX * distanceScale;
-  const deltaY = rawDeltaY * distanceScale;
-  const deadZone = maxDistance * 0.3;
-  const absoluteDeltaX = Math.abs(deltaX);
-  const absoluteDeltaY = Math.abs(deltaY);
-  const dominantAxisDistance = Math.max(absoluteDeltaX, absoluteDeltaY);
-  const secondaryAxisDistance = Math.min(absoluteDeltaX, absoluteDeltaY);
-  const diagonalRatio = dominantAxisDistance > 0 ? secondaryAxisDistance / dominantAxisDistance : 0;
-  let diagonalCandidate = null;
-  if (dominantAxisDistance > deadZone && diagonalRatio >= 0.72) {
-    const horizontalDirection = deltaX < 0 ? "left" : "right";
-    const verticalDirection = deltaY < 0 ? "up" : "down";
-    diagonalCandidate = `${horizontalDirection}:${verticalDirection}`;
-  }
-
-  mobileGameUiState.joystickClientX = clientX;
-  mobileGameUiState.joystickClientY = clientY;
-
-  if (diagonalCandidate !== mobileGameUiState.joystickDiagonalCandidate) {
-    resetMobileJoystickDiagonalHold();
-    mobileGameUiState.joystickClientX = clientX;
-    mobileGameUiState.joystickClientY = clientY;
-    if (diagonalCandidate) {
-      mobileGameUiState.joystickDiagonalCandidate = diagonalCandidate;
-      mobileGameUiState.joystickDiagonalTimeoutId = setTimeout(() => {
-        if (
-          mobileGameUiState.joystickPointerId === null ||
-          mobileGameUiState.joystickDiagonalCandidate !== diagonalCandidate
-        ) {
-          return;
-        }
-        mobileGameUiState.joystickDiagonalReady = true;
-        mobileGameUiState.joystickDiagonalTimeoutId = null;
-        navigator.vibrate?.(8);
-        updateMobileJoystickFromPointer(mobileGameUiState.joystickClientX, mobileGameUiState.joystickClientY);
-      }, MOBILE_JOYSTICK_DIAGONAL_HOLD_MS);
-    }
-  }
-
-  const shouldMoveDiagonally = diagonalCandidate !== null && mobileGameUiState.joystickDiagonalReady;
-  mobileJoystick.classList.toggle("mobile-joystick-diagonal-pending", diagonalCandidate !== null && !shouldMoveDiagonally);
-  mobileJoystick.classList.toggle("mobile-joystick-diagonal-ready", shouldMoveDiagonally);
-
-  resetMovementKeys();
-  if (dominantAxisDistance > deadZone) {
-    if (shouldMoveDiagonally || absoluteDeltaX > absoluteDeltaY) {
-      keysPressed.left = deltaX < 0;
-      keysPressed.right = deltaX > 0;
-    }
-    if (shouldMoveDiagonally || absoluteDeltaY > absoluteDeltaX) {
-      keysPressed.up = deltaY < 0;
-      keysPressed.down = deltaY > 0;
-    }
-  }
-
-  const isMoving = keysPressed.left || keysPressed.right || keysPressed.up || keysPressed.down;
-  if (isMoving && !mobileGameUiState.joystickWasMoving) {
-    cancelPlayerNavigationForManualMovement();
-  }
-  mobileGameUiState.joystickWasMoving = isMoving;
-
-  if (mobileJoystickKnob) {
-    mobileJoystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
-  }
-};
+const resetMobileJoystickDiagonalHold = () => mobileJoystickController.resetDiagonalHold();
+const resetMobileJoystick = () => mobileJoystickController.reset();
+const placeMobileJoystickAtPointer = (clientX, clientY) =>
+  mobileJoystickController.placeAtPointer(clientX, clientY);
+const updateMobileJoystickFromPointer = (clientX, clientY) =>
+  mobileJoystickController.updateFromPointer(clientX, clientY);
 
 const cancelPlayerNavigationForManualMovement = () => {
   const shouldCancelFollow = playerNavigationState.followEnabled && combatTargetState.monsterUid !== null;
@@ -6192,20 +4935,40 @@ const updateMovement = (now) => {
   const moveCooldown = baseMoveCooldown * movementCost;
   gameplayTimingState.nextPlayerMoveTime = now + moveCooldown;
 
-  const canMove =
-    canMoveTo(playerState.x, playerState.y, nextX, nextY) &&
-    !isMonsterAtPosition(nextX, nextY) &&
-    !isNpcAtPosition(nextX, nextY) &&
-    !isBlockingItemAtPosition(nextX, nextY);
+  const moveAction = createMovePlayerAction({
+    fromX: playerState.x,
+    fromY: playerState.y,
+    toX: nextX,
+    toY: nextY,
+    direction: movement.direction,
+    isNavigationMovement,
+    requestedAt: now,
+  });
+  const moveResult = gameActionDispatcher.dispatch(moveAction, {
+    executeMovePlayer(payload) {
+      if (playerState.x !== payload.fromX || playerState.y !== payload.fromY) {
+        return { success: false, reason: "player-position-changed" };
+      }
+      const canMove =
+        canMoveTo(payload.fromX, payload.fromY, payload.toX, payload.toY) &&
+        !isMonsterAtPosition(payload.toX, payload.toY) &&
+        !isNpcAtPosition(payload.toX, payload.toY) &&
+        !isBlockingItemAtPosition(payload.toX, payload.toY);
+      if (!canMove) {
+        return { success: false, reason: "movement-blocked" };
+      }
+      playerState.oldX = payload.fromX;
+      playerState.oldY = payload.fromY;
+      playerState.moveStartTime = payload.requestedAt;
+      playerState.moveDuration = moveDuration;
+      playerState.x = payload.toX;
+      playerState.y = payload.toY;
+      playerState.direction = payload.direction;
+      return { success: true, changes: { x: payload.toX, y: payload.toY } };
+    },
+  });
 
-  if (canMove) {
-    playerState.oldX = playerState.x;
-    playerState.oldY = playerState.y;
-    playerState.moveStartTime = now;
-    playerState.moveDuration = moveDuration;
-    playerState.x = nextX;
-    playerState.y = nextY;
-    playerState.direction = movement.direction;
+  if (moveResult?.success) {
 
     if (isNavigationMovement) {
       completePlayerNavigationStep();
@@ -7175,473 +5938,23 @@ const { findPath, findPathToAnyTarget, getPathTraversableAdjacentTiles, isWalkab
 
 /* ---------- PATHFINDING - NAVIGATION JOUEUR ---------- */
 
-const stopPlayerNavigation = () => {
-  playerNavigationState.mode = null;
-  playerNavigationState.path = [];
-  playerNavigationState.destinationTile = null;
-  playerNavigationState.pendingAction = null;
-  playerNavigationState.actionExecuteAt = 0;
-  playerNavigationState.nextPathRefreshAt = 0;
-  playerNavigationState.lastFollowTargetTileKey = null;
-  playerNavigationState.lastActionTargetTileKey = null;
-  playerNavigationState.lastFailureKey = null;
-};
-
-const setPlayerNavigationPath = (path) => {
-  if (!Array.isArray(path)) {
-    playerNavigationState.path = [];
-    return false;
-  }
-
-  playerNavigationState.path = path.map((tile) => {
-    return { col: tile.col, row: tile.row };
-  });
-  return true;
-};
-
-const showPlayerNavigationFailure = (failureKey) => {
-  if (playerNavigationState.lastFailureKey === failureKey) {
-    return;
-  }
-  playerNavigationState.lastFailureKey = failureKey;
-  showGameStatusMessage(getGameUiText("noPath"));
-};
-
-const refreshPlayerClickNavigationPath = () => {
-  const destinationTile = playerNavigationState.destinationTile;
-  const playerTile = getTilePosition(playerState);
-
-  if (!destinationTile || !playerTile) {
-    stopPlayerNavigation();
-    return false;
-  }
-
-  if (playerTile.col === destinationTile.col && playerTile.row === destinationTile.row) {
-    stopPlayerNavigation();
-    return true;
-  }
-
-  const path = findPath(playerTile, destinationTile, true, PLAYER_AUTO_WALK_MAX_PATH_COST);
-  if (path.length === 0) {
-    const failureKey = `click:${playerState.z}:${destinationTile.col}:${destinationTile.row}`;
-    stopPlayerNavigation();
-    showPlayerNavigationFailure(failureKey);
-    return false;
-  }
-
-  playerNavigationState.lastFailureKey = null;
-  return setPlayerNavigationPath(path);
-};
-
-const startPlayerClickNavigation = (destinationTile) => {
-  if (!Number.isInteger(destinationTile?.col) || !Number.isInteger(destinationTile?.row)) {
-    return false;
-  }
-
-  playerNavigationState.mode = PLAYER_NAVIGATION_MODE.click;
-  playerNavigationState.pendingAction = null;
-  playerNavigationState.actionExecuteAt = 0;
-  playerNavigationState.destinationTile = {
-    col: destinationTile.col,
-    row: destinationTile.row,
-  };
-  playerNavigationState.path = [];
-  playerNavigationState.nextPathRefreshAt = 0;
-  playerNavigationState.lastFollowTargetTileKey = null;
-  playerNavigationState.lastActionTargetTileKey = null;
-  return refreshPlayerClickNavigationPath();
-};
-
+const stopPlayerNavigation = () => playerNavigationController.stop();
+const startPlayerClickNavigation = (destinationTile) => playerNavigationController.startClick(destinationTile);
 const handleMinimapNavigationClick = (event) => minimapController.navigateFromPointer(event);
 const startMinimapPan = (event) => minimapController.startPan(event);
 const updateMinimapPan = (event) => minimapController.updatePan(event);
 const finishMinimapPan = (event, shouldNavigate) => minimapController.finishPan(event, shouldNavigate);
 
-const startPlayerFollowNavigation = () => {
-  if (!playerNavigationState.followEnabled || combatTargetState.monsterUid === null) {
-    return false;
-  }
-
-  playerNavigationState.mode = PLAYER_NAVIGATION_MODE.follow;
-  playerNavigationState.pendingAction = null;
-  playerNavigationState.actionExecuteAt = 0;
-  playerNavigationState.path = [];
-  playerNavigationState.destinationTile = null;
-  playerNavigationState.nextPathRefreshAt = 0;
-  playerNavigationState.lastFollowTargetTileKey = null;
-  playerNavigationState.lastActionTargetTileKey = null;
-  playerNavigationState.lastFailureKey = null;
-  return true;
-};
-
-const updatePlayerFollowNavigation = (now, forceRefresh = false) => {
-  if (playerNavigationState.mode !== PLAYER_NAVIGATION_MODE.follow) {
-    return;
-  }
-
-  const monster = findMonsterByUid(combatTargetState.monsterUid);
-  if (!monster || monster.hp <= 0 || monster.z !== playerState.z) {
-    loseSelectedMonsterTarget();
-    return;
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const targetTileKey = `${monster.z}:${monsterTile.col}:${monsterTile.row}`;
-
-  if (isNearPlayer(monster, 1)) {
-    playerNavigationState.path = [];
-    playerNavigationState.lastFollowTargetTileKey = targetTileKey;
-    playerNavigationState.lastFailureKey = null;
-    playerNavigationState.nextPathRefreshAt = now + PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS;
-    return;
-  }
-
-  const targetMoved = targetTileKey !== playerNavigationState.lastFollowTargetTileKey;
-  if (
-    !forceRefresh &&
-    !targetMoved &&
-    now < playerNavigationState.nextPathRefreshAt
-  ) {
-    return;
-  }
-
-  const playerTile = getTilePosition(playerState);
-  const targetTiles = getPathTraversableAdjacentTiles(monsterTile).filter((tile) => {
-    return !isTileOccupiedByCreature(tile.row, tile.col) || (tile.row === playerTile.row && tile.col === playerTile.col);
-  });
-  const path = findPathToAnyTarget(playerTile, targetTiles, true, PLAYER_AUTO_WALK_MAX_PATH_COST);
-
-  playerNavigationState.path = [];
-  playerNavigationState.lastFollowTargetTileKey = targetTileKey;
-  playerNavigationState.nextPathRefreshAt = now + PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS;
-
-  if (path.length === 0) {
-    showPlayerNavigationFailure(`follow:${monster.uid}:${targetTileKey}`);
-    playerNavigationState.followEnabled = false;
-    stopPlayerNavigation();
-    updatePlayerInventory();
-    return;
-  }
-
-  playerNavigationState.lastFailureKey = null;
-  setPlayerNavigationPath(path);
-};
-
-const isTileWithinPlayerActionRange = (fromTile, targetTile, range, distanceType) => {
-  if (
-    !Number.isInteger(fromTile?.col) ||
-    !Number.isInteger(fromTile?.row) ||
-    !Number.isInteger(targetTile?.col) ||
-    !Number.isInteger(targetTile?.row) ||
-    !Number.isFinite(range)
-  ) {
-    return false;
-  }
-  const distanceCol = Math.abs(fromTile.col - targetTile.col);
-  const distanceRow = Math.abs(fromTile.row - targetTile.row);
-  if (distanceType === PLAYER_ACTION_DISTANCE_TYPE.weighted) {
-    return distanceCol + distanceRow <= range;
-  }
-  return Math.max(distanceCol, distanceRow) <= range;
-};
-
-const isPlayerWithinActionRange = (target, range, distanceType = PLAYER_ACTION_DISTANCE_TYPE.square) => {
-  if (!target || target.z !== playerState.z) {
-    return false;
-  }
-  return isTileWithinPlayerActionRange(getTilePosition(playerState), getTilePosition(target), range, distanceType);
-};
-
-const resolvePlayerActionNavigationTarget = (action) => {
-  if (!action) {
-    return null;
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.itemDrag) {
-    const currentSource = findItemLocationByUid(action.itemUid);
-    const item = getItemFromLocation(currentSource);
-    if (!item || !areItemLocationsEqual(action.source, currentSource)) {
-      return null;
-    }
-    if (currentSource.locationType === "worldItem") {
-      if (!isWorldItemAvailableForInteraction(item)) {
-        return null;
-      }
-      if (!isNearPlayer(item, 1)) {
-        return { target: item, range: 1, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
-      }
-    }
-    if (action.destination?.locationType === "worldTile") {
-      const destination = action.destination;
-      if (destination.z !== playerState.z) {
-        return null;
-      }
-      if (!isNearPlayer(destination, WORLD_ITEM_THROW_RANGE)) {
-        return {
-          target: destination,
-          range: WORLD_ITEM_THROW_RANGE,
-          distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
-          requireLineOfSight: true,
-        };
-      }
-    }
-    return { isReady: true };
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.useWorldItem) {
-    const item = findWorldItemByUid(action.itemUid);
-    if (!isWorldItemAvailableForInteraction(item)) {
-      return null;
-    }
-    return isNearPlayer(item, 1)
-      ? { isReady: true }
-      : { target: item, range: 1, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.targetItemUse) {
-    const source = findItemLocationByUid(action.itemUid);
-    const item = getItemFromLocation(source);
-    const useData = getItemUseData(item);
-    if (!source || !item || useData?.mode !== "target" || !Number.isFinite(useData.range)) {
-      return null;
-    }
-    if (action.targetType === "monster") {
-      const monster = findMonsterByUid(action.targetUid);
-      if (useData.action !== "attackRune" || !monster || monster.hp <= 0 || monster.z !== playerState.z) {
-        return null;
-      }
-      return isNearPlayer(monster, useData.range)
-        ? { isReady: true }
-        : {
-            target: monster,
-            range: useData.range,
-            distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
-            requireLineOfSight: true,
-          };
-    }
-    if (action.targetType === "tile") {
-      const targetTile = action.targetTile;
-      if (useData.action !== "drinkPotion" || targetTile?.z !== playerState.z) {
-        return null;
-      }
-      return isNearPlayer(targetTile, useData.range)
-        ? { isReady: true }
-        : { target: targetTile, range: useData.range, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
-    }
-    return null;
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.npcGreeting) {
-    const npc = npcsByUid.get(action.npcUid) ?? null;
-    if (!npc || npc.z !== playerState.z) {
-      return null;
-    }
-    return isPlayerWithinActionRange(npc, NPC_DIALOGUE_CONFIG.talkRange, PLAYER_ACTION_DISTANCE_TYPE.weighted)
-      ? { isReady: true }
-      : { target: npc, range: NPC_DIALOGUE_CONFIG.talkRange, distanceType: PLAYER_ACTION_DISTANCE_TYPE.weighted };
-  }
-
-  return null;
-};
-
-const executePlayerPendingAction = (action) => {
-  if (action.type === PLAYER_ACTION_TYPE.itemDrag) {
-    const source = findItemLocationByUid(action.itemUid);
-    const item = getItemFromLocation(source);
-    if (!item || !areItemLocationsEqual(action.source, source)) {
-      return false;
-    }
-    startItemDrag(source);
-    completeItemDrag(action.destination);
-    return true;
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.useWorldItem) {
-    const source = findItemLocationByUid(action.itemUid);
-    if (source?.locationType !== "worldItem") {
-      return false;
-    }
-    handleUseItemFromSource(source);
-    return true;
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.targetItemUse) {
-    const source = findItemLocationByUid(action.itemUid);
-    const item = getItemFromLocation(source);
-    const useData = getItemUseData(item);
-    if (!source || !item || useData?.mode !== "target") {
-      return false;
-    }
-    if (action.targetType === "monster") {
-      const monster = findMonsterByUid(action.targetUid);
-      if (!monster) {
-        return false;
-      }
-      handleRuneUse(source, item, useData, { monster });
-      return true;
-    }
-    if (action.targetType === "tile" && action.targetTile) {
-      handleDrinkPotionUse(source, item, useData, { tile: action.targetTile });
-      return true;
-    }
-    return false;
-  }
-
-  if (action.type === PLAYER_ACTION_TYPE.npcGreeting) {
-    const npc = npcsByUid.get(action.npcUid) ?? null;
-    return sayGreetingToNpc(npc, playerState);
-  }
-
-  return false;
-};
-
-const getPlayerActionApproachPath = (actionTarget) => {
-  const playerTile = getTilePosition(playerState);
-  const targetTile = getTilePosition(actionTarget.target);
-  const pathTargetTiles = getPathTraversableAdjacentTiles(targetTile).filter((tile) => {
-    return !isTileOccupiedByCreature(tile.row, tile.col) || (tile.col === playerTile.col && tile.row === playerTile.row);
-  });
-  if (isTilePathTraversable(targetTile.row, targetTile.col) && !isTileOccupiedByCreature(targetTile.row, targetTile.col)) {
-    pathTargetTiles.push(targetTile);
-  }
-
-  const path = findPathToAnyTarget(playerTile, pathTargetTiles, true, PLAYER_AUTO_WALK_MAX_PATH_COST);
-  const worldMap = getCurrentWorldMap();
-  const actionTileIndex = path.findIndex((tile) => {
-    if (!isTileWithinPlayerActionRange(tile, targetTile, actionTarget.range, actionTarget.distanceType)) {
-      return false;
-    }
-    return !actionTarget.requireLineOfSight || hasLineOfSightBetweenTiles(worldMap, tile, targetTile);
-  });
-  return actionTileIndex === -1 ? [] : path.slice(0, actionTileIndex + 1);
-};
-
-const refreshPlayerActionNavigationPath = (now) => {
-  const action = playerNavigationState.pendingAction;
-  const actionTarget = resolvePlayerActionNavigationTarget(action);
-  if (!actionTarget) {
-    stopPlayerNavigation();
-    return false;
-  }
-  if (actionTarget.isReady) {
-    return schedulePlayerPendingActionExecution(now);
-  }
-
-  const targetTile = getTilePosition(actionTarget.target);
-  const targetTileKey = `${actionTarget.target.z}:${targetTile.col}:${targetTile.row}`;
-  const path = getPlayerActionApproachPath(actionTarget);
-  if (path.length === 0) {
-    const failureKey = `action:${action.type}:${targetTileKey}`;
-    stopPlayerNavigation();
-    showPlayerNavigationFailure(failureKey);
-    return false;
-  }
-
-  playerNavigationState.lastActionTargetTileKey = targetTileKey;
-  playerNavigationState.destinationTile = { ...path[path.length - 1] };
-  playerNavigationState.nextPathRefreshAt = now + PLAYER_ACTION_PATH_REFRESH_COOLDOWN_MS;
-  playerNavigationState.lastFailureKey = null;
-  return setPlayerNavigationPath(path);
-};
-
-const schedulePlayerPendingActionExecution = (now) => {
-  const movementEndTime = playerState.moveStartTime + playerState.moveDuration;
-  playerNavigationState.path = [];
-  playerNavigationState.destinationTile = null;
-  playerNavigationState.actionExecuteAt = Math.max(now, movementEndTime) + PLAYER_ACTION_EXECUTION_DELAY_MS;
-  return true;
-};
-
-const startPlayerActionNavigation = (action) => {
-  if (!action || !Object.values(PLAYER_ACTION_TYPE).includes(action.type)) {
-    return false;
-  }
-  playerNavigationState.mode = PLAYER_NAVIGATION_MODE.action;
-  playerNavigationState.path = [];
-  playerNavigationState.destinationTile = null;
-  playerNavigationState.pendingAction = action;
-  playerNavigationState.actionExecuteAt = 0;
-  playerNavigationState.nextPathRefreshAt = 0;
-  playerNavigationState.lastFollowTargetTileKey = null;
-  playerNavigationState.lastActionTargetTileKey = null;
-  playerNavigationState.lastFailureKey = null;
-  return refreshPlayerActionNavigationPath(Date.now());
-};
-
-const updatePlayerActionNavigation = (now) => {
-  if (playerNavigationState.mode !== PLAYER_NAVIGATION_MODE.action || !playerNavigationState.pendingAction) {
-    return;
-  }
-  const actionTarget = resolvePlayerActionNavigationTarget(playerNavigationState.pendingAction);
-  if (!actionTarget) {
-    stopPlayerNavigation();
-    return;
-  }
-  if (actionTarget.isReady) {
-    if (playerNavigationState.actionExecuteAt === 0) {
-      schedulePlayerPendingActionExecution(now);
-      return;
-    }
-    if (now < playerNavigationState.actionExecuteAt) {
-      return;
-    }
-    const action = playerNavigationState.pendingAction;
-    stopPlayerNavigation();
-    executePlayerPendingAction(action);
-    return;
-  }
-
-  playerNavigationState.actionExecuteAt = 0;
-  const targetTile = getTilePosition(actionTarget.target);
-  const targetTileKey = `${actionTarget.target.z}:${targetTile.col}:${targetTile.row}`;
-  const targetMoved = targetTileKey !== playerNavigationState.lastActionTargetTileKey;
-  if (playerNavigationState.path.length === 0 || (targetMoved && now >= playerNavigationState.nextPathRefreshAt)) {
-    refreshPlayerActionNavigationPath(now);
-  }
-};
-
-const getPlayerNavigationMovement = (now) => {
-  const nextTile = playerNavigationState.path[0];
-  if (!nextTile) {
-    return null;
-  }
-
-  const playerTile = getTilePosition(playerState);
-  const deltaCol = nextTile.col - playerTile.col;
-  const deltaRow = nextTile.row - playerTile.row;
-
-  if (Math.abs(deltaCol) > 1 || Math.abs(deltaRow) > 1 || (deltaCol === 0 && deltaRow === 0)) {
-    handleBlockedPlayerNavigationStep(now);
-    return null;
-  }
-
-  return {
-    deltaCol,
-    deltaRow,
-    direction: getCardinalDirectionFromTileDelta(deltaCol, deltaRow, playerState.direction),
-  };
-};
-
-const completePlayerNavigationStep = () => {
-  playerNavigationState.path.shift();
-
-  if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.click && playerNavigationState.path.length === 0) {
-    stopPlayerNavigation();
-  }
-};
-
-const handleBlockedPlayerNavigationStep = (now) => {
-  playerNavigationState.path = [];
-
-  if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.click) {
-    refreshPlayerClickNavigationPath();
-  } else if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
-    playerNavigationState.nextPathRefreshAt = 0;
-    updatePlayerFollowNavigation(now, true);
-  } else if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.action) {
-    refreshPlayerActionNavigationPath(now);
-  }
-};
+const startPlayerFollowNavigation = () => playerNavigationController.startFollow();
+const updatePlayerFollowNavigation = (now, forceRefresh = false) =>
+  playerNavigationController.updateFollow(now, forceRefresh);
+const isPlayerWithinActionRange = (target, range, distanceType = PLAYER_ACTION_DISTANCE_TYPE.square) =>
+  playerNavigationController.isPlayerWithinActionRange(target, range, distanceType);
+const startPlayerActionNavigation = (action) => playerNavigationController.startAction(action);
+const updatePlayerActionNavigation = (now) => playerNavigationController.updateAction(now);
+const getPlayerNavigationMovement = (now) => playerNavigationController.getMovement(now);
+const completePlayerNavigationStep = () => playerNavigationController.completeStep();
+const handleBlockedPlayerNavigationStep = (now) => playerNavigationController.handleBlockedStep(now);
 
 const findNpcAtClientPosition = (clientX, clientY) => {
   if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
@@ -7885,991 +6198,24 @@ const getPlayerEntityByUid = (playerUid) => {
   return playerState.uid === playerUid ? playerState : null;
 };
 
-const isPlayerWithinNpcTalkRange = (player, npc) => {
-  if (!player || !npc || player.z !== npc.z) {
-    return false;
-  }
-  const distanceCol = Math.abs(player.x - npc.x) / TILE_SIZE;
-  const distanceRow = Math.abs(player.y - npc.y) / TILE_SIZE;
-  return distanceCol + distanceRow <= NPC_DIALOGUE_CONFIG.talkRange;
-};
-
-const sayGreetingToNpc = (npc, player, now = Date.now()) => {
-  if (!npc || !player || !isPlayerWithinNpcTalkRange(player, npc)) {
-    return false;
-  }
-  const greeting = getCurrentGameLanguage() === "fr" ? "Salut" : "Hi";
-  const message = addChatMessage("local", "player", greeting, player);
-  if (!message) {
-    return false;
-  }
-  showFloatingTextAboveTarget(greeting, 70, player, "speech", 4000);
-  if (activeChatChannelId === "local") {
-    renderActiveChatMessages();
-  }
-  startNpcConversation(npc, player, now);
-  return true;
-};
-
-const handleNpcGreetingFromPointerTarget = (target) => {
-  const npc = target?.npc;
-  if (!npc) {
-    return false;
-  }
-  if (isPlayerWithinNpcTalkRange(playerState, npc)) {
-    sayGreetingToNpc(npc, playerState);
-  } else if (npc.z === playerState.z) {
-    startPlayerActionNavigation({
-      type: PLAYER_ACTION_TYPE.npcGreeting,
-      npcUid: npc.uid,
-    });
-  }
-  return true;
-};
-
-const normalizeNpcSpeechText = (text) => {
-  if (typeof text !== "string") {
-    return "";
-  }
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase();
-};
-
-const getNpcSpeechWords = (text) => {
-  return new Set(normalizeNpcSpeechText(text).match(/[\p{L}]+/gu) ?? []);
-};
-
-const areNpcSpeechWordsEquivalent = (speechWord, keywordWord) => {
-  return speechWord === keywordWord || speechWord === `${keywordWord}s` || keywordWord === `${speechWord}s`;
-};
-
-const hasNpcSpeechKeyword = (speechWords, keywords) => {
-  if (!(speechWords instanceof Set) || !Array.isArray(keywords)) {
-    return false;
-  }
-  return keywords.some((keyword) => {
-    const keywordWords = getNpcSpeechWords(keyword);
-    return (
-      keywordWords.size > 0 &&
-      [...keywordWords].every((keywordWord) =>
-        [...speechWords].some((speechWord) => areNpcSpeechWordsEquivalent(speechWord, keywordWord)),
-      )
-    );
-  });
-};
-
-const getNpcDialogueData = (npcData) => {
-  const language = getCurrentGameLanguage();
-  return npcData?.dialogue?.[language] ?? npcData?.dialogue?.en ?? null;
-};
-
-const formatNpcDialogueText = (text, player, replacements = {}) => {
-  let formattedText = text.replaceAll("{playerName}", player.name);
-  const dialogueReplacements = {
-    bankBalance: getPlayerBankGoldAmount(),
-    cashBalance: getPlayerGoldAmount(),
-    ...replacements,
-  };
-  for (const [placeholder, value] of Object.entries(dialogueReplacements)) {
-    formattedText = formattedText.replaceAll(`{${placeholder}}`, String(value));
-  }
-  return formattedText;
-};
-
-const getNpcReplySuggestions = (suggestions) => {
-  if (!Array.isArray(suggestions)) {
-    return [];
-  }
-  return [
-    ...new Set(
-      suggestions.filter((suggestion) => typeof suggestion === "string").map((suggestion) => suggestion.trim()),
-    ),
-  ].filter(Boolean);
-};
-
-const queueNpcReply = (
-  npc,
-  player,
-  text,
-  now,
-  endConversation = false,
-  replacements = {},
-  suggestions = [],
-) => {
-  const state = npcConversationStatesByUid.get(npc?.uid);
-  if (!state || !player || typeof text !== "string" || state.queuedReplies.length >= NPC_DIALOGUE_CONFIG.maxQueuedReplies) {
-    return false;
-  }
-  state.queuedReplies.push({
-    playerUid: player.uid,
-    text: formatNpcDialogueText(text, player, replacements),
-    endConversation,
-    suggestions: getNpcReplySuggestions(suggestions),
-  });
-  if (state.nextReplyAt === 0) {
-    state.nextReplyAt = now + NPC_DIALOGUE_CONFIG.responseDelayMs;
-  }
-  return true;
-};
-
-const showNpcSpeech = (npc, text, suggestions = []) => {
-  if (npc.z === playerState.z) {
-    showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
-  }
-  addChatMessage("local", "npc", text, npc, suggestions);
-  if (activeChatChannelId === "local") {
-    renderActiveChatMessages();
-  }
-};
-
-const promoteNextNpcConversation = (npc, state, now) => {
-  while (state.waitingPlayerUids.length > 0) {
-    const playerUid = state.waitingPlayerUids.shift();
-    const player = getPlayerEntityByUid(playerUid);
-    if (!isPlayerWithinNpcTalkRange(player, npc)) {
-      continue;
-    }
-    state.activePlayerUid = playerUid;
-    state.activeMenu = null;
-    state.activeShopCategory = null;
-    state.lastInteractionAt = now;
-    const npcData = getNpcData(npc.npcId);
-    const dialogue = getNpcDialogueData(npcData);
-    queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
-    return true;
-  }
-  return false;
-};
-
-const releaseNpcConversation = (npc, state, now, reason = "farewell") => {
-  const player = getPlayerEntityByUid(state.activePlayerUid);
-  const npcData = getNpcData(npc?.npcId);
-  const dialogue = getNpcDialogueData(npcData);
-  if (player && dialogue && reason === "outOfRange") {
-    showNpcSpeech(npc, formatNpcDialogueText(dialogue.rudeDeparture, player));
-  } else if (player && dialogue && reason === "timeout") {
-    showNpcSpeech(npc, formatNpcDialogueText(dialogue.timeoutFarewell, player));
-  }
-
-  state.activePlayerUid = null;
-  state.queuedReplies.length = 0;
-  state.pendingAction = null;
-  state.activeMenu = null;
-  state.activeShopCategory = null;
-  state.nextReplyAt = 0;
-  state.lastInteractionAt = 0;
-  promoteNextNpcConversation(npc, state, now);
-};
-
-const startNpcConversation = (npc, player, now) => {
-  const state = npcConversationStatesByUid.get(npc.uid);
-  const npcData = getNpcData(npc.npcId);
-  const dialogue = getNpcDialogueData(npcData);
-  if (!state || !npcData || !dialogue) {
-    return false;
-  }
-  if (state.activePlayerUid !== null && state.activePlayerUid !== player.uid) {
-    if (!state.waitingPlayerUids.includes(player.uid)) {
-      state.waitingPlayerUids.push(player.uid);
-    }
-    const queuePosition = state.waitingPlayerUids.indexOf(player.uid) + 1;
-    showGameStatusMessage(getGameUiText("npcQueue")(npcData.name, queuePosition));
-    return false;
-  }
-  state.activePlayerUid = player.uid;
-  state.activeMenu = null;
-  state.activeShopCategory = null;
-  state.lastInteractionAt = now;
-  updateNpcDirectionToPlayer(npc);
-  return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
-};
-
-const findNpcTalkingToPlayer = (player) => {
-  const nearbyNpcs = getNpcsInChunkRadius(player.x, player.y, player.z, 1);
-  for (const npc of nearbyNpcs) {
-    const state = npcConversationStatesByUid.get(npc.uid);
-    if (state?.activePlayerUid === player.uid && isPlayerWithinNpcTalkRange(player, npc)) {
-      return npc;
-    }
-  }
-  return null;
-};
-
-const findNearestNpcInTalkRange = (player) => {
-  let nearestNpc = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  const nearbyNpcs = getNpcsInChunkRadius(player.x, player.y, player.z, 1);
-  for (const npc of nearbyNpcs) {
-    if (!isPlayerWithinNpcTalkRange(player, npc)) {
-      continue;
-    }
-    const distance = (Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y)) / TILE_SIZE;
-    if (distance < nearestDistance) {
-      nearestNpc = npc;
-      nearestDistance = distance;
-    }
-  }
-  return nearestNpc;
-};
-
-const getNpcTradeQuantity = (text) => {
-  const quantityMatch = typeof text === "string" ? text.match(/\b(\d{1,3})\b/) : null;
-  return quantityMatch ? clamp(Number(quantityMatch[1]), 1, MAX_ITEM_STACK_SIZE) : 1;
-};
-
-const findNpcShopOffer = (npcData, speechWords) => {
-  const offers = npcData?.service?.offers;
-  if (!offers || !(speechWords instanceof Set)) {
-    return null;
-  }
-  for (const [itemId, offer] of Object.entries(offers)) {
-    if (offer.keywords?.some((keyword) => hasNpcSpeechKeyword(speechWords, [keyword]))) {
-      return { itemId, ...offer };
-    }
-  }
-  return null;
-};
-
-const getLocalizedNpcShopCategoryName = (categoryData) => {
-  const language = getCurrentGameLanguage();
-  return categoryData?.labels?.[language] ?? categoryData?.labels?.en ?? null;
-};
-
-const findNpcShopCategory = (npcData, speechWords) => {
-  if (!(speechWords instanceof Set)) {
-    return null;
-  }
-  for (const [categoryId, categoryData] of Object.entries(npcData?.service?.categories ?? {})) {
-    if (categoryData.keywords?.some((keyword) => hasNpcSpeechKeyword(speechWords, [keyword]))) {
-      return { categoryId, ...categoryData };
-    }
-  }
-  return null;
-};
-
-const getNpcMenuNavigationSuggestions = () => {
-  return getCurrentGameLanguage() === "fr" ? ["Retour", "Bye"] : ["Back", "Bye"];
-};
-
-const getNpcShopCategorySuggestions = (npcData, tradeType) => {
-  const priceKey = tradeType === "sell" ? "sellPrice" : "buyPrice";
-  return Object.entries(npcData?.service?.categories ?? {})
-    .filter(([categoryId]) =>
-      Object.values(npcData?.service?.offers ?? {}).some(
-        (offer) => offer.category === categoryId && Number.isInteger(offer[priceKey]) && offer[priceKey] > 0,
-      ),
-    )
-    .map(([, categoryData]) => getLocalizedNpcShopCategoryName(categoryData))
-    .filter(Boolean);
-};
-
-const getNpcShopMenuSuggestions = (npcData, tradeType, categoryId = null) => {
-  if (!categoryId) {
-    return [...getNpcShopCategorySuggestions(npcData, tradeType), ...getNpcMenuNavigationSuggestions()];
-  }
-  const priceKey = tradeType === "sell" ? "sellPrice" : "buyPrice";
-  const itemSuggestions = Object.entries(npcData?.service?.offers ?? [])
-    .filter(
-      ([, offer]) =>
-        offer.category === categoryId && Number.isInteger(offer?.[priceKey]) && offer[priceKey] > 0,
-    )
-    .map(([itemId]) => getLocalizedItemName(itemId));
-  return [...itemSuggestions, ...getNpcMenuNavigationSuggestions()];
-};
-
-const getNpcSpellMenuSuggestions = (npcData) => {
-  const spellSuggestions = (npcData?.service?.spellIds ?? [])
-    .map((spellId) => getLocalizedSpellData(spellId)?.name)
-    .filter(Boolean);
-  return [...spellSuggestions, ...getNpcMenuNavigationSuggestions()];
-};
-
-const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
-  if (!Number.isInteger(offer?.buyPrice) || offer.buyPrice <= 0) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now);
-  }
-  const totalPrice = offer.buyPrice * quantity;
-  if (getPlayerGoldAmount() < totalPrice) {
-    return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
-  }
-
-  const paymentPlan = createPlayerGoldPaymentPlan(totalPrice);
-  if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
-    return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
-  }
-  const grantResult = grantRewardItemsToPlayer([{ itemId: offer.itemId, quantity }]);
-  if (!grantResult.success) {
-    rollbackPlayerCurrencyValuePlan(paymentPlan);
-    return queueNpcReply(npc, player, dialogue.noRoom, now);
-  }
-
-  refreshInventoryUi();
-  autosaveCurrentCharacter();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.bought,
-    now,
-    false,
-    {
-      quantity,
-      itemName: getLocalizedItemName(offer.itemId, quantity),
-      price: totalPrice,
-    },
-    getNpcShopMenuSuggestions(npcData, "buy", offer.category),
-  );
-};
-
-const sellItemToNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
-  if (!Number.isInteger(offer?.sellPrice) || offer.sellPrice <= 0) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now);
-  }
-  const itemRemovalPlan = createPlayerBackpackItemRemovalPlan(offer.itemId, quantity);
-  if (!itemRemovalPlan.success || !commitPlayerBackpackItemRemovalPlan(itemRemovalPlan)) {
-    return queueNpcReply(npc, player, dialogue.missingItem, now);
-  }
-
-  const totalPrice = offer.sellPrice * quantity;
-  const grantResult = grantRewardItemsToPlayer([{ itemId: "goldCoin", quantity: totalPrice }]);
-  if (!grantResult.success) {
-    rollbackPlayerBackpackItemRemovalPlan(itemRemovalPlan);
-    return queueNpcReply(npc, player, dialogue.noRoom, now);
-  }
-
-  refreshInventoryUi();
-  autosaveCurrentCharacter();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.sold,
-    now,
-    false,
-    {
-      quantity,
-      itemName: getLocalizedItemName(offer.itemId, quantity),
-      price: totalPrice,
-    },
-    getNpcShopMenuSuggestions(npcData, "sell", offer.category),
-  );
-};
-
-const setNpcItemTradePendingAction = (npc, player, dialogue, offer, quantity, tradeType, now) => {
-  const state = npcConversationStatesByUid.get(npc?.uid);
-  const unitPrice = tradeType === "buyItem" ? offer?.buyPrice : offer?.sellPrice;
-  if (!state || !Number.isInteger(unitPrice) || unitPrice <= 0) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now);
-  }
-
-  const totalPrice = unitPrice * quantity;
-  state.pendingAction = {
-    type: tradeType,
-    itemId: offer.itemId,
-    quantity,
-  };
-  state.activeMenu = tradeType === "sellItem" ? "sell" : "buy";
-  state.activeShopCategory = offer.category ?? null;
-  const confirmationText = tradeType === "buyItem" ? dialogue.confirmBuy : dialogue.confirmSell;
-  return queueNpcReply(
-    npc,
-    player,
-    confirmationText,
-    now,
-    false,
-    {
-      quantity,
-      itemName: getLocalizedItemName(offer.itemId, quantity),
-      price: totalPrice,
-    },
-    dialogue.confirmationSuggestions,
-  );
-};
-
-const handleNpcItemShopSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
-  const wantsTrade = hasNpcSpeechKeyword(speechWords, ["trade", "shop", "offer", "offers", "offres", "magasin"]);
-  const wantsBuy = hasNpcSpeechKeyword(speechWords, ["buy", "purchase", "achat", "acheter", "achete"]);
-  const wantsSell = hasNpcSpeechKeyword(speechWords, ["sell", "sale", "vente", "vendre", "vends"]);
-  const offer = findNpcShopOffer(npcData, speechWords);
-  const category = findNpcShopCategory(npcData, speechWords);
-  const state = npcConversationStatesByUid.get(npc.uid);
-  const requestedTradeType = wantsSell
-    ? "sell"
-    : wantsBuy
-      ? "buy"
-      : state.activeMenu === "buy" || state.activeMenu === "sell"
-        ? state.activeMenu
-        : null;
-
-  if (!offer && category && requestedTradeType) {
-    state.activeMenu = requestedTradeType;
-    state.activeShopCategory = category.categoryId;
-    const categoryMenuText = requestedTradeType === "sell" ? dialogue.sellCategoryMenu : dialogue.buyCategoryMenu;
-    return queueNpcReply(
-      npc,
-      player,
-      categoryMenuText,
-      now,
-      false,
-      { categoryName: getLocalizedNpcShopCategoryName(category).toLocaleLowerCase() },
-      getNpcShopMenuSuggestions(npcData, requestedTradeType, category.categoryId),
-    );
-  }
-  if (wantsBuy && !offer) {
-    state.activeMenu = "buy";
-    state.activeShopCategory = null;
-    return queueNpcReply(npc, player, dialogue.buyMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "buy"));
-  }
-  if (wantsSell && !offer) {
-    state.activeMenu = "sell";
-    state.activeShopCategory = null;
-    return queueNpcReply(npc, player, dialogue.sellMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "sell"));
-  }
-  if (wantsTrade && !wantsBuy && !wantsSell && !offer) {
-    state.activeMenu = null;
-    state.activeShopCategory = null;
-    return queueNpcReply(npc, player, dialogue.trade, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (!offer) {
-    return wantsBuy || wantsSell ? queueNpcReply(npc, player, dialogue.unavailable, now) : false;
-  }
-  const quantity = getNpcTradeQuantity(text);
-  if (wantsSell || (!wantsBuy && state.activeMenu === "sell")) {
-    return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "sellItem", now);
-  }
-  return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "buyItem", now);
-};
-
-const findNpcTeacherSpell = (npcData, text) => {
-  const speechWords = getNpcSpeechWords(text);
-  for (const spellId of npcData?.service?.spellIds ?? []) {
-    const spellData = spellsDatabase[spellId];
-    const aliases = [spellData?.name, spellData?.nameFr, ...(spellData?.learningKeywords ?? [])].filter(Boolean);
-    if (aliases.some((alias) => hasNpcSpeechKeyword(speechWords, [alias]))) {
-      return spellData;
-    }
-  }
-  return null;
-};
-
-const learnPlayerSpell = (spellId) => {
-  if (!(spellId in spellsDatabase) || isPlayerSpellLearned(spellId)) {
-    return false;
-  }
-  playerState.spellbook.learnedSpellIds.push(spellId);
-  const emptyHotkeyIndex = playerState.spellbook.hotkeySpellIds.indexOf(null);
-  if (emptyHotkeyIndex !== -1) {
-    playerState.spellbook.hotkeySpellIds[emptyHotkeyIndex] = spellId;
-  }
-  autosaveCurrentCharacter();
-  renderSpellWindow();
-  return true;
-};
-
-const learnSpellFromNpc = (npc, player, npcData, dialogue, spellData, now) => {
-  if (!spellData || isPlayerSpellLearned(spellData.spellId)) {
-    return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
-  }
-  if (getPlayerGoldAmount() < spellData.learnPrice) {
-    return queueNpcReply(npc, player, dialogue.notEnoughGold, now, false, { price: spellData.learnPrice });
-  }
-  if (!spendPlayerGold(spellData.learnPrice) || !learnPlayerSpell(spellData.spellId)) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now);
-  }
-
-  refreshInventoryUi();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.learned,
-    now,
-    false,
-    {
-      spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
-      incantation: spellData.incantation,
-    },
-    getNpcSpellMenuSuggestions(npcData),
-  );
-};
-
-const handleNpcSpellTeacherSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
-  const asksAboutSpells = hasNpcSpeechKeyword(speechWords, ["spell", "spells", "sort", "sorts", "magic", "magie"]);
-  const spellData = findNpcTeacherSpell(npcData, text);
-  if (!spellData) {
-    if (!asksAboutSpells) {
-      return false;
-    }
-    const state = npcConversationStatesByUid.get(npc.uid);
-    state.activeMenu = "spells";
-    return queueNpcReply(npc, player, dialogue.spells, now, false, {}, getNpcSpellMenuSuggestions(npcData));
-  }
-  if (isPlayerSpellLearned(spellData.spellId)) {
-    return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
-  }
-
-  const state = npcConversationStatesByUid.get(npc.uid);
-  state.activeMenu = "spells";
-  state.pendingAction = {
-    type: "learnSpell",
-    spellId: spellData.spellId,
-  };
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.confirmLearn,
-    now,
-    false,
-    {
-      spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
-      price: spellData.learnPrice,
-    },
-    dialogue.confirmationSuggestions,
-  );
-};
-
-const NPC_BANK_CURRENCY_ALIASES = {
-  goldCoin: ["gold", "or"],
-  azureCoin: ["platinum", "platine", "azure", "azur"],
-  crystalCoin: ["crystal", "cristal"],
-};
-
-const getNpcBankAmount = (text, allAmount) => {
-  const speechWords = getNpcSpeechWords(text);
-  if (hasNpcSpeechKeyword(speechWords, ["all", "tout", "tous"])) {
-    return allAmount;
-  }
-  const amountMatch = typeof text === "string" ? text.match(/\b(\d+)\b/) : null;
-  const amount = amountMatch ? Number(amountMatch[1]) : null;
-  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
-};
-
-const findNpcBankCurrencyItemId = (text) => {
-  const speechWords = getNpcSpeechWords(text);
-  for (const [itemId, aliases] of Object.entries(NPC_BANK_CURRENCY_ALIASES)) {
-    if (hasNpcSpeechKeyword(speechWords, aliases)) {
-      return itemId;
-    }
-  }
-  return null;
-};
-
-const findNpcBankExchangeRecipe = (npcData, text) => {
-  if (typeof text !== "string") {
-    return null;
-  }
-  const normalizedText = text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase()
-    .trim();
-  const exchangeParts = normalizedText.split(/\s+(?:to|into|en|vers|contre)\s+/);
-  if (exchangeParts.length !== 2) {
-    return null;
-  }
-  const sourceItemId = findNpcBankCurrencyItemId(exchangeParts[0]);
-  const outputItemId = findNpcBankCurrencyItemId(exchangeParts[1]);
-  return (
-    npcData.service?.exchangeRecipes?.find(
-      (recipe) => recipe.sourceItemId === sourceItemId && recipe.outputItemId === outputItemId,
-    ) ?? null
-  );
-};
-
-const setNpcBankAmountPendingAction = (npc, player, dialogue, type, amount, now) => {
-  const state = npcConversationStatesByUid.get(npc?.uid);
-  if (!state || !Number.isSafeInteger(amount) || amount <= 0) {
-    return queueNpcReply(npc, player, dialogue.invalidAmount, now, false, {}, dialogue.greetingSuggestions);
-  }
-  state.pendingAction = { type, amount };
-  state.activeMenu = type === "bankDeposit" ? "bankDeposit" : "bankWithdraw";
-  const confirmationText = type === "bankDeposit" ? dialogue.confirmDeposit : dialogue.confirmWithdraw;
-  return queueNpcReply(
-    npc,
-    player,
-    confirmationText,
-    now,
-    false,
-    { amount },
-    dialogue.confirmationSuggestions,
-  );
-};
-
-const setNpcBankExchangePendingAction = (npc, player, dialogue, recipe, now) => {
-  const state = npcConversationStatesByUid.get(npc?.uid);
-  if (!state || !recipe) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now);
-  }
-  state.pendingAction = { type: "bankExchange", ...recipe };
-  state.activeMenu = "bankExchange";
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.confirmExchange,
-    now,
-    false,
-    {
-      sourceQuantity: recipe.sourceQuantity,
-      sourceName: getLocalizedItemName(recipe.sourceItemId, recipe.sourceQuantity),
-      outputQuantity: recipe.outputQuantity,
-      outputName: getLocalizedItemName(recipe.outputItemId, recipe.outputQuantity),
-    },
-    dialogue.confirmationSuggestions,
-  );
-};
-
-const depositPlayerGoldInBank = (npc, player, dialogue, amount, now) => {
-  const bankBalance = getPlayerBankGoldAmount();
-  if (
-    !Number.isSafeInteger(amount) ||
-    amount <= 0 ||
-    amount > getPlayerGoldAmount() ||
-    bankBalance > Number.MAX_SAFE_INTEGER - amount
-  ) {
-    return queueNpcReply(npc, player, dialogue.notEnoughCash, now, false, {}, dialogue.greetingSuggestions);
-  }
-  const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() - amount);
-  if (!currencyPlan.success || !commitPlayerCurrencyValuePlan(currencyPlan)) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
-  }
-  playerState.bank.goldBalance += amount;
-  refreshInventoryUi();
-  autosaveCurrentCharacter();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.deposited,
-    now,
-    false,
-    { amount, bankBalance: getPlayerBankGoldAmount() },
-    dialogue.greetingSuggestions,
-  );
-};
-
-const withdrawPlayerGoldFromBank = (npc, player, dialogue, amount, now) => {
-  if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getPlayerBankGoldAmount()) {
-    return queueNpcReply(npc, player, dialogue.notEnoughBankGold, now, false, {}, dialogue.greetingSuggestions);
-  }
-  const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() + amount);
-  if (!currencyPlan.success) {
-    return queueNpcReply(npc, player, dialogue.noRoom, now, false, {}, dialogue.greetingSuggestions);
-  }
-  const weightDifference = getPlayerCurrencyValuePlanWeightDifference(currencyPlan);
-  if (!Number.isFinite(weightDifference) || weightDifference > getPlayerRemainingCapacity()) {
-    return queueNpcReply(npc, player, dialogue.notEnoughCapacity, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (!commitPlayerCurrencyValuePlan(currencyPlan)) {
-    return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
-  }
-  playerState.bank.goldBalance -= amount;
-  refreshInventoryUi();
-  autosaveCurrentCharacter();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.withdrawn,
-    now,
-    false,
-    { amount, bankBalance: getPlayerBankGoldAmount() },
-    dialogue.greetingSuggestions,
-  );
-};
-
-const exchangePlayerCurrencyAtBank = (npc, player, dialogue, recipe, now) => {
-  const removalPlan = createPlayerBackpackItemRemovalPlan(recipe?.sourceItemId, recipe?.sourceQuantity);
-  if (!removalPlan.success || !commitPlayerBackpackItemRemovalPlan(removalPlan)) {
-    return queueNpcReply(npc, player, dialogue.missingCoins, now, false, {}, dialogue.exchangeSuggestions);
-  }
-  const grantResult = grantRewardItemsToPlayer([
-    { itemId: recipe.outputItemId, quantity: recipe.outputQuantity },
-  ]);
-  if (!grantResult.success) {
-    rollbackPlayerBackpackItemRemovalPlan(removalPlan);
-    refreshInventoryUi();
-    const failureText =
-      grantResult.reason === INVENTORY_ACTION_REASON.capacityExceeded
-        ? dialogue.notEnoughCapacity
-        : dialogue.noRoom;
-    return queueNpcReply(npc, player, failureText, now, false, {}, dialogue.exchangeSuggestions);
-  }
-  refreshInventoryUi();
-  autosaveCurrentCharacter();
-  return queueNpcReply(
-    npc,
-    player,
-    dialogue.exchanged,
-    now,
-    false,
-    {
-      outputQuantity: recipe.outputQuantity,
-      outputName: getLocalizedItemName(recipe.outputItemId, recipe.outputQuantity),
-    },
-    dialogue.exchangeSuggestions,
-  );
-};
-
-const handleNpcBankerSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
-  const state = npcConversationStatesByUid.get(npc.uid);
-  const wantsBalance = hasNpcSpeechKeyword(speechWords, ["balance", "solde"]);
-  const wantsDeposit = hasNpcSpeechKeyword(speechWords, ["deposit", "depot", "deposer", "depose"]);
-  const wantsWithdraw = hasNpcSpeechKeyword(speechWords, ["withdraw", "withdrawal", "retrait", "retirer", "retire"]);
-  const wantsExchange = hasNpcSpeechKeyword(speechWords, ["exchange", "change", "echange", "echanger"]);
-
-  if (wantsBalance) {
-    state.activeMenu = null;
-    return queueNpcReply(npc, player, dialogue.balance, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (wantsDeposit || state.activeMenu === "bankDeposit") {
-    const amount = getNpcBankAmount(text, getPlayerGoldAmount());
-    if (amount === null) {
-      state.activeMenu = "bankDeposit";
-      return queueNpcReply(npc, player, dialogue.depositPrompt, now, false, {}, dialogue.depositSuggestions);
-    }
-    return setNpcBankAmountPendingAction(npc, player, dialogue, "bankDeposit", amount, now);
-  }
-  if (wantsWithdraw || state.activeMenu === "bankWithdraw") {
-    const amount = getNpcBankAmount(text, getPlayerBankGoldAmount());
-    if (amount === null) {
-      state.activeMenu = "bankWithdraw";
-      return queueNpcReply(npc, player, dialogue.withdrawPrompt, now, false, {}, dialogue.withdrawSuggestions);
-    }
-    return setNpcBankAmountPendingAction(npc, player, dialogue, "bankWithdraw", amount, now);
-  }
-
-  const exchangeRecipe = findNpcBankExchangeRecipe(npcData, text);
-  if (exchangeRecipe) {
-    return setNpcBankExchangePendingAction(npc, player, dialogue, exchangeRecipe, now);
-  }
-  if (wantsExchange || state.activeMenu === "bankExchange") {
-    state.activeMenu = "bankExchange";
-    return queueNpcReply(npc, player, dialogue.exchangePrompt, now, false, {}, dialogue.exchangeSuggestions);
-  }
-  return false;
-};
-
-const isNpcConfirmationSpeech = (speechWords) => {
-  return (
-    hasNpcSpeechKeyword(speechWords, [
-      "yes",
-      "yeah",
-      "yep",
-      "yup",
-      "sure",
-      "okay",
-      "ok",
-      "oui",
-      "ouais",
-      "parfait",
-      "absolument",
-      "certainement",
-      "daccord",
-      "certain",
-    ]) ||
-    (speechWords.has("bien") && speechWords.has("sur")) ||
-    (speechWords.has("bien") && speechWords.has("entendu")) ||
-    (speechWords.has("d") && speechWords.has("accord")) ||
-    (speechWords.has("of") && speechWords.has("course"))
-  );
-};
-
-const isNpcRejectionSpeech = (speechWords) => {
-  return hasNpcSpeechKeyword(speechWords, ["no", "nope", "nah", "cancel", "non", "annule", "annuler"]);
-};
-
-const executeNpcPendingAction = (npc, player, npcData, dialogue, state, now) => {
-  const pendingAction = state.pendingAction;
-  state.pendingAction = null;
-  if (!pendingAction) {
-    return false;
-  }
-
-  if (pendingAction.type === "buyItem" || pendingAction.type === "sellItem") {
-    const offerData = npcData.service?.offers?.[pendingAction.itemId];
-    const offer = offerData ? { itemId: pendingAction.itemId, ...offerData } : null;
-    if (!offer) {
-      return queueNpcReply(npc, player, dialogue.unavailable, now);
-    }
-    if (pendingAction.type === "buyItem") {
-      return buyItemFromNpc(npc, player, npcData, dialogue, offer, pendingAction.quantity, now);
-    }
-    return sellItemToNpc(npc, player, npcData, dialogue, offer, pendingAction.quantity, now);
-  }
-
-  if (pendingAction.type === "learnSpell") {
-    const spellData = spellsDatabase[pendingAction.spellId];
-    return learnSpellFromNpc(npc, player, npcData, dialogue, spellData, now);
-  }
-  if (pendingAction.type === "bankDeposit") {
-    return depositPlayerGoldInBank(npc, player, dialogue, pendingAction.amount, now);
-  }
-  if (pendingAction.type === "bankWithdraw") {
-    return withdrawPlayerGoldFromBank(npc, player, dialogue, pendingAction.amount, now);
-  }
-  if (pendingAction.type === "bankExchange") {
-    return exchangePlayerCurrencyAtBank(npc, player, dialogue, pendingAction, now);
-  }
-  return false;
-};
-
-const handleNpcPendingActionSpeech = (npc, player, npcData, dialogue, state, speechWords, now) => {
-  if (!state.pendingAction) {
-    return false;
-  }
-  if (isNpcConfirmationSpeech(speechWords)) {
-    return executeNpcPendingAction(npc, player, npcData, dialogue, state, now);
-  }
-  if (isNpcRejectionSpeech(speechWords)) {
-    const pendingAction = state.pendingAction;
-    state.pendingAction = null;
-    if (pendingAction.type === "buyItem" || pendingAction.type === "sellItem") {
-      const tradeType = pendingAction.type === "sellItem" ? "sell" : "buy";
-      const categoryId = npcData.service?.offers?.[pendingAction.itemId]?.category ?? null;
-      state.activeMenu = tradeType;
-      state.activeShopCategory = categoryId;
-      return queueNpcReply(
-        npc,
-        player,
-        dialogue.cancelled,
-        now,
-        false,
-        {},
-        getNpcShopMenuSuggestions(npcData, tradeType, categoryId),
-      );
-    }
-    if (pendingAction.type === "learnSpell") {
-      state.activeMenu = "spells";
-      return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, getNpcSpellMenuSuggestions(npcData));
-    }
-    if (pendingAction.type.startsWith("bank")) {
-      state.activeMenu = null;
-      return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
-    }
-    return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
-  }
-  return queueNpcReply(npc, player, dialogue.confirmRequired, now, false, {}, dialogue.confirmationSuggestions);
-};
-
-const handleNpcServiceSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
-  if (npcData.service?.type === "itemShop") {
-    return handleNpcItemShopSpeech(npc, player, npcData, dialogue, text, speechWords, now);
-  }
-  if (npcData.service?.type === "spellTeacher") {
-    return handleNpcSpellTeacherSpeech(npc, player, npcData, dialogue, text, speechWords, now);
-  }
-  if (npcData.service?.type === "banker") {
-    return handleNpcBankerSpeech(npc, player, npcData, dialogue, text, speechWords, now);
-  }
-  return false;
-};
-
+const isPlayerWithinNpcTalkRange = (player, npc) =>
+  npcConversationSystem.isPlayerWithinTalkRange(player, npc);
+const sayGreetingToNpc = (npc, player, now = Date.now()) =>
+  npcConversationSystem.sayGreeting(npc, player, now);
+const handleNpcGreetingFromPointerTarget = (target) =>
+  npcConversationSystem.handleGreetingFromPointerTarget(target);
+const getNpcReplySuggestions = (suggestions) => npcConversationSystem.getReplySuggestions(suggestions);
 const handleNpcPlayerSpeech = (text, player, now) => {
-  const speechWords = getNpcSpeechWords(text);
-  const isGreeting = hasNpcSpeechKeyword(speechWords, ["hi", "hello", "hey", "salut", "bonjour", "allo"]);
-  let npc = findNpcTalkingToPlayer(player);
-
-  if (!npc && isGreeting) {
-    npc = findNearestNpcInTalkRange(player);
-    if (npc) {
-      return startNpcConversation(npc, player, now);
-    }
-  }
-  if (!npc) {
-    return false;
-  }
-
-  const state = npcConversationStatesByUid.get(npc.uid);
-  const npcData = getNpcData(npc.npcId);
-  const dialogue = getNpcDialogueData(npcData);
-  if (!state || !npcData || !dialogue) {
-    return false;
-  }
-  state.lastInteractionAt = now;
-  updateNpcDirectionToPlayer(npc);
-
-  if (isGreeting) {
-    state.activeMenu = null;
-    state.activeShopCategory = null;
-    return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (hasNpcSpeechKeyword(speechWords, ["bye", "farewell", "ciao", "revoir"])) {
-    return queueNpcReply(npc, player, dialogue.farewell, now, true);
-  }
-  if (state.pendingAction) {
-    return handleNpcPendingActionSpeech(npc, player, npcData, dialogue, state, speechWords, now);
-  }
-  if (hasNpcSpeechKeyword(speechWords, ["back", "retour"])) {
-    if (
-      npcData.service?.type === "itemShop" &&
-      (state.activeMenu === "buy" || state.activeMenu === "sell") &&
-      state.activeShopCategory
-    ) {
-      const tradeType = state.activeMenu;
-      state.activeShopCategory = null;
-      const menuText = tradeType === "sell" ? dialogue.sellMenu : dialogue.buyMenu;
-      return queueNpcReply(npc, player, menuText, now, false, {}, getNpcShopMenuSuggestions(npcData, tradeType));
-    }
-    state.activeMenu = null;
-    state.activeShopCategory = null;
-    return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (hasNpcSpeechKeyword(speechWords, ["name", "nom"])) {
-    return queueNpcReply(npc, player, dialogue.name, now);
-  }
-  if (hasNpcSpeechKeyword(speechWords, ["job", "work", "travail", "metier"])) {
-    return queueNpcReply(npc, player, dialogue.job, now);
-  }
-  if (hasNpcSpeechKeyword(speechWords, ["help", "aide"])) {
-    return queueNpcReply(npc, player, dialogue.help, now, false, {}, dialogue.greetingSuggestions);
-  }
-  if (handleNpcServiceSpeech(npc, player, npcData, dialogue, text, speechWords, now)) {
-    return true;
-  }
-  return queueNpcReply(npc, player, dialogue.unknown, now, false, {}, dialogue.greetingSuggestions);
+  const action = createSpeakToNpcAction(text, player?.uid, now);
+  const result = gameActionDispatcher.dispatch(action, {
+    executeSpeakToNpc(payload) {
+      const speakingPlayer = getPlayerEntityByUid(payload.playerUid);
+      return npcConversationSystem.handlePlayerSpeech(payload.text, speakingPlayer, payload.requestedAt);
+    },
+  });
+  return result?.success === true;
 };
-
-const updateNpcConversations = (now) => {
-  for (const [npcUid, state] of npcConversationStatesByUid.entries()) {
-    if (state.activePlayerUid === null) {
-      continue;
-    }
-    const npc = npcsByUid.get(npcUid);
-    const player = getPlayerEntityByUid(state.activePlayerUid);
-    if (!npc) {
-      state.activePlayerUid = null;
-      state.queuedReplies.length = 0;
-      state.pendingAction = null;
-      state.nextReplyAt = 0;
-      state.lastInteractionAt = 0;
-      continue;
-    }
-    if (!isPlayerWithinNpcTalkRange(player, npc)) {
-      const farewellReply = state.queuedReplies.find((reply) => reply.endConversation);
-      if (farewellReply) {
-        showNpcSpeech(npc, farewellReply.text, farewellReply.suggestions);
-        releaseNpcConversation(npc, state, now, "farewell");
-      } else {
-        releaseNpcConversation(npc, state, now, "outOfRange");
-      }
-      continue;
-    }
-    if (
-      state.queuedReplies.length === 0 &&
-      now - state.lastInteractionAt >= NPC_DIALOGUE_CONFIG.conversationTimeoutMs
-    ) {
-      releaseNpcConversation(npc, state, now, "timeout");
-      continue;
-    }
-    if (state.queuedReplies.length === 0 || now < state.nextReplyAt) {
-      continue;
-    }
-
-    const reply = state.queuedReplies.shift();
-    showNpcSpeech(npc, reply.text, reply.suggestions);
-    state.nextReplyAt = state.queuedReplies.length > 0 ? now + NPC_DIALOGUE_CONFIG.lineIntervalMs : 0;
-    if (reply.endConversation) {
-      releaseNpcConversation(npc, state, now, "farewell");
-    }
-  }
-};
+const updateNpcConversations = (now) => npcConversationSystem.updateConversations(now);
 
 //#endregion  -----  NPCS  -----
 
@@ -9254,76 +6600,10 @@ const addLootLogMessage = (lootItems, sourceName = null) => {
 };
 
 /* ---------- MONSTRES - COMBAT POSITION MOUVEMENT ---------- */
-const isEntityInsideMonsterRange = (monster, entity, rangeX, rangeY) => {
-  if (
-    !monster ||
-    !entity ||
-    monster.z !== entity.z ||
-    !Number.isFinite(monster.x) ||
-    !Number.isFinite(monster.y) ||
-    !Number.isFinite(entity.x) ||
-    !Number.isFinite(entity.y) ||
-    !Number.isFinite(rangeX) ||
-    !Number.isFinite(rangeY)
-  ) {
-    return false;
-  }
-
-  const distanceX = Math.abs(entity.x - monster.x) / TILE_SIZE;
-  const distanceY = Math.abs(entity.y - monster.y) / TILE_SIZE;
-
-  return distanceX <= rangeX && distanceY <= rangeY;
-};
-
-const isPlayerInsideMonsterRange = (monster, rangeX, rangeY) => {
-  return isEntityInsideMonsterRange(monster, playerState, rangeX, rangeY);
-};
-
-const isPlayerInsideMonsterWakeRange = (monster) => {
-  return isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.wakeRangeX, MONSTER_AI_CONFIG.wakeRangeY);
-};
-
-const isPlayerInsideMonsterSleepRange = (monster) => {
-  return isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.sleepRangeX, MONSTER_AI_CONFIG.sleepRangeY);
-};
-
-const deactivateMonsterAi = (monster) => {
-  if (!monster) {
-    return;
-  }
-
-  monster.isAwake = false;
-  monster.path = [];
-  monster.badPathStartedAt = null;
-  monster.state = MONSTER_AI_STATE.idle;
-  monster.nextWanderAt = 0;
-  monster.wanderStepsRemaining = 0;
-  monster.nextBlockedChaseMoveAt = 0;
-  monster.nextDynamicPathRefreshTime = 0;
-};
-
-const updateMonsterActivityState = (monster) => {
-  if (!monster || monster.z !== playerState.z) {
-    return false;
-  }
-
-  if (!monster.isAwake) {
-    if (!isPlayerInsideMonsterWakeRange(monster)) {
-      return false;
-    }
-
-    monster.isAwake = true;
-    return true;
-  }
-
-  if (monster.targetUid === null && !isPlayerInsideMonsterSleepRange(monster)) {
-    deactivateMonsterAi(monster);
-    return false;
-  }
-
-  return true;
-};
-
+const updateMonsterActivityState = (monster) => monsterAiSystem.updateActivityState(monster);
+const getMonsterTarget = (monster) => monsterAiSystem.getTarget(monster);
+const setMonsterTarget = (monster, target) => monsterAiSystem.setTarget(monster, target);
+const clearMonsterTarget = (monster) => monsterAiSystem.clearTarget(monster);
 const updateMonsterCombat = (now, activeMonsters) => {
   activeMonsters.forEach((monster) => {
     if (
@@ -9376,158 +6656,6 @@ const updateMonsterCombat = (now, activeMonsters) => {
   });
 };
 
-const canMonsterSeePlayer = (monster) => {
-  if (!isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.visionX, MONSTER_AI_CONFIG.visionY)) {
-    return false;
-  }
-
-  if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return false;
-  }
-
-  const worldMap = pixiWorldRenderState.worldMapsByZ.get(monster.z);
-  if (!worldMap) {
-    return false;
-  }
-
-  return hasLineOfSightBetweenTiles(worldMap, getTilePosition(monster), getTilePosition(playerState));
-};
-
-const getMonsterPathToPlayerAdjacentTile = (monster) => {
-  if (!monster || monster.z !== playerState.z) {
-    return null;
-  }
-
-  if (isNearPlayer(monster, 1)) {
-    return [];
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const playerTile = getTilePosition(playerState);
-  const targetTiles = getPathTraversableAdjacentTiles(playerTile);
-
-  if (targetTiles.length === 0) {
-    return null;
-  }
-
-  const path = findPathToAnyTarget(monsterTile, targetTiles);
-
-  if (!Array.isArray(path) || path.length === 0) {
-    return null;
-  }
-
-  return path;
-};
-
-const getMonsterHearingPathToPlayer = (monster) => {
-  if (!isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.hearingScanRange, MONSTER_AI_CONFIG.hearingScanRange)) {
-    return null;
-  }
-
-  const path = getMonsterPathToPlayerAdjacentTile(monster);
-
-  const pathCost = getPathMovementCost(getTilePosition(monster), path);
-
-  if (path === null || pathCost > MONSTER_AI_CONFIG.maxHearingPathLength) {
-    return null;
-  }
-
-  return path;
-};
-
-const getMonsterTarget = (monster) => {
-  if (!monster || monster.targetUid === null) {
-    return null;
-  }
-
-  if (monster.targetUid === playerState.uid) {
-    return playerState;
-  }
-
-  return null;
-};
-
-const setMonsterTarget = (monster, target) => {
-  if (!monster || target?.uid == null) {
-    return false;
-  }
-
-  monster.targetUid = target.uid;
-  monster.path = [];
-  monster.badPathStartedAt = null;
-  monster.state = MONSTER_AI_STATE.chase;
-  monster.nextWanderAt = 0;
-  monster.wanderStepsRemaining = 0;
-  monster.nextBlockedChaseMoveAt = 0;
-  monster.nextDynamicPathRefreshTime = 0;
-  return true;
-};
-
-const clearMonsterTarget = (monster) => {
-  if (!monster) {
-    return;
-  }
-
-  monster.targetUid = null;
-  monster.path = [];
-  monster.badPathStartedAt = null;
-  monster.roamCenterX = monster.x;
-  monster.roamCenterY = monster.y;
-  monster.state = MONSTER_AI_STATE.wander;
-  monster.nextWanderAt = 0;
-  monster.wanderStepsRemaining = 0;
-  monster.nextBlockedChaseMoveAt = 0;
-  monster.nextDynamicPathRefreshTime = 0;
-};
-
-const isMonsterTargetValid = (monster, target) => {
-  if (!monster || !target || target.hp <= 0 || monster.z !== target.z) {
-    return false;
-  }
-
-  return isEntityInsideMonsterRange(monster, target, MONSTER_AI_CONFIG.deaggroX, MONSTER_AI_CONFIG.deaggroY);
-};
-
-const updateMonsterTargetState = (monster, now) => {
-  if (!monster || !Number.isFinite(now)) {
-    return false;
-  }
-
-  if (monster.targetUid !== null) {
-    const target = getMonsterTarget(monster);
-
-    if (!isMonsterTargetValid(monster, target)) {
-      clearMonsterTarget(monster);
-      return false;
-    }
-
-    return true;
-  }
-
-  if (now < monster.nextAggroCheckAt) {
-    return false;
-  }
-
-  monster.nextAggroCheckAt =
-    now + getRandomInt(MONSTER_AI_CONFIG.aggroCheckCooldownMinMs, MONSTER_AI_CONFIG.aggroCheckCooldownMaxMs);
-
-  if (canMonsterSeePlayer(monster)) {
-    return setMonsterTarget(monster, playerState);
-  }
-
-  const hearingPath = getMonsterHearingPathToPlayer(monster);
-  if (hearingPath === null) {
-    return false;
-  }
-
-  if (!setMonsterTarget(monster, playerState)) {
-    return false;
-  }
-
-  monster.path = hearingPath;
-  return true;
-};
-
 const updateMonsterPosition = () => {
   for (const [monsterUid, refs] of monsterElementsByUid.entries()) {
     const monster = monstersByUid.get(monsterUid);
@@ -9552,502 +6680,7 @@ const updateMonsterPosition = () => {
   }
 };
 
-const hasMonsterBadPathTimedOut = (monster, now) => {
-  if (!monster || monster.badPathStartedAt === null) {
-    return false;
-  }
-
-  return now - monster.badPathStartedAt >= MONSTER_AI_CONFIG.maxBadPathDurationMs;
-};
-
-const handleMonsterBadPath = (monster, now) => {
-  if (!monster || !Number.isFinite(now)) {
-    return false;
-  }
-
-  monster.path = [];
-
-  if (monster.badPathStartedAt === null) {
-    monster.badPathStartedAt = now;
-  }
-
-  if (hasMonsterBadPathTimedOut(monster, now)) {
-    clearMonsterTarget(monster);
-  }
-
-  return false;
-};
-
-const shouldRefreshMonsterChasePath = (monster, targetTiles, now, forceRefresh = false) => {
-  if (!monster || !Array.isArray(targetTiles) || targetTiles.length === 0 || !Number.isFinite(now)) {
-    return false;
-  }
-
-  if (forceRefresh) {
-    return true;
-  }
-
-  if (now >= monster.nextPathRefreshTime) {
-    return true;
-  }
-
-  if (!Array.isArray(monster.path) || monster.path.length === 0) {
-    return false;
-  }
-
-  const currentPathEnd = monster.path[monster.path.length - 1];
-  return getDistanceToClosestTile(currentPathEnd, targetTiles) > 2;
-};
-
-const updateMonsterChasePath = (monster, now, forceRefresh = false, avoidCreatures = false) => {
-  const target = getMonsterTarget(monster);
-  const monsterData = getMonsterData(monster?.monsterId);
-
-  if (!monster || !target || !monsterData || !Number.isFinite(now)) {
-    return false;
-  }
-
-  if (isNearPlayer(monster, 1)) {
-    monster.path = [];
-    monster.badPathStartedAt = null;
-    return true;
-  }
-
-  if (hasMonsterBadPathTimedOut(monster, now)) {
-    clearMonsterTarget(monster);
-    return false;
-  }
-
-  if (monster.badPathStartedAt !== null && now < monster.nextPathRefreshTime && !forceRefresh) {
-    return false;
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const targetTile = getTilePosition(target);
-  const targetTiles = getPathTraversableAdjacentTiles(targetTile);
-
-  if (targetTiles.length === 0) {
-    monster.nextPathRefreshTime = now + monsterData.pathRefreshCooldown;
-    return handleMonsterBadPath(monster, now);
-  }
-
-  if (!shouldRefreshMonsterChasePath(monster, targetTiles, now, forceRefresh)) {
-    return monster.path.length > 0;
-  }
-
-  monster.nextPathRefreshTime = now + monsterData.pathRefreshCooldown;
-
-  const newPath = findPathToAnyTarget(monsterTile, targetTiles, avoidCreatures);
-  const newPathCost = getPathMovementCost(monsterTile, newPath);
-
-  const hasValidPath =
-    Array.isArray(newPath) && newPath.length > 0 && newPathCost <= MONSTER_AI_CONFIG.maxChasePathLength;
-
-  if (!hasValidPath) {
-    if (avoidCreatures) {
-      return false;
-    }
-
-    return handleMonsterBadPath(monster, now);
-  }
-
-  monster.path = newPath;
-  monster.badPathStartedAt = null;
-  return true;
-};
-
-const setMonsterIdleState = (monster, now) => {
-  if (!monster || !Number.isFinite(now)) {
-    return;
-  }
-
-  monster.state = MONSTER_AI_STATE.idle;
-  monster.wanderStepsRemaining = 0;
-  monster.nextWanderAt = now + getRandomInt(MONSTER_AI_CONFIG.idleDurationMinMs, MONSTER_AI_CONFIG.idleDurationMaxMs);
-};
-
-const startMonsterWanderState = (monster) => {
-  if (!monster) {
-    return;
-  }
-
-  monster.state = MONSTER_AI_STATE.wander;
-  monster.wanderStepsRemaining = getRandomInt(MONSTER_AI_CONFIG.wanderStepsMin, MONSTER_AI_CONFIG.wanderStepsMax);
-};
-
-const isTileInsideMonsterRoamRange = (monster, tile) => {
-  if (!monster || !Number.isInteger(tile?.col) || !Number.isInteger(tile?.row)) {
-    return false;
-  }
-
-  const roamCenterCol = monster.roamCenterX / TILE_SIZE;
-  const roamCenterRow = monster.roamCenterY / TILE_SIZE;
-
-  return (
-    Math.abs(tile.col - roamCenterCol) <= MONSTER_AI_CONFIG.wanderRadiusTiles &&
-    Math.abs(tile.row - roamCenterRow) <= MONSTER_AI_CONFIG.wanderRadiusTiles
-  );
-};
-
-const getRandomMonsterWanderTile = (monster) => {
-  if (!monster) {
-    return null;
-  }
-
-  const monsterTile = getTilePosition(monster);
-
-  const possibleTiles = getNeighbors(monsterTile).filter((tile) => {
-    return isTileInsideMonsterRoamRange(monster, tile) && isWalkableTile(tile.row, tile.col, monsterTile);
-  });
-
-  if (possibleTiles.length === 0) {
-    return null;
-  }
-
-  const cardinalTiles = possibleTiles.filter((tile) => {
-    return getTileMovementCost(monsterTile, tile) === 1;
-  });
-  const preferredTiles = cardinalTiles.length > 0 ? cardinalTiles : possibleTiles;
-
-  return preferredTiles[getRandomInt(0, preferredTiles.length - 1)];
-};
-
-const getRandomMonsterCombatDanceTile = (monster) => {
-  if (!monster || monster.targetUid !== playerState.uid || monster.z !== playerState.z) {
-    return null;
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const playerTile = getTilePosition(playerState);
-
-  const possibleTiles = getNeighbors(monsterTile).filter((tile) => {
-    const distanceCol = Math.abs(tile.col - playerTile.col);
-    const distanceRow = Math.abs(tile.row - playerTile.row);
-    const isPlayerTile = distanceCol === 0 && distanceRow === 0;
-    const remainsAdjacent = distanceCol <= 1 && distanceRow <= 1;
-
-    return !isPlayerTile && remainsAdjacent && isWalkableTile(tile.row, tile.col, monsterTile);
-  });
-
-  if (possibleTiles.length === 0) {
-    return null;
-  }
-
-  const cardinalTiles = possibleTiles.filter((tile) => {
-    return getTileMovementCost(monsterTile, tile) === 1;
-  });
-  const preferredTiles = cardinalTiles.length > 0 ? cardinalTiles : possibleTiles;
-
-  return preferredTiles[getRandomInt(0, preferredTiles.length - 1)];
-};
-
-const moveMonsterToTile = (monster, tile, now, moveDuration) => {
-  if (!monster || !tile || !Number.isFinite(now) || !Number.isFinite(moveDuration)) {
-    return false;
-  }
-
-  const monsterData = getMonsterData(monster.monsterId);
-  if (!monsterData) {
-    return false;
-  }
-
-  const monsterTile = getTilePosition(monster);
-
-  if (!isWalkableTile(tile.row, tile.col, monsterTile)) {
-    return false;
-  }
-
-  const movementCost = getTileMovementCost(monsterTile, tile);
-  const animationMultiplier = getTileMovementAnimationMultiplier(monsterTile, tile);
-
-  if (movementCost === null || animationMultiplier === null) {
-    return false;
-  }
-
-  const finalMoveDuration = moveDuration * animationMultiplier;
-  const finalMoveCooldown = moveDuration * movementCost;
-  const { tileX, tileY } = getWorldPosition(tile);
-
-  if (!moveMonsterInTileIndex(monster, tileX, tileY)) {
-    return false;
-  }
-
-  updateMonsterDirection(monster, tile);
-
-  monster.walkFrame++;
-
-  if (monster.walkFrame >= monsterData.animationFrames) {
-    monster.walkFrame = 0;
-  }
-
-  updateMonsterSprite(monster);
-
-  monster.oldX = monster.x;
-  monster.oldY = monster.y;
-  monster.moveStartTime = now;
-  monster.moveDuration = finalMoveDuration;
-  monster.nextMoveTime = now + finalMoveCooldown;
-  monster.x = tileX;
-  monster.y = tileY;
-  syncMonsterRenderVisibility(monster);
-
-  return true;
-};
-
-const updateMonsterCombatDance = (monster, now) => {
-  if (
-    !monster ||
-    !Number.isFinite(now) ||
-    monster.state !== MONSTER_AI_STATE.combat ||
-    monster.targetUid !== playerState.uid
-  ) {
-    return false;
-  }
-
-  if (monster.nextCombatDanceAt === 0) {
-    monster.nextCombatDanceAt =
-      now + getRandomInt(MONSTER_AI_CONFIG.combatDanceCooldownMinMs, MONSTER_AI_CONFIG.combatDanceCooldownMaxMs);
-    return false;
-  }
-
-  if (now < monster.nextCombatDanceAt || now < monster.nextMoveTime) {
-    return false;
-  }
-
-  monster.nextCombatDanceAt =
-    now + getRandomInt(MONSTER_AI_CONFIG.combatDanceCooldownMinMs, MONSTER_AI_CONFIG.combatDanceCooldownMaxMs);
-
-  const danceTile = getRandomMonsterCombatDanceTile(monster);
-  const monsterData = getMonsterData(monster.monsterId);
-
-  if (!danceTile || !monsterData) {
-    return false;
-  }
-
-  return moveMonsterToTile(monster, danceTile, now, monsterData.moveCooldown);
-};
-
-const getMonsterChaseRepositionTile = (monster) => {
-  const target = getMonsterTarget(monster);
-
-  if (!monster || !target || monster.z !== target.z) {
-    return null;
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const targetTile = getTilePosition(target);
-
-  const possibleTiles = getNeighbors(monsterTile).filter((tile) => {
-    return isWalkableTile(tile.row, tile.col, monsterTile);
-  });
-
-  if (possibleTiles.length === 0) {
-    return null;
-  }
-
-  const cardinalTiles = possibleTiles.filter((tile) => {
-    return getTileMovementCost(monsterTile, tile) === 1;
-  });
-  const preferredTiles = cardinalTiles.length > 0 ? cardinalTiles : possibleTiles;
-
-  let bestDistance = Number.POSITIVE_INFINITY;
-  const closestTiles = [];
-
-  for (const tile of preferredTiles) {
-    const distance = getManhattanDistance(tile, targetTile);
-
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      closestTiles.length = 0;
-      closestTiles.push(tile);
-    } else if (distance === bestDistance) {
-      closestTiles.push(tile);
-    }
-  }
-
-  return closestTiles[getRandomInt(0, closestTiles.length - 1)] ?? null;
-};
-
-const updateMonsterBlockedChaseMovement = (monster, now) => {
-  if (!monster || !Number.isFinite(now) || monster.state !== MONSTER_AI_STATE.chase || monster.targetUid === null) {
-    return false;
-  }
-
-  if (monster.nextBlockedChaseMoveAt === 0) {
-    monster.nextBlockedChaseMoveAt =
-      now +
-      getRandomInt(MONSTER_AI_CONFIG.blockedChaseMoveCooldownMinMs, MONSTER_AI_CONFIG.blockedChaseMoveCooldownMaxMs);
-    return false;
-  }
-
-  if (now < monster.nextBlockedChaseMoveAt || now < monster.nextMoveTime) {
-    return false;
-  }
-
-  monster.nextBlockedChaseMoveAt =
-    now +
-    getRandomInt(MONSTER_AI_CONFIG.blockedChaseMoveCooldownMinMs, MONSTER_AI_CONFIG.blockedChaseMoveCooldownMaxMs);
-
-  const repositionTile = getMonsterChaseRepositionTile(monster);
-  const monsterData = getMonsterData(monster.monsterId);
-
-  if (!repositionTile || !monsterData) {
-    return false;
-  }
-
-  return moveMonsterToTile(monster, repositionTile, now, monsterData.moveCooldown);
-};
-
-const updateMonsterWanderMovement = (monster, now) => {
-  if (!monster || !Number.isFinite(now)) {
-    return;
-  }
-
-  if (monster.state === MONSTER_AI_STATE.idle) {
-    if (monster.nextWanderAt === 0) {
-      setMonsterIdleState(monster, now);
-      return;
-    }
-
-    if (now < monster.nextWanderAt) {
-      return;
-    }
-
-    startMonsterWanderState(monster);
-  }
-
-  if (monster.state !== MONSTER_AI_STATE.wander) {
-    return;
-  }
-
-  if (monster.wanderStepsRemaining <= 0) {
-    startMonsterWanderState(monster);
-  }
-
-  if (now < monster.nextMoveTime) {
-    return;
-  }
-
-  const wanderTile = getRandomMonsterWanderTile(monster);
-
-  if (!wanderTile) {
-    setMonsterIdleState(monster, now);
-    return;
-  }
-
-  const monsterData = getMonsterData(monster.monsterId);
-  if (!monsterData) {
-    return;
-  }
-
-  const monsterTile = getTilePosition(monster);
-  const movementCost = getTileMovementCost(monsterTile, wanderTile);
-
-  if (movementCost === null) {
-    return;
-  }
-
-  const wanderCooldown =
-    getRandomInt(MONSTER_AI_CONFIG.wanderStepCooldownMinMs, MONSTER_AI_CONFIG.wanderStepCooldownMaxMs) * movementCost;
-
-  if (!moveMonsterToTile(monster, wanderTile, now, monsterData.moveCooldown)) {
-    return;
-  }
-
-  monster.wanderStepsRemaining--;
-
-  monster.nextMoveTime = Math.max(monster.nextMoveTime, now + wanderCooldown);
-
-  if (monster.wanderStepsRemaining <= 0) {
-    setMonsterIdleState(monster, now);
-  }
-};
-
-const updateMonsterMovement = (now, activeMonsters) => {
-  activeMonsters.forEach((monster) => {
-    if (!updateMonsterActivityState(monster)) {
-      return;
-    }
-
-    if (!updateMonsterTargetState(monster, now)) {
-      updateMonsterWanderMovement(monster, now);
-      return;
-    }
-    if (isNearPlayer(monster, 1)) {
-      monster.state = MONSTER_AI_STATE.combat;
-      monster.path = [];
-      monster.badPathStartedAt = null;
-      updateMonsterCombatDance(monster, now);
-      return;
-    }
-
-    monster.state = MONSTER_AI_STATE.chase;
-
-    if (monster.nextMoveTime > now) {
-      return;
-    }
-
-    const monsterData = getMonsterData(monster.monsterId);
-    if (!monsterData) {
-      return;
-    }
-
-    if (!updateMonsterChasePath(monster, now)) {
-      updateMonsterBlockedChaseMovement(monster, now);
-      return;
-    }
-
-    let nextStep = monster.path[0];
-
-    if (!nextStep) {
-      updateMonsterBlockedChaseMovement(monster, now);
-      return;
-    }
-
-    const monsterTile = getTilePosition(monster);
-
-    if (!isTilePathTraversable(nextStep.row, nextStep.col, monsterTile)) {
-      if (!updateMonsterChasePath(monster, now, true)) {
-        updateMonsterBlockedChaseMovement(monster, now);
-        return;
-      }
-
-      nextStep = monster.path[0];
-
-      if (!nextStep || !isTilePathTraversable(nextStep.row, nextStep.col, monsterTile)) {
-        updateMonsterBlockedChaseMovement(monster, now);
-        return;
-      }
-    }
-
-    if (isTileOccupiedByCreature(nextStep.row, nextStep.col)) {
-      let foundDynamicPath = false;
-
-      if (now >= monster.nextDynamicPathRefreshTime) {
-        monster.nextDynamicPathRefreshTime = now + MONSTER_AI_CONFIG.dynamicPathRefreshCooldownMs;
-        foundDynamicPath = updateMonsterChasePath(monster, now, true, true);
-      }
-
-      if (!foundDynamicPath) {
-        updateMonsterBlockedChaseMovement(monster, now);
-        return;
-      }
-
-      nextStep = monster.path[0];
-
-      if (!nextStep || !isWalkableTile(nextStep.row, nextStep.col, monsterTile)) {
-        updateMonsterBlockedChaseMovement(monster, now);
-        return;
-      }
-    }
-
-    if (moveMonsterToTile(monster, nextStep, now, monsterData.moveCooldown)) {
-      monster.nextBlockedChaseMoveAt = 0;
-      monster.nextDynamicPathRefreshTime = 0;
-      monster.path.shift();
-    }
-  });
-};
+const updateMonsterMovement = (now, activeMonsters) => monsterAiSystem.updateMovement(now, activeMonsters);
 //#endregion  -----  MONSTRES  -----
 
 /* ==================================================== */
@@ -10344,156 +6977,17 @@ const calculateDamageTakenByPlayer = (attackerCombatData, now) => {
 
 /* ---------- COMBAT - SORTS ---------- */
 
-const normalizeSpellIncantation = (text) => {
-  if (typeof text !== "string") {
-    return "";
-  }
-  return text.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-};
-
-const spellsByIncantation = new Map(
-  Object.values(spellsDatabase).map((spellData) => [normalizeSpellIncantation(spellData.incantation), spellData]),
-);
-
-const getSpellFromChatText = (text) => {
-  const normalizedIncantation = normalizeSpellIncantation(text);
-  return spellsByIncantation.get(normalizedIncantation) ?? null;
-};
-
-const getSpellPowerAmount = (spellData) => {
-  const power = spellData?.power;
-  const magicLevel = playerState.skills.magic.level;
-  if (
-    !Number.isFinite(power?.min) ||
-    !Number.isFinite(power?.max) ||
-    !Number.isFinite(power?.magicLevelMultiplier) ||
-    !Number.isFinite(power?.levelMultiplier)
-  ) {
-    return 0;
-  }
-
-  const minimumPower = power.min + magicLevel * power.magicLevelMultiplier + playerState.level * power.levelMultiplier;
-  const maximumPower = power.max + magicLevel * power.magicLevelMultiplier + playerState.level * power.levelMultiplier;
-  return Math.max(1, Math.floor(getRandomFloat(minimumPower, maximumPower)));
-};
-
-const castSelfHealingSpell = (spellData) => {
-  if (playerState.hp >= playerState.maxHp) {
-    showGameStatusMessage(getGameUiText("fullHealth"));
-    return false;
-  }
-
-  const restoredAmount = Math.min(getSpellPowerAmount(spellData), playerState.maxHp - playerState.hp);
-  playerState.hp += restoredAmount;
-  showFloatingTextAbovePlayer(restoredAmount, spellData.textType);
-  return true;
-};
-
-const castPlayerLightSpell = (spellData) => {
-  if (!Number.isFinite(spellData?.durationMs) || !Number.isFinite(spellData?.lightRadius)) {
-    return false;
-  }
-  playerState.spellEffects.light.radius = spellData.lightRadius;
-  playerState.spellEffects.light.expiresAt = Date.now() + spellData.durationMs;
-  return true;
-};
-
-const applyMagicExperienceFromSpell = () => {
-  const experienceMultiplier = getSkillExperienceGainMultiplier("magic");
-  const experienceAmount = normalizeSkillExperienceGain(SKILL_EXPERIENCE_GAIN_PER_TRY * experienceMultiplier);
-  applyExperienceToPlayerSkill("magic", experienceAmount);
-};
-
-const castPlayerSpell = (spellData) => {
-  if (!spellData) {
-    return false;
-  }
-  if (Array.isArray(spellData.allowedClassIds) && !spellData.allowedClassIds.includes(playerState.classId)) {
-    showGameStatusMessage(getGameUiText("spellWrongClass"));
-    return false;
-  }
-  if (playerState.skills.magic.level < spellData.requiredMagicLevel) {
-    showGameStatusMessage(getGameUiText("spellMagicLevelRequired")(spellData.requiredMagicLevel));
-    return false;
-  }
-  if (!isUseCooldownReady(spellData.cooldownGroup)) {
-    showGameStatusMessage(getGameUiText("exhausted"));
-    return false;
-  }
-  if (playerState.mana < spellData.manaCost) {
-    showGameStatusMessage(getGameUiText("spellNotEnoughMana"));
-    return false;
-  }
-
-  let didCastSpell = false;
-  if (spellData.action === "healSelf") {
-    didCastSpell = castSelfHealingSpell(spellData);
-  } else if (spellData.action === "lightSelf") {
-    didCastSpell = castPlayerLightSpell(spellData);
-  }
-  if (!didCastSpell) {
-    return false;
-  }
-
-  playerState.mana -= spellData.manaCost;
-  startUseCooldown(spellData.cooldownGroup);
-  applyMagicExperienceFromSpell();
-  refreshPlayerVitalsUi();
-  playGameSfx(GAME_SFX.runeUse);
-  return true;
-};
-
-const playPlayerSpellEffect = (spellData, success) => {
-  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
-  return playPixiSpellEffect({
-    x: playerState.x + TILE_SIZE / 2,
-    y: playerState.y + TILE_SIZE / 2 - surfaceOffsetY,
-    color: spellData?.effectColor,
-    success,
-  });
-};
-
-const announceSuccessfulPlayerSpell = (spellData) => {
-  const text = spellData.incantation;
-  const message = addChatMessage("local", "player", text, playerState);
-  if (!message) {
-    return false;
-  }
-  showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
-  if (activeChatChannelId === "local") {
-    renderActiveChatMessages();
-  }
-  return true;
-};
-
+const getSpellFromChatText = (text) => playerSpellSystem.getFromChatText(text);
 const castLearnedPlayerSpellById = (spellId) => {
-  const spellData = spellsDatabase[spellId] ?? null;
-  if (!spellData || !isPlayerSpellLearned(spellId)) {
-    showGameStatusMessage(getGameUiText("spellNotLearned"));
-    playPlayerSpellEffect(spellData, false);
-    return false;
-  }
-
-  const didCastSpell = castPlayerSpell(spellData);
-  playPlayerSpellEffect(spellData, didCastSpell);
-  if (!didCastSpell) {
-    return false;
-  }
-  announceSuccessfulPlayerSpell(spellData);
-  return true;
+  const action = createCastSpellAction(spellId, Date.now());
+  const result = gameActionDispatcher.dispatch(action, {
+    executeCastSpell(payload) {
+      return playerSpellSystem.castLearnedById(payload.spellId);
+    },
+  });
+  return result?.success === true;
 };
-
-const castPlayerSpellFromHotkeyKey = (key) => {
-  const hotkeyIndex = SPELL_HOTKEY_KEYS.indexOf(key);
-  if (hotkeyIndex === -1) {
-    return false;
-  }
-  const spellId = playerState.spellbook.hotkeySpellIds[hotkeyIndex];
-  if (spellId) {
-    castLearnedPlayerSpellById(spellId);
-  }
-  return true;
-};
+const castPlayerSpellFromHotkeyKey = (key) => playerSpellSystem.castByHotkeyKey(key);
 
 const getExperienceRewardFromMonster = (monster) => {
   if (!monster) {
@@ -10683,7 +7177,17 @@ const updateCombat = (now) => {
   if (weaponCombatData?.projectileItemId && !hasPlayerLineOfSightToEntity(monster)) {
     return;
   }
-  attackMonster(monster, now);
+  const attackAction = createAttackMonsterAction(monster.uid, now);
+  gameActionDispatcher.dispatch(attackAction, {
+    executeAttackMonster(payload) {
+      const attackTarget = findMonsterByUid(payload.monsterUid);
+      if (!attackTarget || attackTarget.z !== playerState.z) {
+        return { success: false, reason: "target-lost" };
+      }
+      attackMonster(attackTarget, payload.requestedAt);
+      return true;
+    },
+  });
   gameplayTimingState.nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
@@ -10691,341 +7195,20 @@ const updateCombat = (now) => {
 /* ==================================================== */
 //#region     -----  CHAT / MESSAGE  -----
 /* ==================================================== */
-/* ---------- CHAT / MESSAGE ---------- */
-const chatChannels = {
-  local: { channelId: "local", labelKey: "localChannel", canSendMessage: true, maxMessages: 100 },
-  global: { channelId: "global", labelKey: "globalChannel", canSendMessage: true, maxMessages: 100 },
-  trade: { channelId: "trade", labelKey: "tradeChannel", canSendMessage: true, maxMessages: 100 },
-  logs: { channelId: "logs", labelKey: "logsChannel", canSendMessage: false, maxMessages: 100 },
-};
 
-const chatMessages = {
-  local: [],
-  global: [],
-  trade: [],
-  logs: [],
-};
+const addChatMessage = (channelId, messageType, text, speakerData = null, speechSuggestions = []) =>
+  chatController.addMessage(channelId, messageType, text, speakerData, speechSuggestions);
 
-const chatUi = {
-  root: chat,
-  tabsRoot: chatTabs,
-  input: chatInput,
-};
-
-const chatInputHistoryState = {
-  entries: [],
-  cursorIndex: 0,
-  draft: "",
-  maxEntries: 50,
-};
-
-let activeChatChannelId = "local";
-
-const getChatChannelData = (channelId) => {
-  if (!channelId || !isValidChatChannel(channelId)) {
-    return null;
-  }
-  return chatChannels[channelId];
-};
-
-const isValidChatChannel = (channelId) => {
-  return channelId in chatChannels;
-};
-
-const setActiveChatChannel = (channelId) => {
-  if (!channelId || !isValidChatChannel(channelId)) {
-    return;
-  }
-  activeChatChannelId = channelId;
-};
-
-const createChatMessage = (channelId, messageType, text, speakerData = null, speechSuggestions = []) => {
-  const now = Date.now();
-  if (!speakerData) {
-    return {
-      channelId,
-      messageType,
-      text,
-      speakerName: null,
-      speakerLevel: null,
-      speechSuggestions: getNpcReplySuggestions(speechSuggestions),
-      createdAt: now,
-    };
-  } else {
-    return {
-      channelId,
-      messageType,
-      text,
-      speakerName: speakerData.name,
-      speakerLevel: speakerData.level,
-      speechSuggestions: getNpcReplySuggestions(speechSuggestions),
-      createdAt: now,
-    };
-  }
-};
-
-const addChatMessage = (channelId, messageType, text, speakerData = null, speechSuggestions = []) => {
-  if (!channelId || !isValidChatChannel(channelId) || isEmpty(text)) {
-    return null;
-  }
-  const chatMessage = createChatMessage(channelId, messageType, text, speakerData, speechSuggestions);
-  if (!chatMessage) {
-    return null;
-  }
-  const channelData = getChatChannelData(channelId);
-  if (!channelData) {
-    return null;
-  }
-  const chatMessageTab = getChatMessagesForChannel(channelId);
-  if (!chatMessageTab) {
-    return null;
-  }
-  chatMessageTab.push(chatMessage);
-  while (chatMessageTab.length > channelData.maxMessages) {
-    chatMessageTab.shift();
-  }
-  return chatMessage;
-};
-
-const getChatMessagesForChannel = (channelId) => {
-  if (!channelId || !(channelId in chatMessages)) {
-    return [];
-  }
-  return chatMessages[channelId];
-};
-
-const formatChatMessageTime = (chatMessage) => {
-  if (!chatMessage || !("createdAt" in chatMessage)) {
-    return "XX:XX";
-  }
-  const timestamp = chatMessage.createdAt;
-  if (!Number.isFinite(timestamp)) {
-    return "XX:XX";
-  }
-  const date = new Date(timestamp);
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-};
-
-const formatChatSpeakerLabel = (chatMessage) => {
-  if (!chatMessage || !("speakerName" in chatMessage) || !chatMessage.speakerName) {
-    return "";
-  }
-  if (!("speakerLevel" in chatMessage) || !Number.isFinite(chatMessage.speakerLevel)) {
-    return `${chatMessage.speakerName}:`;
-  }
-  return `${chatMessage.speakerName} [${chatMessage.speakerLevel}]:`;
-};
-
-const formatChatMessageText = (chatMessage) => {
-  const messageTime = formatChatMessageTime(chatMessage);
-  const speakerLabel = formatChatSpeakerLabel(chatMessage);
-  let text = "";
-  if ("text" in chatMessage && !isEmpty(chatMessage.text)) {
-    text = chatMessage.text;
-  }
-  return `${messageTime} ${speakerLabel} ${text}`;
-};
-
-const createChatMessageElement = (chatMessage) => {
-  if (!chatMessage || !("messageType" in chatMessage)) {
-    return null;
-  }
-  const text = formatChatMessageText(chatMessage);
-  const chatElement = document.createElement("div");
-  chatElement.classList.add("chat-message");
-  chatElement.classList.add(`chat-message-${chatMessage.messageType}`);
-  const textElement = document.createElement("span");
-  textElement.textContent = text;
-  chatElement.appendChild(textElement);
-
-  if (Array.isArray(chatMessage.speechSuggestions) && chatMessage.speechSuggestions.length > 0) {
-    const suggestionsElement = document.createElement("span");
-    suggestionsElement.classList.add("npc-dialogue-suggestions");
-    const suggestionsLabelElement = document.createElement("span");
-    suggestionsLabelElement.classList.add("npc-dialogue-suggestions-label");
-    suggestionsLabelElement.textContent = getGameUiText("npcOptionsLabel");
-    suggestionsElement.appendChild(suggestionsLabelElement);
-    for (const suggestion of chatMessage.speechSuggestions) {
-      const optionButton = document.createElement("button");
-      optionButton.classList.add("npc-dialogue-option");
-      optionButton.type = "button";
-      optionButton.textContent = suggestion;
-      optionButton.setAttribute("aria-label", getGameUiText("sayNpcOption")(suggestion));
-      optionButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (sendPlayerChatMessage(suggestion)) {
-          addChatInputHistoryEntry(suggestion);
-        }
-      });
-      suggestionsElement.appendChild(optionButton);
-    }
-    chatElement.appendChild(suggestionsElement);
-  }
-  return chatElement;
-};
-
-const renderActiveChatMessages = () => {
-  chatUi.root.textContent = "";
-  const messages = getChatMessagesForChannel(activeChatChannelId);
-  for (const message of messages) {
-    const messageElement = createChatMessageElement(message);
-    if (messageElement) {
-      chatUi.root.appendChild(messageElement);
-    }
-  }
-  chatUi.root.scrollTop = chatUi.root.scrollHeight;
-};
-
-const getActiveChatChannelData = () => {
-  const activeChatChannelData = getChatChannelData(activeChatChannelId);
-  if (activeChatChannelData) {
-    return activeChatChannelData;
-  }
-  return null;
-};
-
-const canSendMessageInActiveChatChannel = () => {
-  const activeChatChannelData = getActiveChatChannelData();
-  if (!activeChatChannelData || !("canSendMessage" in activeChatChannelData)) {
-    return false;
-  }
-  return activeChatChannelData.canSendMessage === true;
-};
-
-const sendPlayerChatMessage = (text) => {
-  if (!text || !canSendMessageInActiveChatChannel()) {
-    return false;
-  }
-  if (activeChatChannelId === "local") {
-    const spellData = getSpellFromChatText(text);
-    if (spellData) {
-      castLearnedPlayerSpellById(spellData.spellId);
-      return true;
-    }
-  }
-  const message = addChatMessage(activeChatChannelId, "player", text, playerState);
-  if (!message) {
-    return false;
-  }
-  if (activeChatChannelId === "local") {
-    showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
-    handleNpcPlayerSpeech(text, playerState, Date.now());
-  }
-  renderActiveChatMessages();
-  return true;
-};
-
-const createChatTabButtonElement = (channelData) => {
-  if (!channelData) {
-    return null;
-  }
-  const bouton = document.createElement("div");
-  bouton.classList.add("chat-tab-bouton");
-  bouton.textContent = getGameUiText(channelData.labelKey);
-  if (channelData.channelId === activeChatChannelId) {
-    bouton.classList.add("chat-tab-bouton-active");
-  }
-  bouton.addEventListener("click", (e) => {
-    setActiveChatChannel(channelData.channelId);
-    refreshChatUi();
-  });
-  return bouton;
-};
-
-const renderChatTabs = () => {
-  chatUi.tabsRoot.textContent = "";
-  for (const tab of Object.values(chatChannels)) {
-    const tabElement = createChatTabButtonElement(tab);
-    if (!tabElement) {
-      continue;
-    }
-    chatUi.tabsRoot.appendChild(tabElement);
-  }
-};
-
-const refreshChatUi = () => {
-  renderChatTabs();
-  renderActiveChatMessages();
-};
-
-const clearChatInput = () => {
-  chatUi.input.value = "";
-};
-
-const addChatInputHistoryEntry = (text) => {
-  if (typeof text !== "string" || text === "") {
-    return;
-  }
-  if (chatInputHistoryState.entries.at(-1) !== text) {
-    chatInputHistoryState.entries.push(text);
-  }
-  while (chatInputHistoryState.entries.length > chatInputHistoryState.maxEntries) {
-    chatInputHistoryState.entries.shift();
-  }
-  chatInputHistoryState.cursorIndex = chatInputHistoryState.entries.length;
-  chatInputHistoryState.draft = "";
-};
-
-const navigateChatInputHistory = (direction) => {
-  const history = chatInputHistoryState.entries;
-  if (history.length === 0 || (direction !== -1 && direction !== 1)) {
-    return false;
-  }
-
-  if (chatInputHistoryState.cursorIndex === history.length) {
-    chatInputHistoryState.draft = chatUi.input.value;
-  }
-
-  chatInputHistoryState.cursorIndex = clamp(chatInputHistoryState.cursorIndex + direction, 0, history.length);
-  chatUi.input.value =
-    chatInputHistoryState.cursorIndex === history.length
-      ? chatInputHistoryState.draft
-      : history[chatInputHistoryState.cursorIndex];
-  chatUi.input.setSelectionRange(chatUi.input.value.length, chatUi.input.value.length);
-  return true;
-};
-
-const handleChatInputSubmit = () => {
-  const text = chatUi.input.value;
-  if (sendPlayerChatMessage(text)) {
-    addChatInputHistoryEntry(text);
-    clearChatInput();
-  }
-};
-
-/* ---------- CHAT / MESSAGE ---------- */
-const focusChatInput = () => {
-  resetMovementKeys();
-  chatUi.input.focus();
-};
-
-const blurChatInput = () => {
-  chatUi.input.blur();
-  if (gameRuntimeState.isStarted && !characterSelectorUiState.isOpen) {
-    game.focus({ preventScroll: true });
-  }
-};
-
-const isChatInputFocused = () => {
-  return document.activeElement === chatUi.input;
-};
-
-const addLogMessage = (text, messageType) => {
-  if (!text) {
-    return false;
-  }
-  const message = addChatMessage("logs", messageType, text);
-  if (!message) {
-    return false;
-  }
-  if (activeChatChannelId === "logs") {
-    renderActiveChatMessages();
-  }
-  return true;
-};
+const renderActiveChatMessages = () => chatController.renderMessages();
+const sendPlayerChatMessage = (text) => chatController.sendPlayerMessage(text);
+const refreshChatUi = () => chatController.render();
+const addChatInputHistoryEntry = (text) => chatController.addHistoryEntry(text);
+const navigateChatInputHistory = (direction) => chatController.navigateHistory(direction);
+const handleChatInputSubmit = () => chatController.submitInput();
+const focusChatInput = () => chatController.focusInput();
+const blurChatInput = () => chatController.blurInput();
+const isChatInputFocused = () => chatController.isInputFocused();
+const addLogMessage = (text, messageType) => chatController.addLogMessage(text, messageType);
 
 //#endregion  -----  CHAT / MESSAGE  -----
 
@@ -11237,29 +7420,8 @@ document.addEventListener("mouseup", (e) => {
   cancelItemDrag();
 });
 
-const updateGameLogic = (now) => {
-  updatePlayerFollowNavigation(now);
-  updatePlayerActionNavigation(now);
-  updateMovement(now);
-  updateCombat(now);
-  updatePlayerRegeneration(now);
-  updateNpcConversations(now);
-  updateNpcMovement(now);
-
-  const activeMonsters = getActiveMonstersAroundPlayer();
-  updateMonsterMovement(now, activeMonsters);
-  updateMonsterCombat(now, activeMonsters);
-  updateMonsterRespawns(now);
-  updateCorpseDecay(now);
-  updateGroundEffectDecay(now);
-  updateTorchFuel(now);
-};
-
-const renderGameFrame = (now) => {
-  updateRenderPositions(now);
-  updateWorldRender();
-  updateItemCooldownOverlays(now);
-};
+const updateGameLogic = (now) => gameSystemsOrchestrator.update(now);
+const renderGameFrame = (now) => gameSystemsOrchestrator.render(now);
 
 //#endregion  -----  BOUCLE DE JEU  -----
 
@@ -11286,6 +7448,178 @@ const setupTestPlayerInventory = () => {
 };
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
+gameSystemsOrchestrator = createGameSystemsOrchestrator({
+  createLogicContext: (now) => ({
+    now,
+    activeMonsters: getActiveMonstersAroundPlayer(),
+  }),
+  logicSystems: [
+    ({ now }) => updatePlayerFollowNavigation(now),
+    ({ now }) => updatePlayerActionNavigation(now),
+    ({ now }) => updateMovement(now),
+    ({ now }) => updateCombat(now),
+    ({ now }) => updatePlayerRegeneration(now),
+    ({ now }) => updateNpcConversations(now),
+    ({ now }) => updateNpcMovement(now),
+    ({ now, activeMonsters }) => updateMonsterMovement(now, activeMonsters),
+    ({ now, activeMonsters }) => updateMonsterCombat(now, activeMonsters),
+    ({ now }) => updateMonsterRespawns(now),
+    ({ now }) => updateCorpseDecay(now),
+    ({ now }) => updateGroundEffectDecay(now),
+    ({ now }) => updateTorchFuel(now),
+  ],
+  renderSystems: [
+    ({ now }) => updateRenderPositions(now),
+    () => updateWorldRender(),
+    ({ now }) => updateItemCooldownOverlays(now),
+  ],
+});
+
+questWindowController = createQuestWindowController({
+  updatePlayerInventory,
+});
+
+gameOptionsController = createGameOptionsController({
+  renderCharacterSelector,
+  renderPlayerMinimap,
+  renderWorldLabels: refreshLocalizedWorldLabels,
+  resetPlayerStatsUi: () => {
+    playerStatsUi.root = null;
+  },
+  setAudioSettings: setGameAudioSettings,
+  setMinimapZoom,
+  refreshChatUi,
+  updatePlayerInventory,
+  updatePlayerStats,
+});
+
+characterSelectorController = createCharacterSelectorController({
+  applyGameLanguageUi,
+  cancelItemDrag,
+  cancelItemUse,
+  renderOptionsWindow,
+  renderQuestWindow,
+  resetMobileJoystick,
+  saveBeforeSwitch: () => characterSessionController.saveBeforeSwitch(),
+  setGameLanguage,
+  setOpenMobilePanel,
+  showGameStatusMessage,
+  startGame: (...args) => startGame(...args),
+  stopPlayerNavigation,
+  unlockGameAudio,
+});
+
+mobileJoystickController = createMobileJoystickController({
+  state: mobileGameUiState,
+  diagonalHoldMs: MOBILE_JOYSTICK_DIAGONAL_HOLD_MS,
+  cancelPlayerNavigation: cancelPlayerNavigationForManualMovement,
+});
+
+playerSpellSystem = createPlayerSpellSystem({
+  addChatMessage,
+  applyExperienceToPlayerSkill,
+  autosaveCurrentCharacter,
+  getActiveChatChannelId: () => chatController.getActiveChannelId(),
+  getEntitySurfaceOffsetY,
+  getGameUiText,
+  getLocalizedSpellData,
+  getSkillExperienceGainMultiplier,
+  isUseCooldownReady,
+  normalizeSkillExperienceGain,
+  playGameSfx,
+  playPixiSpellEffect,
+  refreshPlayerVitalsUi,
+  renderActiveChatMessages,
+  renderSpellWindow,
+  showFloatingTextAbovePlayer,
+  showFloatingTextAboveTarget,
+  showGameStatusMessage,
+  spellUseSfx: GAME_SFX.runeUse,
+  startUseCooldown,
+});
+
+playerNavigationController = createPlayerNavigationController({
+  areItemLocationsEqual,
+  completeItemDrag,
+  findItemLocationByUid,
+  findMonsterByUid,
+  findPath,
+  findPathToAnyTarget,
+  getItemFromLocation,
+  getPathTraversableAdjacentTiles,
+  handleDrinkPotionUse,
+  handleRuneUse,
+  handleUseItemFromSource,
+  isTileOccupiedByCreature,
+  isTilePathTraversable,
+  isWorldItemAvailableForInteraction,
+  loseSelectedMonsterTarget,
+  showGameStatusMessage,
+  startItemDrag,
+  updatePlayerInventory,
+  worldItemThrowRange: WORLD_ITEM_THROW_RANGE,
+});
+
+npcConversationSystem = createNpcConversationSystem({
+  addChatMessage,
+  autosaveCurrentCharacter,
+  getActiveChatChannelId: () => chatController.getActiveChannelId(),
+  getLocalizedSpellData,
+  getNpcsInChunkRadius,
+  getPlayerEntityByUid,
+  grantRewardItemsToPlayer,
+  isPlayerSpellLearned,
+  refreshInventoryUi,
+  renderActiveChatMessages,
+  renderSpellWindow,
+  showFloatingTextAboveTarget,
+  showGameStatusMessage,
+  startPlayerActionNavigation,
+  playerActionType: PLAYER_ACTION_TYPE,
+  updateNpcDirectionToPlayer,
+});
+
+monsterAiSystem = createMonsterAiSystem({
+  findPathToAnyTarget,
+  getDistanceToClosestTile,
+  getNeighbors,
+  getPathMovementCost,
+  getPathTraversableAdjacentTiles,
+  getTileMovementAnimationMultiplier,
+  getTileMovementCost,
+  getTilePosition,
+  getWorldPosition,
+  hasLineOfSightBetweenTiles,
+  isNearPlayer,
+  isTileOccupiedByCreature,
+  isTilePathTraversable,
+  isWalkableTile,
+  moveMonsterInTileIndex,
+  syncMonsterRenderVisibility,
+  updateMonsterDirection,
+  updateMonsterSprite,
+});
+
+monsterRespawnSystem = createMonsterRespawnSystem({
+  createMonster,
+  addMonsterToState,
+  isBlockingItemAtPosition,
+  isMonsterAtPosition,
+  isNpcAtPosition,
+  isPlayerAtPosition,
+  refreshMonsterHp: monsterHpRefresh,
+  renderMonsters,
+});
+
+chatController = createChatController({
+  getReplySuggestions: getNpcReplySuggestions,
+  getSpellFromText: getSpellFromChatText,
+  castLearnedSpell: castLearnedPlayerSpellById,
+  showPlayerSpeech: (text) => showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000),
+  handleNpcSpeech: handleNpcPlayerSpeech,
+  resetMovementKeys,
+});
+
 characterSessionController = createCharacterSessionController({
   syncActiveTorchFuel,
   setPlayerWorldPosition,
@@ -11350,58 +7684,68 @@ const initializePlayerUi = () => {
 };
 
 /* ---------- INITIALISATION - DEMARRAGE ---------- */
-const startGame = async () => {
-  if (gameRuntimeState.isStarting || gameRuntimeState.isStarted) {
-    return false;
+const prepareGameData = () => {
+  const loadedCharacterSnapshot = loadInitialCharacterSnapshot();
+  if (!loadedCharacterSnapshot) {
+    setupTestPlayerInventory();
   }
-  gameRuntimeState.isStarting = true;
+  setupTestWorld();
+  return {
+    loadedCharacterSnapshot,
+    worldMapsByZ: loadWorldMaps(),
+  };
+};
 
-  try {
-    const loadedCharacterSnapshot = loadInitialCharacterSnapshot();
-    if (!loadedCharacterSnapshot) {
-      setupTestPlayerInventory();
-    }
-    setupTestWorld();
-    const worldMapsByZ = loadWorldMaps();
+const initializeGameRenderer = async () => {
+  await initializePixiRenderer({
+    htmlParentElement: game,
+    gameWidth: GAME_WIDTH,
+    gameHeight: GAME_HEIGHT,
+  });
+  const playerTextureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(
+    playerState.appearanceParts,
+    playerState.appearanceColors,
+  );
+  await loadPixiWorldEntityTextures({
+    playerTextureUrlsByLayer,
+    itemTextureUrl: getAtlasPath("items"),
+    monsterTextureUrl: getAtlasPath("monsters"),
+    npcTextureUrlsById: getNpcTextureUrlsById(),
+  });
+};
 
-    await initializePixiRenderer({
-      htmlParentElement: game,
-      gameWidth: GAME_WIDTH,
-      gameHeight: GAME_HEIGHT,
-    });
-    const playerTextureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(
-      playerState.appearanceParts,
-      playerState.appearanceColors,
-    );
-    await loadPixiWorldEntityTextures({
-      playerTextureUrlsByLayer,
-      itemTextureUrl: getAtlasPath("items"),
-      monsterTextureUrl: getAtlasPath("monsters"),
-      npcTextureUrlsById: getNpcTextureUrlsById(),
-    });
+const initializeGameWorld = async ({ loadedCharacterSnapshot, worldMapsByZ }) => {
+  pixiWorldRenderState.worldMapsByZ = worldMapsByZ;
+  const didRestoreSavedPosition =
+    loadedCharacterSnapshot && applyCharacterSavePosition(loadedCharacterSnapshot, worldMapsByZ);
+  if (!didRestoreSavedPosition) {
+    playerState.z = playerState.spawn.z;
+    pixiWorldRenderState.currentZ = playerState.z;
+    const worldMap = worldMapsByZ.get(playerState.spawn.z);
+    applyPlayerSpawn(findPlayerSpawnInWorldMap(worldMap, playerState.spawn.spawnId));
+  }
+  initializeNpcsForWorldMaps(worldMapsByZ);
+  spawnInitialMonstersForWorldMaps(worldMapsByZ);
+  await updatePixiVisibleChunksAroundPlayer();
+};
 
-    pixiWorldRenderState.worldMapsByZ = worldMapsByZ;
-    const didRestoreSavedPosition =
-      loadedCharacterSnapshot && applyCharacterSavePosition(loadedCharacterSnapshot, worldMapsByZ);
-    if (!didRestoreSavedPosition) {
-      playerState.z = playerState.spawn.z;
-      pixiWorldRenderState.currentZ = playerState.z;
-      const worldMap = worldMapsByZ.get(playerState.spawn.z);
-      const playerSpawn = findPlayerSpawnInWorldMap(worldMap, playerState.spawn.spawnId);
-      applyPlayerSpawn(playerSpawn);
-    }
-    initializeNpcsForWorldMaps(worldMapsByZ);
-    spawnInitialMonstersForWorldMaps(worldMapsByZ);
-    await updatePixiVisibleChunksAroundPlayer();
+const initializeGameInterface = ({ loadedCharacterSnapshot }) => {
+  initializePlayerUi();
+  if (!loadedCharacterSnapshot) {
+    saveCharacterSnapshot(createCharacterSaveSnapshot());
+  }
+  renderInitialWorld();
+};
 
-    initializePlayerUi();
-
-    if (!loadedCharacterSnapshot) {
-      saveCharacterSnapshot(createCharacterSaveSnapshot());
-    }
-
-    renderInitialWorld();
-    gameRuntimeState.isStarted = true;
+clientBootstrap = createClientBootstrap({
+  runtimeState: gameRuntimeState,
+  phases: [
+    { name: "data", run: prepareGameData },
+    { name: "renderer", run: initializeGameRenderer },
+    { name: "world", run: initializeGameWorld },
+    { name: "interface", run: initializeGameInterface },
+  ],
+  onStarted: () => {
     preloadGameSfx();
     startGameMusic();
     startCharacterAutosave();
@@ -11413,10 +7757,12 @@ const startGame = async () => {
         fpsCounter,
       });
     }
-    return true;
-  } finally {
-    gameRuntimeState.isStarting = false;
-  }
+  },
+});
+
+const startGame = async () => {
+  const result = await clientBootstrap.start();
+  return result.success;
 };
 
 const shouldEnterGameImmediately = initializeGameWelcome();
