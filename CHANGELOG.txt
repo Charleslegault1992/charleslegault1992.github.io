@@ -1,9 +1,17 @@
+0.315 - Menus NPC et auto walk des actions
+    - Ajout des menus par etapes pour acheter, vendre et apprendre des sorts avec les NPC.
+    - Les listes de choix sont generees depuis les vrais items et sorts disponibles chez chaque NPC.
+    - Ajout de l'auto walk pour ramasser, deplacer ou utiliser un item trop loin.
+    - Les potions et les runes peuvent maintenant lancer un auto walk vers leur cible sans changer le comportement des fleches.
+    - La distance de discussion des NPC est limitee a 3 cases et une diagonale compte pour 2 cases.
+
 0.314 - Barre de sorts mobile et interactions NPC
     - Ajout d'une barre de sorts transparente sur mobile qui reste ouverte pendant le jeu.
     - Un toucher lance le sort et un maintien permet de reassigner la case.
     - Les raccourcis de sorts gardent le meme ordre sur desktop et mobile.
     - Un clic droit sur desktop ou un maintien sur mobile dit salut au NPC vise.
-    - Les items utilisables sous un NPC gardent la priorite sur la conversation.
+    - Les NPC gardent la priorite au clic droit meme si un item utilisable est sous leurs pieds.
+    - Les items sous un NPC restent accessibles pour le drag et le deplacement.
 
 0.313 - Marchands, apprentissage et dialogues NPC
     - Ajout de Ben pour acheter et vendre des items avec confirmation avant la transaction.

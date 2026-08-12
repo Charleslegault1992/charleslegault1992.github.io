@@ -1046,13 +1046,14 @@ const npcsDatabase = {
     dialogue: {
       en: {
         greeting: "Hello, {playerName}. I buy and sell useful supplies.",
-        greetingSuggestions: ["offers", "apple", "health potion", "mana potion", "torch", "mace", "bye"],
-        tradeSuggestions: ["apple", "health potion", "mana potion", "torch", "mace"],
+        greetingSuggestions: ["Buy", "Sell", "Bye"],
         confirmationSuggestions: ["yes", "no"],
         name: "My name is Ben.",
         job: "I trade equipment and supplies.",
         help: "Ask me for a trade, then say buy or sell with an item name.",
         trade: "I sell apples, health potions, mana potions, torches and maces.",
+        buyMenu: "What do you want to buy?",
+        sellMenu: "What do you want to sell?",
         confirmBuy: "Do you want to buy {quantity} {itemName} for {price} gold?",
         confirmSell: "Do you want to sell {quantity} {itemName} for {price} gold?",
         confirmRequired: "Say yes to confirm or no to cancel.",
@@ -1070,13 +1071,14 @@ const npcsDatabase = {
       },
       fr: {
         greeting: "Salut, {playerName}! J'achete et je vends du stock utile.",
-        greetingSuggestions: ["offres", "pomme", "potion de vie", "potion de mana", "torche", "masse", "bye"],
-        tradeSuggestions: ["pomme", "potion de vie", "potion de mana", "torche", "masse"],
+        greetingSuggestions: ["Achat", "Vente", "Bye"],
         confirmationSuggestions: ["oui", "non"],
         name: "Moi, c'est Ben.",
         job: "Je vends de l'equipement et des provisions.",
         help: "Demande-moi mes offres, puis dis acheter ou vendre avec le nom de l'objet.",
         trade: "Je vends des pommes, des potions de vie et de mana, des torches et des masses.",
+        buyMenu: "Qu'est-ce que tu veux acheter?",
+        sellMenu: "Qu'est-ce que tu veux vendre?",
         confirmBuy: "Veux-tu acheter {quantity} {itemName} pour {price} pieces d'or?",
         confirmSell: "Veux-tu vendre {quantity} {itemName} pour {price} pieces d'or?",
         confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
@@ -1120,8 +1122,7 @@ const npcsDatabase = {
     dialogue: {
       en: {
         greeting: "Greetings, {playerName}. I can teach you magic.",
-        greetingSuggestions: ["spells", "healing", "bye"],
-        spellSuggestions: ["healing"],
+        greetingSuggestions: ["Spells", "Bye"],
         confirmationSuggestions: ["yes", "no"],
         name: "I am Kev.",
         job: "I teach spells to adventurers.",
@@ -1141,8 +1142,7 @@ const npcsDatabase = {
       },
       fr: {
         greeting: "Salut, {playerName}. Je peux t'enseigner la magie.",
-        greetingSuggestions: ["sorts", "soin", "bye"],
-        spellSuggestions: ["soin"],
+        greetingSuggestions: ["Sorts", "Bye"],
         confirmationSuggestions: ["oui", "non"],
         name: "Moi, c'est Kev.",
         job: "J'enseigne des sorts aux aventuriers.",
@@ -1302,7 +1302,7 @@ const MONSTER_AI_CHUNK_RADIUS = Math.ceil(
 /* ---------- TIMING - NPCS ---------- */
 
 const NPC_DIALOGUE_CONFIG = {
-  talkRange: 4,
+  talkRange: 3,
   responseDelayMs: 500,
   lineIntervalMs: 900,
   conversationTimeoutMs: 60000,
@@ -5380,10 +5380,6 @@ const setWorldItemPosition = (destination, item) => {
     return false;
   }
 
-  if (isNpcAtPosition(destination.x, destination.y, destination.z ?? playerState.z)) {
-    return false;
-  }
-
   item.z = destination.z ?? playerState.z;
 
   if (!canAddItemSurfaceToTile(item, destination.x, destination.y)) {
@@ -5557,10 +5553,11 @@ const canInteractWithWorldItemSource = (source) => {
     return false;
   }
   const item = getDragSourceItem(source);
-  if (!item) {
-    return false;
-  }
-  return item.z === playerState.z && isNearPlayer(item, 1) && isWorldItemTopOfTileStack(item);
+  return isWorldItemAvailableForInteraction(item) && isNearPlayer(item, 1);
+};
+
+const isWorldItemAvailableForInteraction = (item) => {
+  return item?.z === playerState.z && isWorldItemTopOfTileStack(item);
 };
 
 const shouldCloseOpenedContainerByDistance = (containerWrapper) => {
@@ -5967,7 +5964,7 @@ const trySwapItemsDuringDrag = (source, sourceItem, destination, destinationItem
 
 const tryMoveItemToWorldDuringDrag = (source, sourceItem, destination) => {
   if (destination.locationType === "worldTile") {
-    if (!isNearPlayer(destination, 9)) {
+    if (!isNearPlayer(destination, WORLD_ITEM_THROW_RANGE)) {
       cancelItemDrag();
       return true;
     }
@@ -6325,6 +6322,7 @@ const removeAllByUid = (uid) => {
 };
 
 const ITEM_INVENTORY_LOCATION_TYPES = new Set(["containerSlot", "equipmentSlot"]);
+const WORLD_ITEM_THROW_RANGE = 9;
 
 const createItemDragSfxSnapshot = (source, sourceItem, destination, destinationItem) => {
   return {
@@ -6390,6 +6388,30 @@ const playCompletedItemDragSfx = (snapshot) => {
   return playGameSfx(GAME_SFX.itemMove);
 };
 
+const tryStartItemDragActionNavigation = (source, sourceItem, destination) => {
+  if (source.locationType === "worldItem" && !isNearPlayer(sourceItem, 1)) {
+    startPlayerActionNavigation({
+      type: PLAYER_ACTION_TYPE.itemDrag,
+      itemUid: sourceItem.uid,
+      source: { ...source },
+      destination: { ...destination },
+    });
+    return true;
+  }
+
+  if (destination.locationType === "worldTile" && !isNearPlayer(destination, WORLD_ITEM_THROW_RANGE)) {
+    startPlayerActionNavigation({
+      type: PLAYER_ACTION_TYPE.itemDrag,
+      itemUid: sourceItem.uid,
+      source: { ...source },
+      destination: { ...destination },
+    });
+    return true;
+  }
+
+  return false;
+};
+
 const completeItemDrag = (destination) => {
   if (!dragState.isDragging || !destination) {
     cancelItemDrag();
@@ -6401,6 +6423,16 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     return;
   }
+  if (source.locationType === "worldItem" && !isWorldItemAvailableForInteraction(sourceItem)) {
+    cancelItemDrag();
+    return;
+  }
+
+  if (tryStartItemDragActionNavigation(source, sourceItem, destination)) {
+    cancelItemDrag();
+    return;
+  }
+
   if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
     cancelItemDrag();
     return;
@@ -8761,10 +8793,16 @@ const handleUseItemFromSource = (source) => {
   if (!itemData) {
     return;
   }
+  const useData = getItemUseData(item);
   if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
+    if (isWorldItemAvailableForInteraction(item) && (useData || isOpenableContainerItem(item))) {
+      startPlayerActionNavigation({
+        type: PLAYER_ACTION_TYPE.useWorldItem,
+        itemUid: item.uid,
+      });
+    }
     return;
   }
-  const useData = getItemUseData(item);
   if (!useData) {
     if (isOpenableContainerItem(item)) {
       handleOpenContainerUse(source, item, itemData);
@@ -8884,8 +8922,15 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
       playGameSfx(GAME_SFX.drinkPotion);
       startUseCooldown(cooldownGroup);
     }
-  } else if (target.tile && isNearPlayer(target.tile, useData.range)) {
-    if (pourPotionOnTile(item, useData, target.tile)) {
+  } else if (target.tile) {
+    if (!isNearPlayer(target.tile, useData.range)) {
+      startPlayerActionNavigation({
+        type: PLAYER_ACTION_TYPE.targetItemUse,
+        itemUid: item.uid,
+        targetType: "tile",
+        targetTile: { ...target.tile, z: playerState.z },
+      });
+    } else if (pourPotionOnTile(item, useData, target.tile)) {
       startUseCooldown(cooldownGroup);
     }
   }
@@ -8900,7 +8945,18 @@ const handleRuneUse = (source, item, useData, target) => {
     cancelItemUse();
     return;
   }
-  if (target.monster && isMonsterValidRuneTarget(target.monster, useData)) {
+  if (
+    target.monster?.hp > 0 &&
+    target.monster.z === playerState.z &&
+    !isNearPlayer(target.monster, useData.range)
+  ) {
+    startPlayerActionNavigation({
+      type: PLAYER_ACTION_TYPE.targetItemUse,
+      itemUid: item.uid,
+      targetType: "monster",
+      targetUid: target.monster.uid,
+    });
+  } else if (target.monster && isMonsterValidRuneTarget(target.monster, useData)) {
     if (!hasPlayerLineOfSightToEntity(target.monster)) {
       showGameStatusMessage(getGameUiText("runeBlockedByWall"));
       cancelItemUse();
@@ -10260,17 +10316,31 @@ const updateLight = (source) => {
 const PLAYER_NAVIGATION_MODE = {
   click: "click",
   follow: "follow",
+  action: "action",
+};
+const PLAYER_ACTION_TYPE = {
+  itemDrag: "itemDrag",
+  useWorldItem: "useWorldItem",
+  targetItemUse: "targetItemUse",
+  npcGreeting: "npcGreeting",
+};
+const PLAYER_ACTION_DISTANCE_TYPE = {
+  square: "square",
+  weighted: "weighted",
 };
 const PLAYER_AUTO_WALK_MAX_PATH_COST = MINIMAP_AUTOWALK_MAX_DISTANCE_TILES * 3;
 const PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS = 300;
+const PLAYER_ACTION_PATH_REFRESH_COOLDOWN_MS = 300;
 
 const playerNavigationState = {
   mode: null,
   path: [],
   destinationTile: null,
   followEnabled: false,
+  pendingAction: null,
   nextPathRefreshAt: 0,
   lastFollowTargetTileKey: null,
+  lastActionTargetTileKey: null,
   lastFailureKey: null,
 };
 
@@ -10973,7 +11043,7 @@ const getPointerTargetFromEvent = (e) => {
     interactable = findInteractableAtTile(currentWorldMap, col, row);
     tile = { row, col, x, y };
     monster = findMonsterAtPosition(x, y);
-    npc = findNpcAtPosition(x, y);
+    npc = findNpcAtClientPosition(e.clientX, e.clientY) ?? findNpcAtPosition(x, y);
     if (isPlayerAtPosition(x, y)) {
       player = playerState;
     }
@@ -11018,7 +11088,7 @@ const handleItemUiMouseMove = (e) => {
   if (
     !item ||
     (dragState.pendingSourceLocation.locationType === "worldItem" &&
-      !canInteractWithWorldItemSource(dragState.pendingSourceLocation))
+      !isWorldItemAvailableForInteraction(item))
   ) {
     resetDragState();
     resetDragStatePending();
@@ -11827,8 +11897,10 @@ const stopPlayerNavigation = () => {
   playerNavigationState.mode = null;
   playerNavigationState.path = [];
   playerNavigationState.destinationTile = null;
+  playerNavigationState.pendingAction = null;
   playerNavigationState.nextPathRefreshAt = 0;
   playerNavigationState.lastFollowTargetTileKey = null;
+  playerNavigationState.lastActionTargetTileKey = null;
   playerNavigationState.lastFailureKey = null;
 };
 
@@ -11884,6 +11956,7 @@ const startPlayerClickNavigation = (destinationTile) => {
   }
 
   playerNavigationState.mode = PLAYER_NAVIGATION_MODE.click;
+  playerNavigationState.pendingAction = null;
   playerNavigationState.destinationTile = {
     col: destinationTile.col,
     row: destinationTile.row,
@@ -11891,6 +11964,7 @@ const startPlayerClickNavigation = (destinationTile) => {
   playerNavigationState.path = [];
   playerNavigationState.nextPathRefreshAt = 0;
   playerNavigationState.lastFollowTargetTileKey = null;
+  playerNavigationState.lastActionTargetTileKey = null;
   return refreshPlayerClickNavigationPath();
 };
 
@@ -11997,10 +12071,12 @@ const startPlayerFollowNavigation = () => {
   }
 
   playerNavigationState.mode = PLAYER_NAVIGATION_MODE.follow;
+  playerNavigationState.pendingAction = null;
   playerNavigationState.path = [];
   playerNavigationState.destinationTile = null;
   playerNavigationState.nextPathRefreshAt = 0;
   playerNavigationState.lastFollowTargetTileKey = null;
+  playerNavigationState.lastActionTargetTileKey = null;
   playerNavigationState.lastFailureKey = null;
   return true;
 };
@@ -12058,6 +12134,263 @@ const updatePlayerFollowNavigation = (now, forceRefresh = false) => {
   setPlayerNavigationPath(path);
 };
 
+const isTileWithinPlayerActionRange = (fromTile, targetTile, range, distanceType) => {
+  if (
+    !Number.isInteger(fromTile?.col) ||
+    !Number.isInteger(fromTile?.row) ||
+    !Number.isInteger(targetTile?.col) ||
+    !Number.isInteger(targetTile?.row) ||
+    !Number.isFinite(range)
+  ) {
+    return false;
+  }
+  const distanceCol = Math.abs(fromTile.col - targetTile.col);
+  const distanceRow = Math.abs(fromTile.row - targetTile.row);
+  if (distanceType === PLAYER_ACTION_DISTANCE_TYPE.weighted) {
+    return distanceCol + distanceRow <= range;
+  }
+  return Math.max(distanceCol, distanceRow) <= range;
+};
+
+const isPlayerWithinActionRange = (target, range, distanceType = PLAYER_ACTION_DISTANCE_TYPE.square) => {
+  if (!target || target.z !== playerState.z) {
+    return false;
+  }
+  return isTileWithinPlayerActionRange(getTilePosition(playerState), getTilePosition(target), range, distanceType);
+};
+
+const resolvePlayerActionNavigationTarget = (action) => {
+  if (!action) {
+    return null;
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.itemDrag) {
+    const currentSource = findItemLocationByUid(action.itemUid);
+    const item = getItemFromLocation(currentSource);
+    if (!item || !areItemLocationsEqual(action.source, currentSource)) {
+      return null;
+    }
+    if (currentSource.locationType === "worldItem") {
+      if (!isWorldItemAvailableForInteraction(item)) {
+        return null;
+      }
+      if (!isNearPlayer(item, 1)) {
+        return { target: item, range: 1, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
+      }
+    }
+    if (action.destination?.locationType === "worldTile") {
+      const destination = action.destination;
+      if (destination.z !== playerState.z) {
+        return null;
+      }
+      if (!isNearPlayer(destination, WORLD_ITEM_THROW_RANGE)) {
+        return {
+          target: destination,
+          range: WORLD_ITEM_THROW_RANGE,
+          distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
+          requireLineOfSight: true,
+        };
+      }
+    }
+    return { isReady: true };
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.useWorldItem) {
+    const item = findWorldItemByUid(action.itemUid);
+    if (!isWorldItemAvailableForInteraction(item)) {
+      return null;
+    }
+    return isNearPlayer(item, 1)
+      ? { isReady: true }
+      : { target: item, range: 1, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.targetItemUse) {
+    const source = findItemLocationByUid(action.itemUid);
+    const item = getItemFromLocation(source);
+    const useData = getItemUseData(item);
+    if (!source || !item || useData?.mode !== "target" || !Number.isFinite(useData.range)) {
+      return null;
+    }
+    if (action.targetType === "monster") {
+      const monster = findMonsterByUid(action.targetUid);
+      if (useData.action !== "attackRune" || !monster || monster.hp <= 0 || monster.z !== playerState.z) {
+        return null;
+      }
+      return isNearPlayer(monster, useData.range)
+        ? { isReady: true }
+        : {
+            target: monster,
+            range: useData.range,
+            distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
+            requireLineOfSight: true,
+          };
+    }
+    if (action.targetType === "tile") {
+      const targetTile = action.targetTile;
+      if (useData.action !== "drinkPotion" || targetTile?.z !== playerState.z) {
+        return null;
+      }
+      return isNearPlayer(targetTile, useData.range)
+        ? { isReady: true }
+        : { target: targetTile, range: useData.range, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
+    }
+    return null;
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.npcGreeting) {
+    const npc = npcsByUid.get(action.npcUid) ?? null;
+    if (!npc || npc.z !== playerState.z) {
+      return null;
+    }
+    return isPlayerWithinActionRange(npc, NPC_DIALOGUE_CONFIG.talkRange, PLAYER_ACTION_DISTANCE_TYPE.weighted)
+      ? { isReady: true }
+      : { target: npc, range: NPC_DIALOGUE_CONFIG.talkRange, distanceType: PLAYER_ACTION_DISTANCE_TYPE.weighted };
+  }
+
+  return null;
+};
+
+const executePlayerPendingAction = (action) => {
+  if (action.type === PLAYER_ACTION_TYPE.itemDrag) {
+    const source = findItemLocationByUid(action.itemUid);
+    const item = getItemFromLocation(source);
+    if (!item || !areItemLocationsEqual(action.source, source)) {
+      return false;
+    }
+    startItemDrag(source);
+    completeItemDrag(action.destination);
+    return true;
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.useWorldItem) {
+    const source = findItemLocationByUid(action.itemUid);
+    if (source?.locationType !== "worldItem") {
+      return false;
+    }
+    handleUseItemFromSource(source);
+    return true;
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.targetItemUse) {
+    const source = findItemLocationByUid(action.itemUid);
+    const item = getItemFromLocation(source);
+    const useData = getItemUseData(item);
+    if (!source || !item || useData?.mode !== "target") {
+      return false;
+    }
+    if (action.targetType === "monster") {
+      const monster = findMonsterByUid(action.targetUid);
+      if (!monster) {
+        return false;
+      }
+      handleRuneUse(source, item, useData, { monster });
+      return true;
+    }
+    if (action.targetType === "tile" && action.targetTile) {
+      handleDrinkPotionUse(source, item, useData, { tile: action.targetTile });
+      return true;
+    }
+    return false;
+  }
+
+  if (action.type === PLAYER_ACTION_TYPE.npcGreeting) {
+    const npc = npcsByUid.get(action.npcUid) ?? null;
+    return sayGreetingToNpc(npc, playerState);
+  }
+
+  return false;
+};
+
+const getPlayerActionApproachPath = (actionTarget) => {
+  const playerTile = getTilePosition(playerState);
+  const targetTile = getTilePosition(actionTarget.target);
+  const pathTargetTiles = getPathTraversableAdjacentTiles(targetTile).filter((tile) => {
+    return !isTileOccupiedByCreature(tile.row, tile.col) || (tile.col === playerTile.col && tile.row === playerTile.row);
+  });
+  if (isTilePathTraversable(targetTile.row, targetTile.col) && !isTileOccupiedByCreature(targetTile.row, targetTile.col)) {
+    pathTargetTiles.push(targetTile);
+  }
+
+  const path = findPathToAnyTarget(playerTile, pathTargetTiles, true, PLAYER_AUTO_WALK_MAX_PATH_COST);
+  const worldMap = getCurrentWorldMap();
+  const actionTileIndex = path.findIndex((tile) => {
+    if (!isTileWithinPlayerActionRange(tile, targetTile, actionTarget.range, actionTarget.distanceType)) {
+      return false;
+    }
+    return !actionTarget.requireLineOfSight || hasLineOfSightBetweenTiles(worldMap, tile, targetTile);
+  });
+  return actionTileIndex === -1 ? [] : path.slice(0, actionTileIndex + 1);
+};
+
+const refreshPlayerActionNavigationPath = (now) => {
+  const action = playerNavigationState.pendingAction;
+  const actionTarget = resolvePlayerActionNavigationTarget(action);
+  if (!actionTarget) {
+    stopPlayerNavigation();
+    return false;
+  }
+  if (actionTarget.isReady) {
+    stopPlayerNavigation();
+    return executePlayerPendingAction(action);
+  }
+
+  const targetTile = getTilePosition(actionTarget.target);
+  const targetTileKey = `${actionTarget.target.z}:${targetTile.col}:${targetTile.row}`;
+  const path = getPlayerActionApproachPath(actionTarget);
+  if (path.length === 0) {
+    const failureKey = `action:${action.type}:${targetTileKey}`;
+    stopPlayerNavigation();
+    showPlayerNavigationFailure(failureKey);
+    return false;
+  }
+
+  playerNavigationState.lastActionTargetTileKey = targetTileKey;
+  playerNavigationState.destinationTile = { ...path[path.length - 1] };
+  playerNavigationState.nextPathRefreshAt = now + PLAYER_ACTION_PATH_REFRESH_COOLDOWN_MS;
+  playerNavigationState.lastFailureKey = null;
+  return setPlayerNavigationPath(path);
+};
+
+const startPlayerActionNavigation = (action) => {
+  if (!action || !Object.values(PLAYER_ACTION_TYPE).includes(action.type)) {
+    return false;
+  }
+  playerNavigationState.mode = PLAYER_NAVIGATION_MODE.action;
+  playerNavigationState.path = [];
+  playerNavigationState.destinationTile = null;
+  playerNavigationState.pendingAction = action;
+  playerNavigationState.nextPathRefreshAt = 0;
+  playerNavigationState.lastFollowTargetTileKey = null;
+  playerNavigationState.lastActionTargetTileKey = null;
+  playerNavigationState.lastFailureKey = null;
+  return refreshPlayerActionNavigationPath(Date.now());
+};
+
+const updatePlayerActionNavigation = (now) => {
+  if (playerNavigationState.mode !== PLAYER_NAVIGATION_MODE.action || !playerNavigationState.pendingAction) {
+    return;
+  }
+  const actionTarget = resolvePlayerActionNavigationTarget(playerNavigationState.pendingAction);
+  if (!actionTarget) {
+    stopPlayerNavigation();
+    return;
+  }
+  if (actionTarget.isReady) {
+    const action = playerNavigationState.pendingAction;
+    stopPlayerNavigation();
+    executePlayerPendingAction(action);
+    return;
+  }
+
+  const targetTile = getTilePosition(actionTarget.target);
+  const targetTileKey = `${actionTarget.target.z}:${targetTile.col}:${targetTile.row}`;
+  const targetMoved = targetTileKey !== playerNavigationState.lastActionTargetTileKey;
+  if (playerNavigationState.path.length === 0 || (targetMoved && now >= playerNavigationState.nextPathRefreshAt)) {
+    refreshPlayerActionNavigationPath(now);
+  }
+};
+
 const getPlayerNavigationMovement = (now) => {
   const nextTile = playerNavigationState.path[0];
   if (!nextTile) {
@@ -12096,6 +12429,8 @@ const handleBlockedPlayerNavigationStep = (now) => {
   } else if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
     playerNavigationState.nextPathRefreshAt = 0;
     updatePlayerFollowNavigation(now, true);
+  } else if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.action) {
+    refreshPlayerActionNavigationPath(now);
   }
 };
 //#endregion  -----  PATHFINDING A*  -----
@@ -12158,6 +12493,7 @@ const createNpcConversationState = () => {
     waitingPlayerUids: [],
     queuedReplies: [],
     pendingAction: null,
+    activeMenu: null,
     nextReplyAt: 0,
     lastInteractionAt: 0,
   };
@@ -12203,6 +12539,33 @@ const findNpcAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
 
 const isNpcAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
   return findNpcAtPosition(x, y, z) !== null;
+};
+
+const findNpcAtClientPosition = (clientX, clientY) => {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    return null;
+  }
+  let frontNpc = null;
+  let frontNpcSortY = Number.NEGATIVE_INFINITY;
+  for (const [npcUid, refs] of npcElementsByUid.entries()) {
+    const npc = npcsByUid.get(npcUid);
+    const rootElement = refs?.root;
+    if (!npc || npc.z !== playerState.z || !rootElement) {
+      continue;
+    }
+    const bounds = rootElement.getBoundingClientRect();
+    const isInsideBounds =
+      clientX >= bounds.left && clientX <= bounds.right && clientY >= bounds.top && clientY <= bounds.bottom;
+    if (!isInsideBounds) {
+      continue;
+    }
+    const npcSortY = getEntityRenderSortY(npc);
+    if (npcSortY >= frontNpcSortY) {
+      frontNpc = npc;
+      frontNpcSortY = npcSortY;
+    }
+  }
+  return frontNpc;
 };
 
 /* ---------- NPCS - RENDU ---------- */
@@ -12430,22 +12793,7 @@ const isPlayerWithinNpcTalkRange = (player, npc) => {
   }
   const distanceCol = Math.abs(player.x - npc.x) / TILE_SIZE;
   const distanceRow = Math.abs(player.y - npc.y) / TILE_SIZE;
-  return distanceCol <= NPC_DIALOGUE_CONFIG.talkRange && distanceRow <= NPC_DIALOGUE_CONFIG.talkRange;
-};
-
-const getUsableWorldItemSourceUnderNpc = (npc) => {
-  if (!npc || npc.z !== playerState.z) {
-    return null;
-  }
-  const item = getTopWorldItemAtTile(npc.x, npc.y, npc.z);
-  if (!item || (!getItemUseData(item) && !isOpenableContainerItem(item))) {
-    return null;
-  }
-  const source = {
-    locationType: "worldItem",
-    itemUid: item.uid,
-  };
-  return canInteractWithWorldItemSource(source) ? source : null;
+  return distanceCol + distanceRow <= NPC_DIALOGUE_CONFIG.talkRange;
 };
 
 const sayGreetingToNpc = (npc, player, now = Date.now()) => {
@@ -12470,13 +12818,13 @@ const handleNpcGreetingFromPointerTarget = (target) => {
   if (!npc) {
     return false;
   }
-  const itemSource = getUsableWorldItemSourceUnderNpc(npc);
-  if (itemSource) {
-    handleUseItemFromSource(itemSource);
-    return true;
-  }
   if (isPlayerWithinNpcTalkRange(playerState, npc)) {
     sayGreetingToNpc(npc, playerState);
+  } else if (npc.z === playerState.z) {
+    startPlayerActionNavigation({
+      type: PLAYER_ACTION_TYPE.npcGreeting,
+      npcUid: npc.uid,
+    });
   }
   return true;
 };
@@ -12581,6 +12929,7 @@ const promoteNextNpcConversation = (npc, state, now) => {
       continue;
     }
     state.activePlayerUid = playerUid;
+    state.activeMenu = null;
     state.lastInteractionAt = now;
     const npcData = getNpcData(npc.npcId);
     const dialogue = getNpcDialogueData(npcData);
@@ -12603,6 +12952,7 @@ const releaseNpcConversation = (npc, state, now, reason = "farewell") => {
   state.activePlayerUid = null;
   state.queuedReplies.length = 0;
   state.pendingAction = null;
+  state.activeMenu = null;
   state.nextReplyAt = 0;
   state.lastInteractionAt = 0;
   promoteNextNpcConversation(npc, state, now);
@@ -12624,6 +12974,7 @@ const startNpcConversation = (npc, player, now) => {
     return false;
   }
   state.activePlayerUid = player.uid;
+  state.activeMenu = null;
   state.lastInteractionAt = now;
   updateNpcDirectionToPlayer(npc);
   return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
@@ -12646,7 +12997,7 @@ const findNearestNpcInTalkRange = (player) => {
     if (!isPlayerWithinNpcTalkRange(player, npc)) {
       continue;
     }
-    const distance = Math.max(Math.abs(player.x - npc.x), Math.abs(player.y - npc.y)) / TILE_SIZE;
+    const distance = (Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y)) / TILE_SIZE;
     if (distance < nearestDistance) {
       nearestNpc = npc;
       nearestDistance = distance;
@@ -12671,6 +13022,25 @@ const findNpcShopOffer = (npcData, speechWords) => {
     }
   }
   return null;
+};
+
+const getNpcMenuNavigationSuggestions = () => {
+  return getCurrentGameLanguage() === "fr" ? ["Retour", "Bye"] : ["Back", "Bye"];
+};
+
+const getNpcShopMenuSuggestions = (npcData, tradeType) => {
+  const priceKey = tradeType === "sell" ? "sellPrice" : "buyPrice";
+  const itemSuggestions = Object.entries(npcData?.service?.offers ?? [])
+    .filter(([, offer]) => Number.isInteger(offer?.[priceKey]) && offer[priceKey] > 0)
+    .map(([itemId]) => getLocalizedItemName(itemId));
+  return [...itemSuggestions, ...getNpcMenuNavigationSuggestions()];
+};
+
+const getNpcSpellMenuSuggestions = (npcData) => {
+  const spellSuggestions = (npcData?.service?.spellIds ?? [])
+    .map((spellId) => getLocalizedSpellData(spellId)?.name)
+    .filter(Boolean);
+  return [...spellSuggestions, ...getNpcMenuNavigationSuggestions()];
 };
 
 const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
@@ -12705,11 +13075,11 @@ const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) =>
       itemName: getLocalizedItemName(offer.itemId, quantity),
       price: totalPrice,
     },
-    dialogue.greetingSuggestions,
+    getNpcShopMenuSuggestions(npcData, "buy"),
   );
 };
 
-const sellItemToNpc = (npc, player, dialogue, offer, quantity, now) => {
+const sellItemToNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
   if (!Number.isInteger(offer?.sellPrice) || offer.sellPrice <= 0) {
     return queueNpcReply(npc, player, dialogue.unavailable, now);
   }
@@ -12738,7 +13108,7 @@ const sellItemToNpc = (npc, player, dialogue, offer, quantity, now) => {
       itemName: getLocalizedItemName(offer.itemId, quantity),
       price: totalPrice,
     },
-    dialogue.greetingSuggestions,
+    getNpcShopMenuSuggestions(npcData, "sell"),
   );
 };
 
@@ -12755,6 +13125,7 @@ const setNpcItemTradePendingAction = (npc, player, dialogue, offer, quantity, tr
     itemId: offer.itemId,
     quantity,
   };
+  state.activeMenu = tradeType === "sellItem" ? "sell" : "buy";
   const confirmationText = tradeType === "buyItem" ? dialogue.confirmBuy : dialogue.confirmSell;
   return queueNpcReply(
     npc,
@@ -12773,17 +13144,26 @@ const setNpcItemTradePendingAction = (npc, player, dialogue, offer, quantity, tr
 
 const handleNpcItemShopSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
   const wantsTrade = hasNpcSpeechKeyword(speechWords, ["trade", "shop", "offer", "offers", "offres", "magasin"]);
-  const wantsBuy = hasNpcSpeechKeyword(speechWords, ["buy", "acheter", "achete"]);
-  const wantsSell = hasNpcSpeechKeyword(speechWords, ["sell", "vendre", "vends"]);
+  const wantsBuy = hasNpcSpeechKeyword(speechWords, ["buy", "purchase", "achat", "acheter", "achete"]);
+  const wantsSell = hasNpcSpeechKeyword(speechWords, ["sell", "sale", "vente", "vendre", "vends"]);
   const offer = findNpcShopOffer(npcData, speechWords);
+  const state = npcConversationStatesByUid.get(npc.uid);
+  if (wantsBuy && !offer) {
+    state.activeMenu = "buy";
+    return queueNpcReply(npc, player, dialogue.buyMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "buy"));
+  }
+  if (wantsSell && !offer) {
+    state.activeMenu = "sell";
+    return queueNpcReply(npc, player, dialogue.sellMenu, now, false, {}, getNpcShopMenuSuggestions(npcData, "sell"));
+  }
   if (wantsTrade && !wantsBuy && !wantsSell && !offer) {
-    return queueNpcReply(npc, player, dialogue.trade, now, false, {}, dialogue.tradeSuggestions);
+    return queueNpcReply(npc, player, dialogue.trade, now, false, {}, dialogue.greetingSuggestions);
   }
   if (!offer) {
     return wantsBuy || wantsSell ? queueNpcReply(npc, player, dialogue.unavailable, now) : false;
   }
   const quantity = getNpcTradeQuantity(text);
-  if (wantsSell) {
+  if (wantsSell || (!wantsBuy && state.activeMenu === "sell")) {
     return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "sellItem", now);
   }
   return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "buyItem", now);
@@ -12815,7 +13195,7 @@ const learnPlayerSpell = (spellId) => {
   return true;
 };
 
-const learnSpellFromNpc = (npc, player, dialogue, spellData, now) => {
+const learnSpellFromNpc = (npc, player, npcData, dialogue, spellData, now) => {
   if (!spellData || isPlayerSpellLearned(spellData.spellId)) {
     return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
   }
@@ -12837,7 +13217,7 @@ const learnSpellFromNpc = (npc, player, dialogue, spellData, now) => {
       spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
       incantation: spellData.incantation,
     },
-    dialogue.greetingSuggestions,
+    getNpcSpellMenuSuggestions(npcData),
   );
 };
 
@@ -12845,15 +13225,19 @@ const handleNpcSpellTeacherSpeech = (npc, player, npcData, dialogue, text, speec
   const asksAboutSpells = hasNpcSpeechKeyword(speechWords, ["spell", "spells", "sort", "sorts", "magic", "magie"]);
   const spellData = findNpcTeacherSpell(npcData, text);
   if (!spellData) {
-    return asksAboutSpells
-      ? queueNpcReply(npc, player, dialogue.spells, now, false, {}, dialogue.spellSuggestions)
-      : false;
+    if (!asksAboutSpells) {
+      return false;
+    }
+    const state = npcConversationStatesByUid.get(npc.uid);
+    state.activeMenu = "spells";
+    return queueNpcReply(npc, player, dialogue.spells, now, false, {}, getNpcSpellMenuSuggestions(npcData));
   }
   if (isPlayerSpellLearned(spellData.spellId)) {
     return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
   }
 
   const state = npcConversationStatesByUid.get(npc.uid);
+  state.activeMenu = "spells";
   state.pendingAction = {
     type: "learnSpell",
     spellId: spellData.spellId,
@@ -12917,12 +13301,12 @@ const executeNpcPendingAction = (npc, player, npcData, dialogue, state, now) => 
     if (pendingAction.type === "buyItem") {
       return buyItemFromNpc(npc, player, npcData, dialogue, offer, pendingAction.quantity, now);
     }
-    return sellItemToNpc(npc, player, dialogue, offer, pendingAction.quantity, now);
+    return sellItemToNpc(npc, player, npcData, dialogue, offer, pendingAction.quantity, now);
   }
 
   if (pendingAction.type === "learnSpell") {
     const spellData = spellsDatabase[pendingAction.spellId];
-    return learnSpellFromNpc(npc, player, dialogue, spellData, now);
+    return learnSpellFromNpc(npc, player, npcData, dialogue, spellData, now);
   }
   return false;
 };
@@ -12935,7 +13319,25 @@ const handleNpcPendingActionSpeech = (npc, player, npcData, dialogue, state, spe
     return executeNpcPendingAction(npc, player, npcData, dialogue, state, now);
   }
   if (isNpcRejectionSpeech(speechWords)) {
+    const pendingAction = state.pendingAction;
     state.pendingAction = null;
+    if (pendingAction.type === "buyItem" || pendingAction.type === "sellItem") {
+      const tradeType = pendingAction.type === "sellItem" ? "sell" : "buy";
+      state.activeMenu = tradeType;
+      return queueNpcReply(
+        npc,
+        player,
+        dialogue.cancelled,
+        now,
+        false,
+        {},
+        getNpcShopMenuSuggestions(npcData, tradeType),
+      );
+    }
+    if (pendingAction.type === "learnSpell") {
+      state.activeMenu = "spells";
+      return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, getNpcSpellMenuSuggestions(npcData));
+    }
     return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
   }
   return queueNpcReply(npc, player, dialogue.confirmRequired, now, false, {}, dialogue.confirmationSuggestions);
@@ -12976,6 +13378,7 @@ const handleNpcPlayerSpeech = (text, player, now) => {
   updateNpcDirectionToPlayer(npc);
 
   if (isGreeting) {
+    state.activeMenu = null;
     return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
   }
   if (hasNpcSpeechKeyword(speechWords, ["bye", "farewell", "ciao", "revoir"])) {
@@ -12983,6 +13386,10 @@ const handleNpcPlayerSpeech = (text, player, now) => {
   }
   if (state.pendingAction) {
     return handleNpcPendingActionSpeech(npc, player, npcData, dialogue, state, speechWords, now);
+  }
+  if (hasNpcSpeechKeyword(speechWords, ["back", "retour"])) {
+    state.activeMenu = null;
+    return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
   }
   if (hasNpcSpeechKeyword(speechWords, ["name", "nom"])) {
     return queueNpcReply(npc, player, dialogue.name, now);
@@ -15959,6 +16366,7 @@ const updateFpsCounter = (frameTime) => {
 
 const updateGameLogic = (now) => {
   updatePlayerFollowNavigation(now);
+  updatePlayerActionNavigation(now);
   updateMovement(now);
   updateCombat(now);
   updatePlayerRegeneration(now);
