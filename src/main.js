@@ -10,6 +10,7 @@ import {
   loadPixiWorldEntityTextures,
   playPixiItemProjectile,
   playPixiRewardChestEffect,
+  playPixiSpellEffect,
   removePixiGroundEffectVisual,
   removePixiNpcVisual,
   removePixiMonsterVisual,
@@ -68,6 +69,7 @@ const playerStats = document.querySelector("#player-stats");
 const playerInventory = document.querySelector("#player-inventory");
 const playerQuests = document.querySelector("#player-quests");
 const gameOptionsWindow = document.querySelector("#game-options");
+const playerSpells = document.querySelector("#player-spells");
 const gameWelcome = document.querySelector("#game-welcome");
 const gameWelcomePlayButton = document.querySelector("#game-welcome-play");
 const gameWelcomeLanguageButtons = document.querySelectorAll("[data-game-language]");
@@ -144,6 +146,9 @@ const MINIMAP_AUTOWALK_MAX_DISTANCE_TILES = 30;
 const MINIMAP_MONSTER_REVEAL_RANGE_TILES = 5;
 const MINIMAP_DISCOVERY_RADIUS_X = Math.ceil(MAP_COLS / 2) + 1;
 const MINIMAP_DISCOVERY_RADIUS_Y = Math.ceil(MAP_ROWS / 2) + 1;
+const SPELL_HOTKEY_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
+const MOBILE_SPELL_LONG_PRESS_MS = 500;
+const MOBILE_SPELL_PRESS_MOVE_TOLERANCE_PX = 12;
 
 /* ---------- BASE - TILES ---------- */
 
@@ -284,6 +289,12 @@ let nextMonsterRespawnEventOrder = 0;
 
 const questUiState = {
   isOpen: false,
+};
+
+const spellUiState = {
+  isOpen: false,
+  selectedSpellId: null,
+  mobileAssignHotkeyIndex: null,
 };
 
 const GAME_OPTIONS_STORAGE_KEY = "no-name-yet:game-options";
@@ -980,19 +991,174 @@ const npcsDatabase = {
     dialogue: {
       en: {
         greeting: "Hello, {playerName}. Welcome to Tiro.",
+        greetingSuggestions: ["name", "job", "help", "bye"],
         name: "My name is Kay.",
         job: "I help new adventurers find their way around Tiro.",
         help: "You can ask me about my name or my job.",
         unknown: "I am not sure what you mean.",
         farewell: "Goodbye, {playerName}.",
+        rudeDeparture: "Wow, okay... ghosted in person. How rude!",
+        timeoutFarewell: "You are not talking anymore? All right, goodbye!",
       },
       fr: {
         greeting: "Salut, {playerName}! Bienvenue a Tiro. Prends tes aises.",
+        greetingSuggestions: ["nom", "job", "aide", "bye"],
         name: "Moi, c'est Kay.",
         job: "J'aide les nouveaux aventuriers a se retrouver dans Tiro.",
         help: "Demande-moi mon nom, ma job ou un coup de main.",
         unknown: "Hmm... je te suis pas trop, la.",
         farewell: "A la prochaine, {playerName}! Fais attention a toi.",
+        rudeDeparture: "Wow, OK... ghostee en pleine face. C'est rough!",
+        timeoutFarewell: "Tu ne parles plus? Bon, je vais prendre ca pour un au revoir!",
+      },
+    },
+  },
+  ben: {
+    npcId: "ben",
+    name: "Ben",
+    desc: "A merchant from Tiro.",
+    suffix: "a",
+    textureUrl: new URL("./assets/images/npc/Ben.png", import.meta.url).href,
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE * 2,
+    spriteSize: SPRITE_SIZE,
+    animationFrames: 4,
+    direction: "down",
+    maxHp: 100,
+    movement: {
+      enabled: true,
+      roamRadiusTiles: 1,
+      intervalMinMs: 12000,
+      intervalMaxMs: 22000,
+      moveCooldownMs: 350,
+    },
+    service: {
+      type: "itemShop",
+      offers: {
+        apple: { buyPrice: 3, sellPrice: 1, keywords: ["apple", "pomme"] },
+        healthPotion: { buyPrice: 20, sellPrice: 8, keywords: ["health", "vie"] },
+        manaPotion: { buyPrice: 20, sellPrice: 8, keywords: ["mana"] },
+        torch: { buyPrice: 15, sellPrice: 5, keywords: ["torch", "torche"] },
+        mace: { buyPrice: 30, sellPrice: 12, keywords: ["mace", "masse"] },
+        sword: { buyPrice: null, sellPrice: 25, keywords: ["sword", "epee"] },
+      },
+    },
+    dialogue: {
+      en: {
+        greeting: "Hello, {playerName}. I buy and sell useful supplies.",
+        greetingSuggestions: ["offers", "apple", "health potion", "mana potion", "torch", "mace", "bye"],
+        tradeSuggestions: ["apple", "health potion", "mana potion", "torch", "mace"],
+        confirmationSuggestions: ["yes", "no"],
+        name: "My name is Ben.",
+        job: "I trade equipment and supplies.",
+        help: "Ask me for a trade, then say buy or sell with an item name.",
+        trade: "I sell apples, health potions, mana potions, torches and maces.",
+        confirmBuy: "Do you want to buy {quantity} {itemName} for {price} gold?",
+        confirmSell: "Do you want to sell {quantity} {itemName} for {price} gold?",
+        confirmRequired: "Say yes to confirm or no to cancel.",
+        cancelled: "No problem. The deal is cancelled.",
+        bought: "Here you go: {quantity} {itemName} for {price} gold.",
+        sold: "Deal. I paid {price} gold for {quantity} {itemName}.",
+        notEnoughGold: "You do not have enough gold.",
+        missingItem: "You do not have that item in your backpack.",
+        noRoom: "Make some room in your backpack first.",
+        unavailable: "I do not trade that item.",
+        unknown: "Say trade, buy or sell and the item you want.",
+        farewell: "Goodbye, {playerName}.",
+        rudeDeparture: "Leaving mid-deal? In this economy? Wild.",
+        timeoutFarewell: "You are not answering? I will close the deal. Goodbye!",
+      },
+      fr: {
+        greeting: "Salut, {playerName}! J'achete et je vends du stock utile.",
+        greetingSuggestions: ["offres", "pomme", "potion de vie", "potion de mana", "torche", "masse", "bye"],
+        tradeSuggestions: ["pomme", "potion de vie", "potion de mana", "torche", "masse"],
+        confirmationSuggestions: ["oui", "non"],
+        name: "Moi, c'est Ben.",
+        job: "Je vends de l'equipement et des provisions.",
+        help: "Demande-moi mes offres, puis dis acheter ou vendre avec le nom de l'objet.",
+        trade: "Je vends des pommes, des potions de vie et de mana, des torches et des masses.",
+        confirmBuy: "Veux-tu acheter {quantity} {itemName} pour {price} pieces d'or?",
+        confirmSell: "Veux-tu vendre {quantity} {itemName} pour {price} pieces d'or?",
+        confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
+        cancelled: "Pas de trouble. Le deal est annule.",
+        bought: "Tiens: {quantity} {itemName} pour {price} pieces d'or.",
+        sold: "Vendu. Je te donne {price} pieces d'or pour {quantity} {itemName}.",
+        notEnoughGold: "Tu n'as pas assez de pieces d'or.",
+        missingItem: "Tu n'as pas cet objet dans ton sac.",
+        noRoom: "Fais un peu de place dans ton sac avant.",
+        unavailable: "Je ne fais pas d'echange avec cet objet-la.",
+        unknown: "Dis offres, acheter ou vendre avec le nom de l'objet.",
+        farewell: "A la prochaine, {playerName}!",
+        rudeDeparture: "Partir en plein deal? Dans cette economie? Sauvage.",
+        timeoutFarewell: "Tu ne reponds plus? Je ferme le deal. Au revoir!",
+      },
+    },
+  },
+  kev: {
+    npcId: "kev",
+    name: "Kev",
+    desc: "A teacher of magic.",
+    suffix: "a",
+    textureUrl: new URL("./assets/images/npc/Kev.png", import.meta.url).href,
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE * 2,
+    spriteSize: SPRITE_SIZE,
+    animationFrames: 4,
+    direction: "down",
+    maxHp: 100,
+    movement: {
+      enabled: true,
+      roamRadiusTiles: 1,
+      intervalMinMs: 14000,
+      intervalMaxMs: 24000,
+      moveCooldownMs: 350,
+    },
+    service: {
+      type: "spellTeacher",
+      spellIds: ["cura"],
+    },
+    dialogue: {
+      en: {
+        greeting: "Greetings, {playerName}. I can teach you magic.",
+        greetingSuggestions: ["spells", "healing", "bye"],
+        spellSuggestions: ["healing"],
+        confirmationSuggestions: ["yes", "no"],
+        name: "I am Kev.",
+        job: "I teach spells to adventurers.",
+        help: "Ask me about spells, or ask me for healing.",
+        spells: "I can teach the Healing Spell for 40 gold.",
+        confirmLearn: "Do you want to learn the {spellName} for {price} gold?",
+        confirmRequired: "Say yes to learn it or no to cancel.",
+        cancelled: "Very well. No lesson today.",
+        learned: "You have learned the {spellName}. You can cast it by saying \"{incantation}\".",
+        alreadyLearned: "You already know that spell.",
+        notEnoughGold: "Come back with {price} gold and I will teach you.",
+        unavailable: "I cannot teach that spell.",
+        unknown: "Ask me about spells or ask me for healing.",
+        farewell: "May your magic guide you, {playerName}.",
+        rudeDeparture: "Vanishing mid-lesson? Your manners need more training than your magic.",
+        timeoutFarewell: "You are not talking anymore? We will continue another time. Farewell!",
+      },
+      fr: {
+        greeting: "Salut, {playerName}. Je peux t'enseigner la magie.",
+        greetingSuggestions: ["sorts", "soin", "bye"],
+        spellSuggestions: ["soin"],
+        confirmationSuggestions: ["oui", "non"],
+        name: "Moi, c'est Kev.",
+        job: "J'enseigne des sorts aux aventuriers.",
+        help: "Demande-moi mes sorts, ou demande-moi un sort de soin.",
+        spells: "Je peux t'apprendre le sort de soin pour 40 pieces d'or.",
+        confirmLearn: "Veux-tu apprendre le {spellName} pour {price} pieces d'or?",
+        confirmRequired: "Dis oui pour apprendre le sort ou non pour annuler.",
+        cancelled: "Comme tu veux. Pas de cours aujourd'hui.",
+        learned: "Tu connais maintenant le {spellName}. Tu peux le lancer en disant \"{incantation}\".",
+        alreadyLearned: "Tu connais deja ce sort-la.",
+        notEnoughGold: "Reviens avec {price} pieces d'or et je vais te l'apprendre.",
+        unavailable: "Je ne peux pas t'enseigner ce sort-la.",
+        unknown: "Demande-moi mes sorts ou demande-moi un sort de soin.",
+        farewell: "Que ta magie te guide, {playerName}.",
+        rudeDeparture: "Disparaitre en plein cours? Tes manieres ont plus besoin d'entrainement que ta magie.",
+        timeoutFarewell: "Tu ne parles plus? On va reprendre ca une autre fois. Au revoir!",
       },
     },
   },
@@ -1139,7 +1305,7 @@ const NPC_DIALOGUE_CONFIG = {
   talkRange: 4,
   responseDelayMs: 500,
   lineIntervalMs: 900,
-  conversationTimeoutMs: 30000,
+  conversationTimeoutMs: 60000,
   maxQueuedReplies: 8,
 };
 
@@ -1186,6 +1352,39 @@ const getPlayerAppearanceData = (appearanceId = playerState?.appearanceId) => {
 /* ==================================================== */
 /* ---------- JOUEUR - DONNEES ---------- */
 
+const createDefaultPlayerSpellbook = () => {
+  const learnedSpellIds = Object.values(spellsDatabase)
+    .filter((spellData) => spellData.learnedByDefault === true)
+    .map((spellData) => spellData.spellId);
+  const hotkeySpellIds = Array(SPELL_HOTKEY_KEYS.length).fill(null);
+  hotkeySpellIds[0] = learnedSpellIds[0] ?? null;
+  return {
+    learnedSpellIds,
+    hotkeySpellIds,
+  };
+};
+
+const normalizePlayerSpellbook = (spellbook) => {
+  const defaultSpellbook = createDefaultPlayerSpellbook();
+  if (!spellbook || !Array.isArray(spellbook.learnedSpellIds) || !Array.isArray(spellbook.hotkeySpellIds)) {
+    return defaultSpellbook;
+  }
+
+  const learnedSpellIds = [...new Set([...defaultSpellbook.learnedSpellIds, ...spellbook.learnedSpellIds])].filter(
+    (spellId) => typeof spellId === "string" && spellId in spellsDatabase,
+  );
+  const learnedSpellIdSet = new Set(learnedSpellIds);
+  const hotkeySpellIds = Array.from({ length: SPELL_HOTKEY_KEYS.length }, (_, index) => {
+    const spellId = spellbook.hotkeySpellIds[index];
+    return learnedSpellIdSet.has(spellId) ? spellId : null;
+  });
+
+  return {
+    learnedSpellIds,
+    hotkeySpellIds,
+  };
+};
+
 const playerState = {
   uid: "local-player",
   x: null,
@@ -1230,6 +1429,7 @@ const playerState = {
       expiresAt: 0,
     },
   },
+  spellbook: createDefaultPlayerSpellbook(),
   progress: {
     questsById: {},
     rewardClaimsByInteractableId: {},
@@ -1360,6 +1560,7 @@ const createCharacterSaveSnapshot = () => {
       experience: playerState.experience,
       skills,
     },
+    spellbook: structuredClone(playerState.spellbook),
     progress: {
       questsById: structuredClone(playerState.progress.questsById),
       rewardClaimsByInteractableId: structuredClone(playerState.progress.rewardClaimsByInteractableId),
@@ -1463,6 +1664,7 @@ const applyCharacterSaveSnapshot = (characterSnapshot) => {
   playerState.appearanceId = getPlayerAppearanceData(characterSnapshot.appearanceId).appearanceId;
   playerState.classId = characterSnapshot.classId;
   playerState.experience = characterSnapshot.progression.experience;
+  playerState.spellbook = normalizePlayerSpellbook(characterSnapshot.spellbook);
   playerState.spawn = structuredClone(characterSnapshot.spawn);
   playerState.progress = {
     questsById: structuredClone(characterSnapshot.progress?.questsById ?? {}),
@@ -4137,6 +4339,11 @@ const createWorldItemHitbox = (item) => {
       return;
     }
 
+    const target = getPointerTargetFromEvent(e);
+    if (handleNpcGreetingFromPointerTarget(target)) {
+      return;
+    }
+
     if (!itemData) {
       return;
     }
@@ -4596,6 +4803,102 @@ const getPlayerRemainingCapacity = () => {
 
 const updatePlayerCarriedWeight = () => {
   playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
+};
+
+/* ---------- INVENTAIRE - MONNAIE ET RETRAITS ---------- */
+
+const visitContainerItems = (containerItem, visitor) => {
+  if (!Array.isArray(containerItem?.content) || typeof visitor !== "function") {
+    return;
+  }
+  for (let slotIndex = 0; slotIndex < containerItem.content.length; slotIndex++) {
+    const item = containerItem.content[slotIndex];
+    if (!item) {
+      continue;
+    }
+    visitor(item, containerItem, slotIndex);
+    if (Array.isArray(item.content)) {
+      visitContainerItems(item, visitor);
+    }
+  }
+};
+
+const getPlayerBackpackItemQuantity = (itemId) => {
+  const backpack = getEquipmentSlotItem("backpack");
+  if (!backpack || typeof itemId !== "string") {
+    return 0;
+  }
+  let quantity = 0;
+  visitContainerItems(backpack, (item) => {
+    if (item.itemId === itemId) {
+      quantity += item.quantity;
+    }
+  });
+  return quantity;
+};
+
+const getPlayerGoldAmount = () => {
+  return getPlayerBackpackItemQuantity("goldCoin");
+};
+
+const createPlayerBackpackItemRemovalPlan = (itemId, quantity) => {
+  const backpack = getEquipmentSlotItem("backpack");
+  if (!backpack || typeof itemId !== "string" || !Number.isInteger(quantity) || quantity <= 0) {
+    return { success: false, reason: "configuration" };
+  }
+
+  let remainingQuantity = quantity;
+  const operations = [];
+  visitContainerItems(backpack, (item, containerItem, slotIndex) => {
+    if (remainingQuantity <= 0 || item.itemId !== itemId) {
+      return;
+    }
+    const quantityToRemove = Math.min(item.quantity, remainingQuantity);
+    operations.push({ containerItem, slotIndex, item, quantity: quantityToRemove });
+    remainingQuantity -= quantityToRemove;
+  });
+
+  if (remainingQuantity > 0) {
+    return { success: false, reason: "quantity" };
+  }
+  return { success: true, operations };
+};
+
+const commitPlayerBackpackItemRemovalPlan = (removalPlan) => {
+  if (!removalPlan?.success || !Array.isArray(removalPlan.operations)) {
+    return false;
+  }
+  for (const operation of removalPlan.operations) {
+    if (operation.quantity >= operation.item.quantity) {
+      operation.containerItem.content[operation.slotIndex] = null;
+    } else {
+      operation.item.quantity -= operation.quantity;
+    }
+  }
+  return true;
+};
+
+const rollbackPlayerBackpackItemRemovalPlan = (removalPlan) => {
+  if (!removalPlan?.success || !Array.isArray(removalPlan.operations)) {
+    return false;
+  }
+  for (let index = removalPlan.operations.length - 1; index >= 0; index--) {
+    const operation = removalPlan.operations[index];
+    if (operation.containerItem.content[operation.slotIndex] === null) {
+      operation.containerItem.content[operation.slotIndex] = operation.item;
+    } else {
+      operation.item.quantity += operation.quantity;
+    }
+  }
+  return true;
+};
+
+const spendPlayerGold = (goldAmount) => {
+  const removalPlan = createPlayerBackpackItemRemovalPlan("goldCoin", goldAmount);
+  if (!removalPlan.success) {
+    return false;
+  }
+  return commitPlayerBackpackItemRemovalPlan(removalPlan);
 };
 
 /* ---------- INVENTAIRE - TRANSACTIONS DE RECOMPENSE ---------- */
@@ -6346,6 +6649,22 @@ const GAME_UI_TEXT = {
     equipments: "Equipments",
     capacityShort: "Cap",
     follow: "Follow",
+    hotkeys: "Spells",
+    spells: "Spells",
+    closeSpells: "Close spells",
+    spellBar: "Spell bar",
+    spellWindowHelp: "Tap a spell to cast it, or select Assign and then choose a slot above.",
+    spellAssignPrompt: (spellName) => `Choose a slot above for ${spellName}.`,
+    mobileSpellBarHelp: "Tap to cast. Hold a slot to reassign it.",
+    mobileSpellAssignPrompt: (key) => `Choose a learned spell for slot ${key}.`,
+    emptySpellSlot: "Empty spell slot",
+    spellSlotLabel: (key, spellName) => `Slot ${key}: ${spellName}`,
+    clearSpellSlot: (key) => `Clear spell slot ${key}`,
+    learnedSpells: "Learned spells",
+    castSpell: "Cast",
+    assignSpell: "Assign",
+    clearHotkey: "Clear",
+    noLearnedSpells: "No spells learned.",
     options: "Options",
     logout: "Logout",
     fullAttack: "Full Attack",
@@ -6395,6 +6714,7 @@ const GAME_UI_TEXT = {
     invalidCharacterName: "Use 2 to 20 letters. Spaces, apostrophes and hyphens are allowed.",
     invalidAppearance: "Choose a character appearance.",
     spellWrongClass: "Your class cannot cast this spell.",
+    spellNotLearned: "You have not learned this spell.",
     spellMagicLevelRequired: (level) => `You need magic level ${level} to cast this spell.`,
     spellNotEnoughMana: "You do not have enough mana.",
     duplicateCharacterName: "A character with this name already exists.",
@@ -6439,6 +6759,8 @@ const GAME_UI_TEXT = {
     tradeChannel: "Trade",
     logsChannel: "Logs",
     npcQueue: (name, position) => `${name} asks you to wait. Queue position: ${position}.`,
+    sayNpcOption: (speech) => `Say ${speech}`,
+    npcOptionsLabel: "You can say:",
   },
   fr: {
     play: "JOUER",
@@ -6482,6 +6804,22 @@ const GAME_UI_TEXT = {
     equipments: "Equipement",
     capacityShort: "Cap",
     follow: "Suivre",
+    hotkeys: "Sort",
+    spells: "Sorts",
+    closeSpells: "Fermer les sorts",
+    spellBar: "Barre de sorts",
+    spellWindowHelp: "Touche un sort pour le lancer, ou choisis Assigner puis un emplacement en haut.",
+    spellAssignPrompt: (spellName) => `Choisis un emplacement en haut pour ${spellName}.`,
+    mobileSpellBarHelp: "Touche pour lancer. Maintiens une case pour la reassigner.",
+    mobileSpellAssignPrompt: (key) => `Choisis un sort appris pour la case ${key}.`,
+    emptySpellSlot: "Emplacement de sort vide",
+    spellSlotLabel: (key, spellName) => `Emplacement ${key}: ${spellName}`,
+    clearSpellSlot: (key) => `Vider l'emplacement de sort ${key}`,
+    learnedSpells: "Sorts appris",
+    castSpell: "Lancer",
+    assignSpell: "Assigner",
+    clearHotkey: "Vider",
+    noLearnedSpells: "Aucun sort appris.",
     options: "Options",
     logout: "Quitter",
     fullAttack: "Attaque",
@@ -6531,6 +6869,7 @@ const GAME_UI_TEXT = {
     invalidCharacterName: "Utilise de 2 a 20 lettres. Les espaces, apostrophes et tirets sont permis.",
     invalidAppearance: "Choisis une apparence.",
     spellWrongClass: "Ta classe ne peut pas lancer ce sort.",
+    spellNotLearned: "Tu n'as pas appris ce sort.",
     spellMagicLevelRequired: (level) => `Il te faut le niveau de magie ${level} pour lancer ce sort.`,
     spellNotEnoughMana: "Tu n'as pas assez de mana.",
     duplicateCharacterName: "Un personnage porte deja ce nom.",
@@ -6575,6 +6914,8 @@ const GAME_UI_TEXT = {
     tradeChannel: "Echange",
     logsChannel: "Journal",
     npcQueue: (name, position) => `${name} te demande d'attendre. Position dans la file : ${position}.`,
+    sayNpcOption: (speech) => `Dire ${speech}`,
+    npcOptionsLabel: "Tu peux dire :",
   },
 };
 
@@ -6916,6 +7257,7 @@ const toggleOptionsWindow = () => {
   gameOptionsUiState.isOpen = !gameOptionsUiState.isOpen;
   if (gameOptionsUiState.isOpen) {
     questUiState.isOpen = false;
+    spellUiState.isOpen = false;
   }
   updatePlayerInventory();
 };
@@ -6941,11 +7283,319 @@ const logoutCurrentCharacter = () => {
 
 const bindEquipmentMenuButtons = () => {
   const pvpButton = playerInventory.querySelector('[data-ui-action="show-pvp-status"]');
+  const hotkeyButton = playerInventory.querySelector('[data-ui-action="toggle-spells"]');
   const optionsButton = playerInventory.querySelector('[data-ui-action="toggle-options"]');
   const logoutButton = playerInventory.querySelector('[data-ui-action="logout"]');
   pvpButton?.addEventListener("click", showPvpUnavailableMessage);
+  hotkeyButton?.addEventListener("click", toggleSpellWindow);
   optionsButton?.addEventListener("click", toggleOptionsWindow);
   logoutButton?.addEventListener("click", logoutCurrentCharacter);
+};
+
+/* ---------- UI - SORTS ET HOTKEYS ---------- */
+
+const isPlayerSpellLearned = (spellId) => {
+  return playerState.spellbook.learnedSpellIds.includes(spellId);
+};
+
+const getLearnedPlayerSpells = () => {
+  return playerState.spellbook.learnedSpellIds.map(getLocalizedSpellData).filter(Boolean);
+};
+
+const assignPlayerSpellToHotkey = (hotkeyIndex, spellId) => {
+  if (
+    !Number.isInteger(hotkeyIndex) ||
+    hotkeyIndex < 0 ||
+    hotkeyIndex >= SPELL_HOTKEY_KEYS.length ||
+    (spellId !== null && !isPlayerSpellLearned(spellId))
+  ) {
+    return false;
+  }
+  playerState.spellbook.hotkeySpellIds[hotkeyIndex] = spellId;
+  spellUiState.selectedSpellId = null;
+  spellUiState.mobileAssignHotkeyIndex = null;
+  autosaveCurrentCharacter();
+  renderSpellWindow();
+  return true;
+};
+
+const renderSpellWindow = () => {
+  if (!playerSpells) {
+    return;
+  }
+
+  const mobileLayout = isMobileGameLayout();
+  const spellWindowParent = mobileLayout ? mobileGameControls : game;
+  if (spellWindowParent && playerSpells.parentElement !== spellWindowParent) {
+    spellWindowParent.appendChild(playerSpells);
+  }
+  const mobileAssignHotkeyIndex = Number.isInteger(spellUiState.mobileAssignHotkeyIndex)
+    ? spellUiState.mobileAssignHotkeyIndex
+    : null;
+  const isMobileAssigning = mobileLayout && mobileAssignHotkeyIndex !== null;
+  const shouldFocusSpellWindow = !mobileLayout && playerSpells.hidden && spellUiState.isOpen;
+  playerSpells.hidden = !spellUiState.isOpen;
+  playerSpells.innerHTML = "";
+  playerSpells.classList.toggle("spell-window-mobile-bar", mobileLayout);
+  playerSpells.classList.toggle("spell-window-mobile-assigning", isMobileAssigning);
+  playerSpells.setAttribute("role", mobileLayout ? "region" : "dialog");
+  if (mobileLayout) {
+    playerSpells.removeAttribute("aria-modal");
+  } else {
+    playerSpells.setAttribute("aria-modal", "true");
+  }
+  playerSpells.setAttribute("aria-labelledby", "spell-window-title");
+  playerSpells.setAttribute("aria-describedby", "spell-window-help");
+  const mobileSpellButton = document.querySelector('[data-mobile-action="toggle-spells"]');
+  mobileSpellButton?.classList.toggle("mobile-panel-button-active", spellUiState.isOpen);
+  mobileSpellButton?.setAttribute("aria-expanded", spellUiState.isOpen ? "true" : "false");
+  if (!spellUiState.isOpen) {
+    return;
+  }
+
+  const wrapperElement = document.createElement("div");
+  wrapperElement.classList.add("boite-boite");
+  const headerElement = document.createElement("div");
+  headerElement.classList.add("spell-window-header");
+  const titleElement = document.createElement("div");
+  titleElement.classList.add("boite-jeux-titre");
+  titleElement.id = "spell-window-title";
+  titleElement.textContent = getGameUiText("spells");
+  const closeButtonElement = document.createElement("button");
+  closeButtonElement.classList.add("spell-window-close-button");
+  closeButtonElement.type = "button";
+  closeButtonElement.textContent = "x";
+  closeButtonElement.title = getGameUiText("closeSpells");
+  closeButtonElement.setAttribute("aria-label", getGameUiText("closeSpells"));
+  closeButtonElement.addEventListener("click", () => {
+    spellUiState.isOpen = false;
+    spellUiState.selectedSpellId = null;
+    spellUiState.mobileAssignHotkeyIndex = null;
+    updatePlayerInventory();
+  });
+  headerElement.append(titleElement, closeButtonElement);
+
+  const separatorElement = document.createElement("div");
+  separatorElement.classList.add("separateur-panneau");
+  const hotkeyTitleElement = document.createElement("div");
+  hotkeyTitleElement.id = "spell-hotkey-title";
+  hotkeyTitleElement.classList.add("spell-list-title", "spell-hotkey-title");
+  hotkeyTitleElement.textContent = getGameUiText("spellBar");
+  const helpElement = document.createElement("div");
+  helpElement.id = "spell-window-help";
+  helpElement.classList.add("spell-window-help");
+  helpElement.setAttribute("aria-live", "polite");
+  const selectedSpellData = spellUiState.selectedSpellId
+    ? getLocalizedSpellData(spellUiState.selectedSpellId)
+    : null;
+  if (isMobileAssigning) {
+    helpElement.textContent = getGameUiText("mobileSpellAssignPrompt")(
+      SPELL_HOTKEY_KEYS[mobileAssignHotkeyIndex],
+    );
+  } else if (mobileLayout) {
+    helpElement.textContent = getGameUiText("mobileSpellBarHelp");
+  } else {
+    helpElement.textContent = selectedSpellData
+      ? getGameUiText("spellAssignPrompt")(selectedSpellData.name)
+      : getGameUiText("spellWindowHelp");
+  }
+  const hotkeyGridElement = document.createElement("div");
+  hotkeyGridElement.classList.add("spell-hotkey-grid");
+  hotkeyGridElement.setAttribute("role", "group");
+  hotkeyGridElement.setAttribute("aria-labelledby", "spell-hotkey-title");
+
+  for (let hotkeyIndex = 0; hotkeyIndex < SPELL_HOTKEY_KEYS.length; hotkeyIndex++) {
+    const spellId = playerState.spellbook.hotkeySpellIds[hotkeyIndex];
+    const spellData = spellId ? getLocalizedSpellData(spellId) : null;
+    const slotElement = document.createElement("div");
+    slotElement.classList.add("spell-hotkey-slot");
+    slotElement.classList.toggle("spell-hotkey-slot-assigning", mobileAssignHotkeyIndex === hotkeyIndex);
+    const castButtonElement = document.createElement("button");
+    castButtonElement.classList.add("spell-hotkey-cast-button");
+    castButtonElement.type = "button";
+    castButtonElement.innerHTML = `<span class="spell-hotkey-key">${SPELL_HOTKEY_KEYS[hotkeyIndex]}</span><span class="spell-hotkey-name">${spellData?.name ?? "-"}</span>`;
+    castButtonElement.setAttribute(
+      "aria-label",
+      getGameUiText("spellSlotLabel")(
+        SPELL_HOTKEY_KEYS[hotkeyIndex],
+        spellData?.name ?? getGameUiText("emptySpellSlot"),
+      ),
+    );
+    if (!mobileLayout && !spellId && !spellUiState.selectedSpellId) {
+      castButtonElement.disabled = true;
+    }
+    let mobileLongPressTimeoutId = null;
+    let mobilePressStartX = null;
+    let mobilePressStartY = null;
+    let mobilePressCancelled = false;
+    let suppressNextClick = false;
+
+    const clearMobileLongPressTimeout = () => {
+      if (mobileLongPressTimeoutId !== null) {
+        clearTimeout(mobileLongPressTimeoutId);
+        mobileLongPressTimeoutId = null;
+      }
+    };
+
+    castButtonElement.addEventListener("pointerdown", (e) => {
+      if (!mobileLayout || e.pointerType === "mouse") {
+        return;
+      }
+      mobilePressStartX = e.clientX;
+      mobilePressStartY = e.clientY;
+      mobilePressCancelled = false;
+      clearMobileLongPressTimeout();
+      mobileLongPressTimeoutId = setTimeout(() => {
+        mobileLongPressTimeoutId = null;
+        spellUiState.mobileAssignHotkeyIndex = hotkeyIndex;
+        spellUiState.selectedSpellId = null;
+        renderSpellWindow();
+      }, MOBILE_SPELL_LONG_PRESS_MS);
+    });
+
+    castButtonElement.addEventListener("pointermove", (e) => {
+      if (mobileLongPressTimeoutId === null || mobilePressStartX === null || mobilePressStartY === null) {
+        return;
+      }
+      const moveDistance = Math.abs(e.clientX - mobilePressStartX) + Math.abs(e.clientY - mobilePressStartY);
+      if (moveDistance > MOBILE_SPELL_PRESS_MOVE_TOLERANCE_PX) {
+        mobilePressCancelled = true;
+        clearMobileLongPressTimeout();
+      }
+    });
+
+    castButtonElement.addEventListener("pointerup", (e) => {
+      if (!mobileLayout || e.pointerType === "mouse") {
+        return;
+      }
+      e.preventDefault();
+      const shouldCastSpell = mobileLongPressTimeoutId !== null && !mobilePressCancelled && Boolean(spellId);
+      clearMobileLongPressTimeout();
+      suppressNextClick = true;
+      setTimeout(() => {
+        suppressNextClick = false;
+      }, 100);
+      if (shouldCastSpell) {
+        castLearnedPlayerSpellById(spellId);
+      }
+    });
+
+    castButtonElement.addEventListener("pointercancel", () => {
+      mobilePressCancelled = true;
+      clearMobileLongPressTimeout();
+    });
+
+    castButtonElement.addEventListener("click", () => {
+      if (suppressNextClick) {
+        return;
+      }
+      if (spellUiState.selectedSpellId) {
+        assignPlayerSpellToHotkey(hotkeyIndex, spellUiState.selectedSpellId);
+      } else if (spellId) {
+        castLearnedPlayerSpellById(spellId);
+      }
+    });
+    slotElement.appendChild(castButtonElement);
+    if (spellId) {
+      const clearButtonElement = document.createElement("button");
+      clearButtonElement.classList.add("spell-hotkey-clear-button");
+      clearButtonElement.type = "button";
+      clearButtonElement.textContent = "x";
+      clearButtonElement.title = getGameUiText("clearHotkey");
+      clearButtonElement.setAttribute(
+        "aria-label",
+        getGameUiText("clearSpellSlot")(SPELL_HOTKEY_KEYS[hotkeyIndex]),
+      );
+      clearButtonElement.addEventListener("click", () => {
+        assignPlayerSpellToHotkey(hotkeyIndex, null);
+      });
+      slotElement.appendChild(clearButtonElement);
+    }
+    hotkeyGridElement.appendChild(slotElement);
+  }
+
+  const learnedTitleElement = document.createElement("div");
+  learnedTitleElement.classList.add("spell-list-title");
+  learnedTitleElement.textContent = getGameUiText("learnedSpells");
+  learnedTitleElement.hidden = mobileLayout && !isMobileAssigning;
+  const learnedListElement = document.createElement("div");
+  learnedListElement.classList.add("spell-list");
+  learnedListElement.setAttribute("role", "list");
+  learnedListElement.hidden = mobileLayout && !isMobileAssigning;
+  const learnedSpells = getLearnedPlayerSpells();
+
+  if (learnedSpells.length === 0) {
+    const emptyElement = document.createElement("div");
+    emptyElement.classList.add("spell-list-empty");
+    emptyElement.textContent = getGameUiText("noLearnedSpells");
+    learnedListElement.appendChild(emptyElement);
+  } else {
+    for (const spellData of learnedSpells) {
+      const rowElement = document.createElement("div");
+      rowElement.classList.add("spell-list-row");
+      rowElement.classList.toggle("spell-list-row-selected", spellUiState.selectedSpellId === spellData.spellId);
+      rowElement.setAttribute("role", "listitem");
+      const detailsElement = document.createElement("div");
+      detailsElement.classList.add("spell-list-details");
+      const nameElement = document.createElement("strong");
+      nameElement.textContent = spellData.name;
+      const statsElement = document.createElement("span");
+      statsElement.textContent = `${spellData.incantation} | ML ${spellData.requiredMagicLevel} | ${spellData.manaCost} MP`;
+      detailsElement.append(nameElement, statsElement);
+      const actionsElement = document.createElement("div");
+      actionsElement.classList.add("spell-list-actions");
+      const castButtonElement = document.createElement("button");
+      castButtonElement.classList.add("spell-list-cast-button");
+      castButtonElement.type = "button";
+      castButtonElement.textContent = getGameUiText("castSpell");
+      castButtonElement.hidden = mobileLayout;
+      castButtonElement.setAttribute("aria-label", `${getGameUiText("castSpell")}: ${spellData.name}`);
+      castButtonElement.addEventListener("click", () => castLearnedPlayerSpellById(spellData.spellId));
+      const assignButtonElement = document.createElement("button");
+      assignButtonElement.classList.add("spell-list-assign-button");
+      assignButtonElement.type = "button";
+      assignButtonElement.textContent = getGameUiText("assignSpell");
+      assignButtonElement.setAttribute("aria-pressed", spellUiState.selectedSpellId === spellData.spellId ? "true" : "false");
+      assignButtonElement.setAttribute("aria-label", `${getGameUiText("assignSpell")}: ${spellData.name}`);
+      assignButtonElement.addEventListener("click", () => {
+        if (isMobileAssigning) {
+          assignPlayerSpellToHotkey(mobileAssignHotkeyIndex, spellData.spellId);
+          return;
+        }
+        spellUiState.selectedSpellId = spellUiState.selectedSpellId === spellData.spellId ? null : spellData.spellId;
+        renderSpellWindow();
+      });
+      actionsElement.append(castButtonElement, assignButtonElement);
+      rowElement.append(detailsElement, actionsElement);
+      learnedListElement.appendChild(rowElement);
+    }
+  }
+
+  wrapperElement.append(
+    headerElement,
+    separatorElement,
+    hotkeyTitleElement,
+    helpElement,
+    hotkeyGridElement,
+    learnedTitleElement,
+    learnedListElement,
+  );
+  playerSpells.appendChild(wrapperElement);
+  if (shouldFocusSpellWindow) {
+    requestAnimationFrame(() => closeButtonElement.focus());
+  }
+};
+
+const toggleSpellWindow = () => {
+  spellUiState.isOpen = !spellUiState.isOpen;
+  spellUiState.selectedSpellId = null;
+  spellUiState.mobileAssignHotkeyIndex = null;
+  if (spellUiState.isOpen) {
+    questUiState.isOpen = false;
+    gameOptionsUiState.isOpen = false;
+    setOpenMobilePanel(null);
+  }
+  updatePlayerInventory();
 };
 
 /* ---------- UI - QUETES ---------- */
@@ -7032,6 +7682,7 @@ const toggleQuestWindow = () => {
   questUiState.isOpen = !questUiState.isOpen;
   if (questUiState.isOpen) {
     gameOptionsUiState.isOpen = false;
+    spellUiState.isOpen = false;
   }
   updatePlayerInventory();
 };
@@ -7462,6 +8113,7 @@ const updatePlayerInventory = () => {
                   <div class="equipment-right-bar">
                     <button class="equipment-ui-button${playerNavigationState.followEnabled ? " equipment-ui-button-active" : ""}" data-ui-action="toggle-follow" aria-pressed="${playerNavigationState.followEnabled}">${getGameUiText("follow")}</button>
                     <button class="equipment-ui-button" data-ui-action="show-pvp-status">PVP</button>
+                    <button class="equipment-ui-button${spellUiState.isOpen ? " equipment-ui-button-active" : ""}" data-ui-action="toggle-spells" aria-haspopup="dialog" aria-controls="player-spells" aria-expanded="${spellUiState.isOpen}">${getGameUiText("hotkeys")}</button>
                     <button class="equipment-ui-button${questUiState.isOpen ? " equipment-ui-button-active" : ""}" data-ui-action="toggle-quests">${getGameUiText("quests")}</button>
                     <button class="equipment-ui-button${gameOptionsUiState.isOpen ? " equipment-ui-button-active" : ""}" data-ui-action="toggle-options">${getGameUiText("options")}</button>
                     <button class="equipment-ui-button" data-ui-action="logout">${getGameUiText("logout")}</button>
@@ -7484,9 +8136,25 @@ const updatePlayerInventory = () => {
   refreshCombatModeButtons();
   renderQuestWindow();
   renderOptionsWindow();
+  renderSpellWindow();
   syncMobileBackpackButton();
   syncMobileFollowButton();
   syncItemUseSourceFeedback();
+};
+
+const getLocalizedSpellData = (spellId) => {
+  const spellData = spellsDatabase[spellId] ?? null;
+  if (!spellData) {
+    return null;
+  }
+  if (getCurrentGameLanguage() === "fr") {
+    return {
+      ...spellData,
+      name: spellData.nameFr ?? spellData.name,
+      description: spellData.descriptionFr ?? spellData.description,
+    };
+  }
+  return spellData;
 };
 //#endregion  -----  UI - EQUIPMENT / INVENTAIRE  -----
 
@@ -8882,7 +9550,7 @@ const addSkillLevelUpFeedback = (skillKey, newLevel) => {
 /* ---------- UI - SCALE DU JEU ---------- */
 
 const MOBILE_GAME_LAYOUT_QUERY = "(max-width: 900px), (max-width: 1024px) and (pointer: coarse)";
-const MOBILE_JOYSTICK_DIAGONAL_HOLD_MS = 1000;
+const MOBILE_JOYSTICK_DIAGONAL_HOLD_MS = 500;
 const mobileGameLayoutMedia = window.matchMedia(MOBILE_GAME_LAYOUT_QUERY);
 
 const mobileGameUiState = {
@@ -9036,6 +9704,7 @@ const syncMobileGameLayout = () => {
   mobileGameControls?.setAttribute("aria-hidden", String(!mobileLayout));
   if (!mobileLayout) {
     setOpenMobilePanel(null);
+    spellUiState.mobileAssignHotkeyIndex = null;
   }
   syncMobilePlayerHud();
   syncMobileTargetHud();
@@ -9043,6 +9712,7 @@ const syncMobileGameLayout = () => {
   syncMobileFollowButton();
   syncMobileStanceButton();
   syncItemUseSourceFeedback();
+  renderSpellWindow();
   updateGameScale();
 };
 
@@ -9930,6 +10600,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
+  if (e.key === "Escape" && spellUiState.isOpen) {
+    e.preventDefault();
+    spellUiState.isOpen = false;
+    spellUiState.selectedSpellId = null;
+    spellUiState.mobileAssignHotkeyIndex = null;
+    updatePlayerInventory();
+    return;
+  }
   if (e.ctrlKey && e.key.toLowerCase() === "s") {
     e.preventDefault();
     saveCurrentCharacter();
@@ -9940,6 +10618,9 @@ document.addEventListener("keydown", (e) => {
   }
   e.preventDefault();
   if (e.repeat) {
+    return;
+  }
+  if (castPlayerSpellFromHotkeyKey(e.key)) {
     return;
   }
   const key = e.key.toLowerCase();
@@ -10539,7 +11220,7 @@ document.addEventListener("pointerdown", (event) => {
     ) {
       return;
     }
-    if (handleLookCombo()) {
+    if (handleNpcGreetingFromPointerTarget(inputState.lastDetectedTarget) || handleLookCombo()) {
       mobileTouchInputState.didLongPress = true;
       inputState.shouldBlockNextWorldClick = true;
       navigator.vibrate?.(12);
@@ -10663,6 +11344,8 @@ for (const button of mobileActionButtons) {
       syncMobileFollowButton();
     } else if (button.dataset.mobileAction === "cycle-stance") {
       cycleMobileCombatMode();
+    } else if (button.dataset.mobileAction === "toggle-spells") {
+      toggleSpellWindow();
     }
   });
 }
@@ -11474,6 +12157,7 @@ const createNpcConversationState = () => {
     activePlayerUid: null,
     waitingPlayerUids: [],
     queuedReplies: [],
+    pendingAction: null,
     nextReplyAt: 0,
     lastInteractionAt: 0,
   };
@@ -11749,15 +12433,85 @@ const isPlayerWithinNpcTalkRange = (player, npc) => {
   return distanceCol <= NPC_DIALOGUE_CONFIG.talkRange && distanceRow <= NPC_DIALOGUE_CONFIG.talkRange;
 };
 
-const getNpcSpeechWords = (text) => {
-  if (typeof text !== "string") {
-    return new Set();
+const getUsableWorldItemSourceUnderNpc = (npc) => {
+  if (!npc || npc.z !== playerState.z) {
+    return null;
   }
-  return new Set(text.toLocaleLowerCase().match(/[\p{L}]+/gu) ?? []);
+  const item = getTopWorldItemAtTile(npc.x, npc.y, npc.z);
+  if (!item || (!getItemUseData(item) && !isOpenableContainerItem(item))) {
+    return null;
+  }
+  const source = {
+    locationType: "worldItem",
+    itemUid: item.uid,
+  };
+  return canInteractWithWorldItemSource(source) ? source : null;
+};
+
+const sayGreetingToNpc = (npc, player, now = Date.now()) => {
+  if (!npc || !player || !isPlayerWithinNpcTalkRange(player, npc)) {
+    return false;
+  }
+  const greeting = getCurrentGameLanguage() === "fr" ? "Salut" : "Hi";
+  const message = addChatMessage("local", "player", greeting, player);
+  if (!message) {
+    return false;
+  }
+  showFloatingTextAboveTarget(greeting, 70, player, "speech", 4000);
+  if (activeChatChannelId === "local") {
+    renderActiveChatMessages();
+  }
+  startNpcConversation(npc, player, now);
+  return true;
+};
+
+const handleNpcGreetingFromPointerTarget = (target) => {
+  const npc = target?.npc;
+  if (!npc) {
+    return false;
+  }
+  const itemSource = getUsableWorldItemSourceUnderNpc(npc);
+  if (itemSource) {
+    handleUseItemFromSource(itemSource);
+    return true;
+  }
+  if (isPlayerWithinNpcTalkRange(playerState, npc)) {
+    sayGreetingToNpc(npc, playerState);
+  }
+  return true;
+};
+
+const normalizeNpcSpeechText = (text) => {
+  if (typeof text !== "string") {
+    return "";
+  }
+  return text
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase();
+};
+
+const getNpcSpeechWords = (text) => {
+  return new Set(normalizeNpcSpeechText(text).match(/[\p{L}]+/gu) ?? []);
+};
+
+const areNpcSpeechWordsEquivalent = (speechWord, keywordWord) => {
+  return speechWord === keywordWord || speechWord === `${keywordWord}s` || keywordWord === `${speechWord}s`;
 };
 
 const hasNpcSpeechKeyword = (speechWords, keywords) => {
-  return keywords.some((keyword) => speechWords.has(keyword));
+  if (!(speechWords instanceof Set) || !Array.isArray(keywords)) {
+    return false;
+  }
+  return keywords.some((keyword) => {
+    const keywordWords = getNpcSpeechWords(keyword);
+    return (
+      keywordWords.size > 0 &&
+      [...keywordWords].every((keywordWord) =>
+        [...speechWords].some((speechWord) => areNpcSpeechWordsEquivalent(speechWord, keywordWord)),
+      )
+    );
+  });
 };
 
 const getNpcDialogueData = (npcData) => {
@@ -11765,19 +12519,43 @@ const getNpcDialogueData = (npcData) => {
   return npcData?.dialogue?.[language] ?? npcData?.dialogue?.en ?? null;
 };
 
-const formatNpcDialogueText = (text, player) => {
-  return text.replaceAll("{playerName}", player.name);
+const formatNpcDialogueText = (text, player, replacements = {}) => {
+  let formattedText = text.replaceAll("{playerName}", player.name);
+  for (const [placeholder, value] of Object.entries(replacements)) {
+    formattedText = formattedText.replaceAll(`{${placeholder}}`, String(value));
+  }
+  return formattedText;
 };
 
-const queueNpcReply = (npc, player, text, now, endConversation = false) => {
+const getNpcReplySuggestions = (suggestions) => {
+  if (!Array.isArray(suggestions)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      suggestions.filter((suggestion) => typeof suggestion === "string").map((suggestion) => suggestion.trim()),
+    ),
+  ].filter(Boolean);
+};
+
+const queueNpcReply = (
+  npc,
+  player,
+  text,
+  now,
+  endConversation = false,
+  replacements = {},
+  suggestions = [],
+) => {
   const state = npcConversationStatesByUid.get(npc?.uid);
   if (!state || !player || typeof text !== "string" || state.queuedReplies.length >= NPC_DIALOGUE_CONFIG.maxQueuedReplies) {
     return false;
   }
   state.queuedReplies.push({
     playerUid: player.uid,
-    text: formatNpcDialogueText(text, player),
+    text: formatNpcDialogueText(text, player, replacements),
     endConversation,
+    suggestions: getNpcReplySuggestions(suggestions),
   });
   if (state.nextReplyAt === 0) {
     state.nextReplyAt = now + NPC_DIALOGUE_CONFIG.responseDelayMs;
@@ -11785,9 +12563,11 @@ const queueNpcReply = (npc, player, text, now, endConversation = false) => {
   return true;
 };
 
-const showNpcSpeech = (npc, text) => {
-  showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
-  addChatMessage("local", "npc", text, npc);
+const showNpcSpeech = (npc, text, suggestions = []) => {
+  if (npc.z === playerState.z) {
+    showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
+  }
+  addChatMessage("local", "npc", text, npc, suggestions);
   if (activeChatChannelId === "local") {
     renderActiveChatMessages();
   }
@@ -11804,15 +12584,25 @@ const promoteNextNpcConversation = (npc, state, now) => {
     state.lastInteractionAt = now;
     const npcData = getNpcData(npc.npcId);
     const dialogue = getNpcDialogueData(npcData);
-    queueNpcReply(npc, player, dialogue.greeting, now);
+    queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
     return true;
   }
   return false;
 };
 
-const releaseNpcConversation = (npc, state, now) => {
+const releaseNpcConversation = (npc, state, now, reason = "farewell") => {
+  const player = getPlayerEntityByUid(state.activePlayerUid);
+  const npcData = getNpcData(npc?.npcId);
+  const dialogue = getNpcDialogueData(npcData);
+  if (player && dialogue && reason === "outOfRange") {
+    showNpcSpeech(npc, formatNpcDialogueText(dialogue.rudeDeparture, player));
+  } else if (player && dialogue && reason === "timeout") {
+    showNpcSpeech(npc, formatNpcDialogueText(dialogue.timeoutFarewell, player));
+  }
+
   state.activePlayerUid = null;
   state.queuedReplies.length = 0;
+  state.pendingAction = null;
   state.nextReplyAt = 0;
   state.lastInteractionAt = 0;
   promoteNextNpcConversation(npc, state, now);
@@ -11836,7 +12626,7 @@ const startNpcConversation = (npc, player, now) => {
   state.activePlayerUid = player.uid;
   state.lastInteractionAt = now;
   updateNpcDirectionToPlayer(npc);
-  return queueNpcReply(npc, player, dialogue.greeting, now);
+  return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
 };
 
 const findNpcTalkingToPlayer = (player) => {
@@ -11865,6 +12655,302 @@ const findNearestNpcInTalkRange = (player) => {
   return nearestNpc;
 };
 
+const getNpcTradeQuantity = (text) => {
+  const quantityMatch = typeof text === "string" ? text.match(/\b(\d{1,3})\b/) : null;
+  return quantityMatch ? clamp(Number(quantityMatch[1]), 1, MAX_ITEM_STACK_SIZE) : 1;
+};
+
+const findNpcShopOffer = (npcData, speechWords) => {
+  const offers = npcData?.service?.offers;
+  if (!offers || !(speechWords instanceof Set)) {
+    return null;
+  }
+  for (const [itemId, offer] of Object.entries(offers)) {
+    if (offer.keywords?.some((keyword) => hasNpcSpeechKeyword(speechWords, [keyword]))) {
+      return { itemId, ...offer };
+    }
+  }
+  return null;
+};
+
+const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
+  if (!Number.isInteger(offer?.buyPrice) || offer.buyPrice <= 0) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now);
+  }
+  const totalPrice = offer.buyPrice * quantity;
+  if (getPlayerGoldAmount() < totalPrice) {
+    return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
+  }
+
+  const paymentPlan = createPlayerBackpackItemRemovalPlan("goldCoin", totalPrice);
+  if (!paymentPlan.success || !commitPlayerBackpackItemRemovalPlan(paymentPlan)) {
+    return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
+  }
+  const grantResult = grantRewardItemsToPlayer([{ itemId: offer.itemId, quantity }]);
+  if (!grantResult.success) {
+    rollbackPlayerBackpackItemRemovalPlan(paymentPlan);
+    return queueNpcReply(npc, player, dialogue.noRoom, now);
+  }
+
+  refreshInventoryUi();
+  autosaveCurrentCharacter();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.bought,
+    now,
+    false,
+    {
+      quantity,
+      itemName: getLocalizedItemName(offer.itemId, quantity),
+      price: totalPrice,
+    },
+    dialogue.greetingSuggestions,
+  );
+};
+
+const sellItemToNpc = (npc, player, dialogue, offer, quantity, now) => {
+  if (!Number.isInteger(offer?.sellPrice) || offer.sellPrice <= 0) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now);
+  }
+  const itemRemovalPlan = createPlayerBackpackItemRemovalPlan(offer.itemId, quantity);
+  if (!itemRemovalPlan.success || !commitPlayerBackpackItemRemovalPlan(itemRemovalPlan)) {
+    return queueNpcReply(npc, player, dialogue.missingItem, now);
+  }
+
+  const totalPrice = offer.sellPrice * quantity;
+  const grantResult = grantRewardItemsToPlayer([{ itemId: "goldCoin", quantity: totalPrice }]);
+  if (!grantResult.success) {
+    rollbackPlayerBackpackItemRemovalPlan(itemRemovalPlan);
+    return queueNpcReply(npc, player, dialogue.noRoom, now);
+  }
+
+  refreshInventoryUi();
+  autosaveCurrentCharacter();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.sold,
+    now,
+    false,
+    {
+      quantity,
+      itemName: getLocalizedItemName(offer.itemId, quantity),
+      price: totalPrice,
+    },
+    dialogue.greetingSuggestions,
+  );
+};
+
+const setNpcItemTradePendingAction = (npc, player, dialogue, offer, quantity, tradeType, now) => {
+  const state = npcConversationStatesByUid.get(npc?.uid);
+  const unitPrice = tradeType === "buyItem" ? offer?.buyPrice : offer?.sellPrice;
+  if (!state || !Number.isInteger(unitPrice) || unitPrice <= 0) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now);
+  }
+
+  const totalPrice = unitPrice * quantity;
+  state.pendingAction = {
+    type: tradeType,
+    itemId: offer.itemId,
+    quantity,
+  };
+  const confirmationText = tradeType === "buyItem" ? dialogue.confirmBuy : dialogue.confirmSell;
+  return queueNpcReply(
+    npc,
+    player,
+    confirmationText,
+    now,
+    false,
+    {
+      quantity,
+      itemName: getLocalizedItemName(offer.itemId, quantity),
+      price: totalPrice,
+    },
+    dialogue.confirmationSuggestions,
+  );
+};
+
+const handleNpcItemShopSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
+  const wantsTrade = hasNpcSpeechKeyword(speechWords, ["trade", "shop", "offer", "offers", "offres", "magasin"]);
+  const wantsBuy = hasNpcSpeechKeyword(speechWords, ["buy", "acheter", "achete"]);
+  const wantsSell = hasNpcSpeechKeyword(speechWords, ["sell", "vendre", "vends"]);
+  const offer = findNpcShopOffer(npcData, speechWords);
+  if (wantsTrade && !wantsBuy && !wantsSell && !offer) {
+    return queueNpcReply(npc, player, dialogue.trade, now, false, {}, dialogue.tradeSuggestions);
+  }
+  if (!offer) {
+    return wantsBuy || wantsSell ? queueNpcReply(npc, player, dialogue.unavailable, now) : false;
+  }
+  const quantity = getNpcTradeQuantity(text);
+  if (wantsSell) {
+    return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "sellItem", now);
+  }
+  return setNpcItemTradePendingAction(npc, player, dialogue, offer, quantity, "buyItem", now);
+};
+
+const findNpcTeacherSpell = (npcData, text) => {
+  const speechWords = getNpcSpeechWords(text);
+  for (const spellId of npcData?.service?.spellIds ?? []) {
+    const spellData = spellsDatabase[spellId];
+    const aliases = [spellData?.name, spellData?.nameFr, ...(spellData?.learningKeywords ?? [])].filter(Boolean);
+    if (aliases.some((alias) => hasNpcSpeechKeyword(speechWords, [alias]))) {
+      return spellData;
+    }
+  }
+  return null;
+};
+
+const learnPlayerSpell = (spellId) => {
+  if (!(spellId in spellsDatabase) || isPlayerSpellLearned(spellId)) {
+    return false;
+  }
+  playerState.spellbook.learnedSpellIds.push(spellId);
+  const emptyHotkeyIndex = playerState.spellbook.hotkeySpellIds.indexOf(null);
+  if (emptyHotkeyIndex !== -1) {
+    playerState.spellbook.hotkeySpellIds[emptyHotkeyIndex] = spellId;
+  }
+  autosaveCurrentCharacter();
+  renderSpellWindow();
+  return true;
+};
+
+const learnSpellFromNpc = (npc, player, dialogue, spellData, now) => {
+  if (!spellData || isPlayerSpellLearned(spellData.spellId)) {
+    return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
+  }
+  if (getPlayerGoldAmount() < spellData.learnPrice) {
+    return queueNpcReply(npc, player, dialogue.notEnoughGold, now, false, { price: spellData.learnPrice });
+  }
+  if (!spendPlayerGold(spellData.learnPrice) || !learnPlayerSpell(spellData.spellId)) {
+    return queueNpcReply(npc, player, dialogue.unavailable, now);
+  }
+
+  refreshInventoryUi();
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.learned,
+    now,
+    false,
+    {
+      spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
+      incantation: spellData.incantation,
+    },
+    dialogue.greetingSuggestions,
+  );
+};
+
+const handleNpcSpellTeacherSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
+  const asksAboutSpells = hasNpcSpeechKeyword(speechWords, ["spell", "spells", "sort", "sorts", "magic", "magie"]);
+  const spellData = findNpcTeacherSpell(npcData, text);
+  if (!spellData) {
+    return asksAboutSpells
+      ? queueNpcReply(npc, player, dialogue.spells, now, false, {}, dialogue.spellSuggestions)
+      : false;
+  }
+  if (isPlayerSpellLearned(spellData.spellId)) {
+    return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
+  }
+
+  const state = npcConversationStatesByUid.get(npc.uid);
+  state.pendingAction = {
+    type: "learnSpell",
+    spellId: spellData.spellId,
+  };
+  return queueNpcReply(
+    npc,
+    player,
+    dialogue.confirmLearn,
+    now,
+    false,
+    {
+      spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
+      price: spellData.learnPrice,
+    },
+    dialogue.confirmationSuggestions,
+  );
+};
+
+const isNpcConfirmationSpeech = (speechWords) => {
+  return (
+    hasNpcSpeechKeyword(speechWords, [
+      "yes",
+      "yeah",
+      "yep",
+      "yup",
+      "sure",
+      "okay",
+      "ok",
+      "oui",
+      "ouais",
+      "parfait",
+      "absolument",
+      "certainement",
+      "daccord",
+      "certain",
+    ]) ||
+    (speechWords.has("bien") && speechWords.has("sur")) ||
+    (speechWords.has("bien") && speechWords.has("entendu")) ||
+    (speechWords.has("d") && speechWords.has("accord")) ||
+    (speechWords.has("of") && speechWords.has("course"))
+  );
+};
+
+const isNpcRejectionSpeech = (speechWords) => {
+  return hasNpcSpeechKeyword(speechWords, ["no", "nope", "nah", "cancel", "non", "annule", "annuler"]);
+};
+
+const executeNpcPendingAction = (npc, player, npcData, dialogue, state, now) => {
+  const pendingAction = state.pendingAction;
+  state.pendingAction = null;
+  if (!pendingAction) {
+    return false;
+  }
+
+  if (pendingAction.type === "buyItem" || pendingAction.type === "sellItem") {
+    const offerData = npcData.service?.offers?.[pendingAction.itemId];
+    const offer = offerData ? { itemId: pendingAction.itemId, ...offerData } : null;
+    if (!offer) {
+      return queueNpcReply(npc, player, dialogue.unavailable, now);
+    }
+    if (pendingAction.type === "buyItem") {
+      return buyItemFromNpc(npc, player, npcData, dialogue, offer, pendingAction.quantity, now);
+    }
+    return sellItemToNpc(npc, player, dialogue, offer, pendingAction.quantity, now);
+  }
+
+  if (pendingAction.type === "learnSpell") {
+    const spellData = spellsDatabase[pendingAction.spellId];
+    return learnSpellFromNpc(npc, player, dialogue, spellData, now);
+  }
+  return false;
+};
+
+const handleNpcPendingActionSpeech = (npc, player, npcData, dialogue, state, speechWords, now) => {
+  if (!state.pendingAction) {
+    return false;
+  }
+  if (isNpcConfirmationSpeech(speechWords)) {
+    return executeNpcPendingAction(npc, player, npcData, dialogue, state, now);
+  }
+  if (isNpcRejectionSpeech(speechWords)) {
+    state.pendingAction = null;
+    return queueNpcReply(npc, player, dialogue.cancelled, now, false, {}, dialogue.greetingSuggestions);
+  }
+  return queueNpcReply(npc, player, dialogue.confirmRequired, now, false, {}, dialogue.confirmationSuggestions);
+};
+
+const handleNpcServiceSpeech = (npc, player, npcData, dialogue, text, speechWords, now) => {
+  if (npcData.service?.type === "itemShop") {
+    return handleNpcItemShopSpeech(npc, player, npcData, dialogue, text, speechWords, now);
+  }
+  if (npcData.service?.type === "spellTeacher") {
+    return handleNpcSpellTeacherSpeech(npc, player, npcData, dialogue, text, speechWords, now);
+  }
+  return false;
+};
+
 const handleNpcPlayerSpeech = (text, player, now) => {
   const speechWords = getNpcSpeechWords(text);
   const isGreeting = hasNpcSpeechKeyword(speechWords, ["hi", "hello", "hey", "salut", "bonjour", "allo"]);
@@ -11890,10 +12976,13 @@ const handleNpcPlayerSpeech = (text, player, now) => {
   updateNpcDirectionToPlayer(npc);
 
   if (isGreeting) {
-    return queueNpcReply(npc, player, dialogue.greeting, now);
+    return queueNpcReply(npc, player, dialogue.greeting, now, false, {}, dialogue.greetingSuggestions);
   }
   if (hasNpcSpeechKeyword(speechWords, ["bye", "farewell", "ciao", "revoir"])) {
     return queueNpcReply(npc, player, dialogue.farewell, now, true);
+  }
+  if (state.pendingAction) {
+    return handleNpcPendingActionSpeech(npc, player, npcData, dialogue, state, speechWords, now);
   }
   if (hasNpcSpeechKeyword(speechWords, ["name", "nom"])) {
     return queueNpcReply(npc, player, dialogue.name, now);
@@ -11902,9 +12991,12 @@ const handleNpcPlayerSpeech = (text, player, now) => {
     return queueNpcReply(npc, player, dialogue.job, now);
   }
   if (hasNpcSpeechKeyword(speechWords, ["help", "aide"])) {
-    return queueNpcReply(npc, player, dialogue.help, now);
+    return queueNpcReply(npc, player, dialogue.help, now, false, {}, dialogue.greetingSuggestions);
   }
-  return queueNpcReply(npc, player, dialogue.unknown, now);
+  if (handleNpcServiceSpeech(npc, player, npcData, dialogue, text, speechWords, now)) {
+    return true;
+  }
+  return queueNpcReply(npc, player, dialogue.unknown, now, false, {}, dialogue.greetingSuggestions);
 };
 
 const updateNpcConversations = (now) => {
@@ -11914,9 +13006,21 @@ const updateNpcConversations = (now) => {
     }
     const npc = npcsByUid.get(npcUid);
     const player = getPlayerEntityByUid(state.activePlayerUid);
-    if (!npc || !isPlayerWithinNpcTalkRange(player, npc)) {
-      if (npc) {
-        releaseNpcConversation(npc, state, now);
+    if (!npc) {
+      state.activePlayerUid = null;
+      state.queuedReplies.length = 0;
+      state.pendingAction = null;
+      state.nextReplyAt = 0;
+      state.lastInteractionAt = 0;
+      continue;
+    }
+    if (!isPlayerWithinNpcTalkRange(player, npc)) {
+      const farewellReply = state.queuedReplies.find((reply) => reply.endConversation);
+      if (farewellReply) {
+        showNpcSpeech(npc, farewellReply.text, farewellReply.suggestions);
+        releaseNpcConversation(npc, state, now, "farewell");
+      } else {
+        releaseNpcConversation(npc, state, now, "outOfRange");
       }
       continue;
     }
@@ -11924,7 +13028,7 @@ const updateNpcConversations = (now) => {
       state.queuedReplies.length === 0 &&
       now - state.lastInteractionAt >= NPC_DIALOGUE_CONFIG.conversationTimeoutMs
     ) {
-      releaseNpcConversation(npc, state, now);
+      releaseNpcConversation(npc, state, now, "timeout");
       continue;
     }
     if (state.queuedReplies.length === 0 || now < state.nextReplyAt) {
@@ -11932,10 +13036,10 @@ const updateNpcConversations = (now) => {
     }
 
     const reply = state.queuedReplies.shift();
-    showNpcSpeech(npc, reply.text);
+    showNpcSpeech(npc, reply.text, reply.suggestions);
     state.nextReplyAt = state.queuedReplies.length > 0 ? now + NPC_DIALOGUE_CONFIG.lineIntervalMs : 0;
     if (reply.endConversation) {
-      releaseNpcConversation(npc, state, now);
+      releaseNpcConversation(npc, state, now, "farewell");
     }
   }
 };
@@ -14037,6 +15141,58 @@ const castPlayerSpell = (spellData) => {
   return true;
 };
 
+const playPlayerSpellEffect = (spellData, success) => {
+  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
+  return playPixiSpellEffect({
+    x: playerState.x + TILE_SIZE / 2,
+    y: playerState.y + TILE_SIZE / 2 - surfaceOffsetY,
+    color: spellData?.effectColor,
+    success,
+  });
+};
+
+const announceSuccessfulPlayerSpell = (spellData) => {
+  const text = spellData.incantation;
+  const message = addChatMessage("local", "player", text, playerState);
+  if (!message) {
+    return false;
+  }
+  showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
+  if (activeChatChannelId === "local") {
+    renderActiveChatMessages();
+  }
+  return true;
+};
+
+const castLearnedPlayerSpellById = (spellId) => {
+  const spellData = spellsDatabase[spellId] ?? null;
+  if (!spellData || !isPlayerSpellLearned(spellId)) {
+    showGameStatusMessage(getGameUiText("spellNotLearned"));
+    playPlayerSpellEffect(spellData, false);
+    return false;
+  }
+
+  const didCastSpell = castPlayerSpell(spellData);
+  playPlayerSpellEffect(spellData, didCastSpell);
+  if (!didCastSpell) {
+    return false;
+  }
+  announceSuccessfulPlayerSpell(spellData);
+  return true;
+};
+
+const castPlayerSpellFromHotkeyKey = (key) => {
+  const hotkeyIndex = SPELL_HOTKEY_KEYS.indexOf(key);
+  if (hotkeyIndex === -1) {
+    return false;
+  }
+  const spellId = playerState.spellbook.hotkeySpellIds[hotkeyIndex];
+  if (spellId) {
+    castLearnedPlayerSpellById(spellId);
+  }
+  return true;
+};
+
 const getExperienceRewardFromMonster = (monster) => {
   if (!monster) {
     return 0;
@@ -14281,7 +15437,7 @@ const setActiveChatChannel = (channelId) => {
   activeChatChannelId = channelId;
 };
 
-const createChatMessage = (channelId, messageType, text, speakerData = null) => {
+const createChatMessage = (channelId, messageType, text, speakerData = null, speechSuggestions = []) => {
   const now = Date.now();
   if (!speakerData) {
     return {
@@ -14290,6 +15446,7 @@ const createChatMessage = (channelId, messageType, text, speakerData = null) => 
       text,
       speakerName: null,
       speakerLevel: null,
+      speechSuggestions: getNpcReplySuggestions(speechSuggestions),
       createdAt: now,
     };
   } else {
@@ -14299,16 +15456,17 @@ const createChatMessage = (channelId, messageType, text, speakerData = null) => 
       text,
       speakerName: speakerData.name,
       speakerLevel: speakerData.level,
+      speechSuggestions: getNpcReplySuggestions(speechSuggestions),
       createdAt: now,
     };
   }
 };
 
-const addChatMessage = (channelId, messageType, text, speakerData = null) => {
+const addChatMessage = (channelId, messageType, text, speakerData = null, speechSuggestions = []) => {
   if (!channelId || !isValidChatChannel(channelId) || isEmpty(text)) {
     return null;
   }
-  const chatMessage = createChatMessage(channelId, messageType, text, speakerData);
+  const chatMessage = createChatMessage(channelId, messageType, text, speakerData, speechSuggestions);
   if (!chatMessage) {
     return null;
   }
@@ -14376,7 +15534,34 @@ const createChatMessageElement = (chatMessage) => {
   const chatElement = document.createElement("div");
   chatElement.classList.add("chat-message");
   chatElement.classList.add(`chat-message-${chatMessage.messageType}`);
-  chatElement.textContent = text;
+  const textElement = document.createElement("span");
+  textElement.textContent = text;
+  chatElement.appendChild(textElement);
+
+  if (Array.isArray(chatMessage.speechSuggestions) && chatMessage.speechSuggestions.length > 0) {
+    const suggestionsElement = document.createElement("span");
+    suggestionsElement.classList.add("npc-dialogue-suggestions");
+    const suggestionsLabelElement = document.createElement("span");
+    suggestionsLabelElement.classList.add("npc-dialogue-suggestions-label");
+    suggestionsLabelElement.textContent = getGameUiText("npcOptionsLabel");
+    suggestionsElement.appendChild(suggestionsLabelElement);
+    for (const suggestion of chatMessage.speechSuggestions) {
+      const optionButton = document.createElement("button");
+      optionButton.classList.add("npc-dialogue-option");
+      optionButton.type = "button";
+      optionButton.textContent = suggestion;
+      optionButton.setAttribute("aria-label", getGameUiText("sayNpcOption")(suggestion));
+      optionButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (sendPlayerChatMessage(suggestion)) {
+          addChatInputHistoryEntry(suggestion);
+        }
+      });
+      suggestionsElement.appendChild(optionButton);
+    }
+    chatElement.appendChild(suggestionsElement);
+  }
   return chatElement;
 };
 
@@ -14412,18 +15597,20 @@ const sendPlayerChatMessage = (text) => {
   if (!text || !canSendMessageInActiveChatChannel()) {
     return false;
   }
+  if (activeChatChannelId === "local") {
+    const spellData = getSpellFromChatText(text);
+    if (spellData) {
+      castLearnedPlayerSpellById(spellData.spellId);
+      return true;
+    }
+  }
   const message = addChatMessage(activeChatChannelId, "player", text, playerState);
   if (!message) {
     return false;
   }
   if (activeChatChannelId === "local") {
-    const spellData = getSpellFromChatText(text);
     showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000);
-    if (spellData) {
-      castPlayerSpell(spellData);
-    } else {
-      handleNpcPlayerSpeech(text, playerState, Date.now());
-    }
+    handleNpcPlayerSpeech(text, playerState, Date.now());
   }
   renderActiveChatMessages();
   return true;
@@ -14584,6 +15771,9 @@ boiteJeux.addEventListener("contextmenu", (e) => {
     return;
   }
   const target = getPointerTargetFromEvent(e);
+  if (handleNpcGreetingFromPointerTarget(target)) {
+    return;
+  }
   if (handleInteractableContextMenu(target)) {
     return;
   }
@@ -14677,6 +15867,25 @@ gameOptionsWindow?.addEventListener("click", (e) => {
   e.stopPropagation();
 });
 gameOptionsWindow?.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("mouseup", (e) => {
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("pointerup", (e) => {
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("click", (e) => {
+  e.stopPropagation();
+});
+playerSpells?.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
 });

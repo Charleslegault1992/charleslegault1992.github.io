@@ -106,6 +106,7 @@
               <div id="game-status-message" class="game-status-message"></div>
               <div id="player-quests" class="boite-panneau quest-window" hidden></div>
               <div id="game-options" class="boite-panneau options-window" hidden></div>
+              <div id="player-spells" class="boite-panneau spell-window" hidden></div>
               <canvas id="light-canvas"></canvas>
               <div id="player">
                 <div class="player-floating-text-layer"></div>
@@ -184,6 +185,10 @@
             <button class="mobile-panel-button" type="button" data-mobile-panel="chat" data-game-title="mobileChat">
               <span class="mobile-panel-icon mobile-panel-icon-chat" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="mobileChat">Chat</span>
+            </button>
+            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-spells" data-game-title="spells" aria-haspopup="dialog" aria-controls="player-spells" aria-expanded="false">
+              <span class="mobile-panel-icon mobile-panel-icon-spells" aria-hidden="true">*</span>
+              <span class="mobile-panel-label" data-game-text="spells">Spells</span>
             </button>
             <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
               <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true">BAL</span>

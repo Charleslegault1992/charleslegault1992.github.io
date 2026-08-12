@@ -333,6 +333,40 @@ main {
   color: #7fc7ff;
 }
 
+.npc-dialogue-suggestions {
+  margin-left: 4px;
+}
+
+.npc-dialogue-suggestions-label {
+  margin-right: 2px;
+  color: #c6bdab;
+}
+
+.npc-dialogue-option {
+  min-height: 18px;
+  margin: 0 2px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid rgba(240, 208, 112, 0.65);
+  color: #f0d070;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  text-shadow: 0 1px 2px #000000;
+  cursor: pointer;
+}
+
+.npc-dialogue-option:hover,
+.npc-dialogue-option:focus-visible {
+  color: #fff0ad;
+  border-bottom-color: #fff0ad;
+  outline: none;
+}
+
+.npc-dialogue-option:active {
+  color: #ffffff;
+}
+
 .chat-message-error {
   color: #ff7070;
 }
@@ -1125,6 +1159,203 @@ main {
   font-weight: 700;
 }
 
+/* ---------- PANNEAU - SORTS ET HOTKEYS ---------- */
+
+.spell-window {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 10000002;
+  width: 560px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  margin: 0;
+  transform: translate(-50%, -50%);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+.spell-window-header {
+  position: relative;
+  min-height: 18px;
+}
+
+.spell-window-close-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  color: #ffffff;
+  background: transparent;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.spell-window-close-button:hover {
+  color: #ff7777;
+}
+
+.spell-hotkey-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.spell-hotkey-slot {
+  position: relative;
+  min-width: 0;
+}
+
+.spell-hotkey-cast-button {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  padding: 3px 19px 3px 3px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(191, 191, 191, 0.45);
+  border-radius: 2px;
+  color: #ece8da;
+  background: rgba(31, 30, 27, 0.9);
+  font: inherit;
+  text-align: left;
+}
+
+.spell-hotkey-cast-button:hover {
+  border-color: rgba(239, 205, 110, 0.82);
+  background: rgba(62, 50, 27, 0.92);
+}
+
+.spell-hotkey-cast-button:disabled {
+  color: rgba(236, 232, 218, 0.5);
+  border-color: rgba(191, 191, 191, 0.2);
+  background: rgba(20, 20, 18, 0.7);
+  cursor: default;
+}
+
+.spell-hotkey-key {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(222, 197, 126, 0.62);
+  color: #f3d87e;
+  background: #171613;
+  font-weight: 700;
+}
+
+.spell-hotkey-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spell-hotkey-clear-button {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  color: #c8c3b6;
+  background: transparent;
+  line-height: 17px;
+}
+
+.spell-hotkey-clear-button:hover {
+  color: #ff7777;
+}
+
+.spell-list-title {
+  margin-top: 8px;
+  padding: 3px 2px;
+  color: #d5c58e;
+  font-weight: 700;
+}
+
+.spell-hotkey-title {
+  margin-top: 0;
+}
+
+.spell-window-help {
+  min-height: 14px;
+  margin: -2px 2px 2px;
+  color: #c9c3b1;
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.spell-window button:focus-visible {
+  outline: 2px solid #f4d36f;
+  outline-offset: 1px;
+}
+
+.spell-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spell-list-row {
+  display: flex;
+  min-height: 42px;
+  padding: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(191, 191, 191, 0.25);
+  background: rgba(20, 20, 18, 0.56);
+}
+
+.spell-list-row-selected {
+  border-color: rgba(255, 220, 118, 0.9);
+  box-shadow: inset 0 0 8px rgba(255, 220, 118, 0.16);
+}
+
+.spell-list-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spell-list-details span {
+  color: #bcb8ad;
+  font-size: 9px;
+}
+
+.spell-list-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.spell-list-actions button {
+  min-height: 26px;
+  border: 1px solid rgba(191, 191, 191, 0.5);
+  border-radius: 2px;
+  color: #ffffff;
+  background: rgba(45, 45, 45, 0.9);
+  font: inherit;
+}
+
+.spell-list-actions button:hover {
+  border-color: rgba(255, 220, 118, 0.82);
+}
+
+.spell-list-empty {
+  padding: 8px 2px;
+  color: #bfbfbf;
+  text-align: center;
+}
+
 .character-create-input {
   min-width: 0;
   height: 26px;
@@ -1410,7 +1641,7 @@ main {
 .equipment-right-bar {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 .equipment-ui-button {
@@ -2100,8 +2331,134 @@ main {
     display: none;
   }
 
+  #player-inventory .equipment-ui-button[data-ui-action="toggle-spells"] {
+    display: none;
+  }
+
   #player-inventory .stance-bar {
     display: none;
+  }
+
+  .spell-window {
+    top: calc(68px + env(safe-area-inset-top));
+    bottom: auto;
+    width: min(72vw, 680px);
+    max-width: calc(100% - 24px);
+    max-height: calc(100% - 84px - env(safe-area-inset-top));
+    padding: 5px;
+    transform: translateX(-50%);
+    overflow: visible;
+    border-color: rgba(205, 193, 153, 0.42);
+    background-image: none;
+    background-color: rgba(8, 8, 7, 0.38);
+    backdrop-filter: blur(3px);
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.58);
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .spell-window > .boite-boite {
+    gap: 3px;
+  }
+
+  .spell-window-header {
+    display: flex;
+    min-height: 26px;
+    padding: 0 32px 0 3px;
+    align-items: center;
+  }
+
+  .spell-window-header .boite-jeux-titre {
+    font-size: 11px;
+  }
+
+  .spell-window-close-button {
+    width: 28px;
+    height: 28px;
+    font-size: 17px;
+    line-height: 28px;
+  }
+
+  .spell-window .separateur-panneau,
+  .spell-hotkey-title {
+    display: none;
+  }
+
+  .spell-window-help {
+    min-height: 14px;
+    margin: 0 3px 2px;
+    color: rgba(235, 229, 211, 0.88);
+    font-size: 9px;
+    line-height: 14px;
+  }
+
+  .spell-hotkey-grid {
+    display: flex;
+    gap: 4px;
+    padding: 1px 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+  }
+
+  .spell-hotkey-slot {
+    flex: 0 0 68px;
+  }
+
+  .spell-hotkey-cast-button {
+    min-height: 48px;
+    padding: 4px 18px 4px 4px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2px;
+    background: rgba(24, 23, 20, 0.68);
+    touch-action: pan-x;
+  }
+
+  .spell-hotkey-clear-button {
+    top: 9px;
+    right: 1px;
+    width: 24px;
+    height: 30px;
+    font-size: 14px;
+    line-height: 30px;
+    touch-action: manipulation;
+  }
+
+  .spell-hotkey-slot-assigning .spell-hotkey-cast-button {
+    border-color: rgba(255, 220, 118, 0.95);
+    box-shadow: inset 0 0 8px rgba(255, 220, 118, 0.22);
+  }
+
+  .spell-window-mobile-assigning {
+    max-height: calc(100% - 84px - env(safe-area-inset-top));
+  }
+
+  .spell-window-mobile-assigning .spell-list-title {
+    margin-top: 2px;
+  }
+
+  .spell-window-mobile-assigning .spell-list {
+    max-height: min(34vh, 180px);
+    padding-right: 3px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  .spell-list-row {
+    min-height: 46px;
+    background: rgba(16, 16, 14, 0.72);
+  }
+
+  .spell-list-actions button {
+    min-width: 68px;
+    min-height: 40px;
+    touch-action: manipulation;
   }
 
   .container-window-header {
@@ -2596,6 +2953,17 @@ main {
     transform: skewY(-38deg);
   }
 
+  .mobile-panel-icon-spells {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    color: #e5cc7b;
+    font: 700 18px/18px Georgia, serif;
+    box-shadow: inset 0 0 5px rgba(229, 204, 123, 0.2);
+  }
+
   .mobile-panel-icon-follow {
     border: 1px solid currentColor;
     border-radius: 50%;
@@ -2760,6 +3128,93 @@ main {
 
   .game-status-message {
     bottom: calc(66px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 1024px) and (pointer: coarse) {
+  .npc-dialogue-option {
+    min-height: 32px;
+    margin: 2px;
+    padding: 0 7px;
+    touch-action: manipulation;
+  }
+
+  .spell-window {
+    touch-action: manipulation;
+    font-size: 11px;
+  }
+
+  .spell-window-close-button {
+    touch-action: manipulation;
+  }
+
+  .spell-hotkey-cast-button {
+    touch-action: pan-x;
+  }
+
+  .spell-hotkey-cast-button:not(:disabled):active,
+  .spell-list-actions button:active {
+    border-color: rgba(255, 226, 137, 0.98);
+    background: rgba(80, 62, 27, 0.96);
+  }
+
+  .spell-hotkey-key {
+    width: 24px;
+    height: 20px;
+    flex-basis: 20px;
+    font-size: 11px;
+  }
+
+  .spell-hotkey-name {
+    font-size: 9px;
+  }
+
+  .spell-list {
+    gap: 4px;
+  }
+
+  .spell-list-row {
+    padding: 5px;
+    gap: 8px;
+  }
+
+  .spell-list-details {
+    gap: 4px;
+  }
+
+  .spell-list-details strong {
+    font-size: 11px;
+  }
+
+  .spell-list-details span {
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .spell-list-actions {
+    gap: 6px;
+  }
+
+  .spell-list-actions button {
+    padding: 0 8px;
+    touch-action: manipulation;
+  }
+
+  .spell-hotkey-grid::-webkit-scrollbar,
+  .spell-window-mobile-assigning .spell-list::-webkit-scrollbar {
+    width: 8px;
+    height: 5px;
+  }
+
+  .spell-hotkey-grid::-webkit-scrollbar-track,
+  .spell-window-mobile-assigning .spell-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.28);
+  }
+
+  .spell-hotkey-grid::-webkit-scrollbar-thumb,
+  .spell-window-mobile-assigning .spell-list::-webkit-scrollbar-thumb {
+    border: 1px solid #a0823a;
+    background: #6f5a2a;
   }
 }
 

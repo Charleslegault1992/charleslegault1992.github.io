@@ -1013,6 +1013,74 @@ export const playPixiRewardChestEffect = ({ x, y }) => {
   pixiApp.ticker.add(updateEffect);
   return true;
 };
+
+export const playPixiSpellEffect = ({ x, y, color = 0x8fdcff, success = true }) => {
+  if (!pixiApp || !feedbackEffectContainer || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
+  }
+
+  const durationMs = success ? 720 : 420;
+  const effectContainer = new Container();
+  effectContainer.label = success ? "spell-success-effect" : "spell-failure-effect";
+  effectContainer.x = x;
+  effectContainer.y = y;
+
+  const ring = new Graphics();
+  ring.circle(0, 0, success ? 13 : 11).stroke({ color: success ? color : 0xd85d55, width: 2, alpha: 0.9 });
+  effectContainer.addChild(ring);
+
+  const marks = [];
+  if (success) {
+    for (let index = 0; index < 8; index++) {
+      const angle = (Math.PI * 2 * index) / 8;
+      const mark = new Graphics();
+      mark.rect(-2, -2, 4, 4).fill({ color, alpha: 0.88 });
+      mark.x = Math.cos(angle) * 18;
+      mark.y = Math.sin(angle) * 10;
+      effectContainer.addChild(mark);
+      marks.push({ graphic: mark, angle, distance: 18 + (index % 2) * 4 });
+    }
+  } else {
+    const firstLine = new Graphics();
+    firstLine.moveTo(-8, -8).lineTo(8, 8).stroke({ color: 0xe06c62, width: 3, alpha: 0.92 });
+    const secondLine = new Graphics();
+    secondLine.moveTo(8, -8).lineTo(-8, 8).stroke({ color: 0xe06c62, width: 3, alpha: 0.92 });
+    effectContainer.addChild(firstLine, secondLine);
+    marks.push({ graphic: firstLine }, { graphic: secondLine });
+  }
+
+  feedbackEffectContainer.addChild(effectContainer);
+  let elapsedMs = 0;
+  const updateEffect = (ticker) => {
+    elapsedMs += ticker.deltaMS;
+    const progress = Math.min(elapsedMs / durationMs, 1);
+    ring.scale.set(1 + progress * (success ? 1.3 : 0.5));
+    ring.alpha = 1 - progress;
+
+    if (success) {
+      for (let index = 0; index < marks.length; index++) {
+        const mark = marks[index];
+        const distance = mark.distance * (1 - progress * 0.35);
+        mark.graphic.x = Math.cos(mark.angle + progress * 0.45) * distance;
+        mark.graphic.y = Math.sin(mark.angle + progress * 0.45) * 10 - progress * (18 + index % 3);
+        mark.graphic.alpha = 1 - progress;
+      }
+    } else {
+      effectContainer.x = x + Math.sin(progress * Math.PI * 6) * 3 * (1 - progress);
+      for (const mark of marks) {
+        mark.graphic.alpha = 1 - progress;
+      }
+    }
+
+    if (progress >= 1) {
+      pixiApp.ticker.remove(updateEffect);
+      effectContainer.destroy({ children: true });
+    }
+  };
+
+  pixiApp.ticker.add(updateEffect);
+  return true;
+};
 //#endregion  -----  RENDU - EFFETS DE FEEDBACK  -----
 
 /* ==================================================== */

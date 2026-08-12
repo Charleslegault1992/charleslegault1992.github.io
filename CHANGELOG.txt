@@ -1,3 +1,17 @@
+0.314 - Barre de sorts mobile et interactions NPC
+    - Ajout d'une barre de sorts transparente sur mobile qui reste ouverte pendant le jeu.
+    - Un toucher lance le sort et un maintien permet de reassigner la case.
+    - Les raccourcis de sorts gardent le meme ordre sur desktop et mobile.
+    - Un clic droit sur desktop ou un maintien sur mobile dit salut au NPC vise.
+    - Les items utilisables sous un NPC gardent la priorite sur la conversation.
+
+0.313 - Marchands, apprentissage et dialogues NPC
+    - Ajout de Ben pour acheter et vendre des items avec confirmation avant la transaction.
+    - Ajout de Kev pour apprendre les sorts avec confirmation et cout en pieces d'or.
+    - Ajout des suggestions de dialogue cliquables dans le chat.
+    - Les NPC comprennent plusieurs variantes, pluriels et mots sans accents.
+    - Ajout des fins de conversation selon la distance, le timeout ou le depart du joueur.
+
 0.312 - Sorts par incantation
     - Ajout d'un systeme de sorts lances en ecrivant leur incantation latine dans le chat local.
     - Ajout du sort Lumiere au magic level 0 avec un effet temporaire dans les endroits sombres.

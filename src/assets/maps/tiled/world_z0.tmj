@@ -1235,6 +1235,42 @@
                  "width":64,
                  "x":448,
                  "y":-384
+                },
+                {
+                 "height":64,
+                 "id":14,
+                 "name":"Ben",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"npcId",
+                         "type":"string",
+                         "value":"ben"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":64,
+                 "x":-384,
+                 "y":256
+                },
+                {
+                 "height":64,
+                 "id":15,
+                 "name":"Kev",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"npcId",
+                         "type":"string",
+                         "value":"kev"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":64,
+                 "x":448,
+                 "y":640
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -1243,7 +1279,7 @@
          "y":0
         }],
  "nextlayerid":14,
- "nextobjectid":14,
+ "nextobjectid":16,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
