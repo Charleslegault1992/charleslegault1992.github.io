@@ -1,3 +1,9 @@
+0.321 - Actions autoritaires et tests d'inventaire
+    - Ajout d'une couche d'actions serialisables pour les insertions et les deplacements d'items.
+    - Le drag and drop valide maintenant le UID, la source et la destination avant de modifier l'etat du jeu.
+    - Les recompenses, coffres et transactions NPC utilisent maintenant l'insertion atomique partagee.
+    - Ajout de tests automatises pour les stacks, la capacite, les containers pleins et les actions refusees.
+
 0.32 - Creation de personnage et apparence modulaire
     - Separation du personnage en couches pour la tete, le corps, les pantalons et les bottes.
     - Ajout du choix de tete et de corps avec un apercu centre dans la creation du personnage.

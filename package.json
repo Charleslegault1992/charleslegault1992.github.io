@@ -1,12 +1,13 @@
 {
   "name": "no-name-yet",
-  "version": "0.32.0",
+  "version": "0.321.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test"
   },
   "repository": {
     "type": "git",
@@ -15,7 +16,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/Charleslegault1992/charleslegault1992.github.io/issues"
   },

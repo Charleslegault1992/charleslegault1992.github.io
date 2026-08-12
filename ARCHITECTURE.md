@@ -43,6 +43,12 @@ Sources de verite en memoire:
 
 Modeles, creation, poids, cooldowns et transactions atomiques. Une transaction est validee au complet avant sa premiere mutation.
 
+### `src/actions`
+
+Frontiere entre une intention du joueur et une mutation du jeu. Une action contient un type, un `requestId` et un payload serialisable. Le dispatcher trouve le handler autoritaire et retourne toujours un resultat structure avec `success`, `status`, `reason` et `changes`.
+
+Les actions d'inventaire utilisent deja cette frontiere pour les insertions et le drag/drop. Le client local execute actuellement les handlers; un serveur pourra recevoir le meme contrat sans changer les controles ou les fenetres.
+
 ### `src/world`
 
 Coordonnees, chunks, piles d'items, surfaces, mouvement, pathfinding et effets au sol. Le pathfinder recoit ses regles d'occupation par callbacks afin de rester reutilisable cote serveur.

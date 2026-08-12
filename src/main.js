@@ -92,6 +92,13 @@ import {
 import { MinHeap } from "./core/MinHeap.js";
 import { getAtlasSource } from "./core/atlasUtils.js";
 import { startFixedStepGameLoop } from "./core/fixedStepGameLoop.js";
+import { createGameActionDispatcher } from "./actions/gameActionDispatcher.js";
+import {
+  createInsertItemsAction,
+  createMoveItemAction,
+  INVENTORY_ACTION_REASON,
+  registerInventoryActionHandlers,
+} from "./inventory/inventoryActions.js";
 import {
   activeLitTorchesByUid,
   decayingItems,
@@ -233,17 +240,14 @@ import {
   serializeMinimapExploration,
 } from "./minimap/minimapExploration.js";
 import {
-  commitContainerInsertionPlan,
   commitPlayerBackpackItemRemovalPlan,
   commitPlayerCurrencyValuePlan,
-  createContainerInsertionPlan,
   createPlayerBackpackItemRemovalPlan,
   createPlayerCurrencyValuePlan,
   createPlayerGoldPaymentPlan,
   getPlayerBankGoldAmount,
   getPlayerCurrencyValuePlanWeightDifference,
   getPlayerGoldAmount,
-  getRewardItemsTotalWeight,
   getRewardTableData,
   rollbackPlayerBackpackItemRemovalPlan,
   rollbackPlayerCurrencyValuePlan,
@@ -345,6 +349,8 @@ const minimapRenderState = {
   didPan: false,
 };
 const itemCooldownOverlayElements = new Set();
+const gameActionDispatcher = createGameActionDispatcher();
+registerInventoryActionHandlers(gameActionDispatcher);
 
 /* ---------- BASE - ETAT DRAG ---------- */
 /* ---------- BASE - SPAWN JOUEUR ---------- */
@@ -1172,9 +1178,21 @@ const addRewardChestFailureFeedback = (reason) => {
     space: getGameUiText("backpackFull"),
     configuration: getGameUiText("invalidReward"),
     commit: getGameUiText("rewardCommitFailed"),
+    [INVENTORY_ACTION_REASON.containerNotFound]: getGameUiText("backpackRequired"),
+    [INVENTORY_ACTION_REASON.capacityExceeded]: getGameUiText("notEnoughCapacity"),
+    [INVENTORY_ACTION_REASON.noRoom]: getGameUiText("backpackFull"),
+    [INVENTORY_ACTION_REASON.invalidConfiguration]: getGameUiText("invalidReward"),
+    [INVENTORY_ACTION_REASON.commitFailed]: getGameUiText("rewardCommitFailed"),
   };
   const message = messagesByReason[reason] ?? getGameUiText("chestOpenFailed");
-  if (reason === "backpack" || reason === "capacity" || reason === "space") {
+  if (
+    reason === "backpack" ||
+    reason === "capacity" ||
+    reason === "space" ||
+    reason === INVENTORY_ACTION_REASON.containerNotFound ||
+    reason === INVENTORY_ACTION_REASON.capacityExceeded ||
+    reason === INVENTORY_ACTION_REASON.noRoom
+  ) {
     showGameStatusMessage(message);
   }
   return addLogMessage(message, "error");
@@ -2128,29 +2146,24 @@ const isBlockingItemAtPosition = (x, y, z = playerState.z) => {
 const grantRewardItemsToPlayer = (rewardItems) => {
   const backpack = getEquipmentSlotItem("backpack");
   if (!backpack || !isOpenableContainerItem(backpack)) {
-    return { success: false, reason: "backpack" };
+    return { success: false, reason: INVENTORY_ACTION_REASON.containerNotFound };
   }
 
-  const rewardWeight = getRewardItemsTotalWeight(rewardItems);
-  if (!Number.isFinite(rewardWeight)) {
-    return { success: false, reason: "configuration" };
-  }
-
-  const remainingCapacity = playerState.capacity - calculatePlayerCarriedWeight();
-  if (rewardWeight > remainingCapacity) {
-    return { success: false, reason: "capacity" };
-  }
-
-  const insertionPlan = createContainerInsertionPlan(backpack, rewardItems);
-  if (!insertionPlan.success) {
-    return insertionPlan;
-  }
-  if (!commitContainerInsertionPlan(insertionPlan)) {
-    return { success: false, reason: "commit" };
+  const action = createInsertItemsAction(backpack.uid, rewardItems);
+  const result = gameActionDispatcher.dispatch(action, {
+    findContainerByUid(containerUid) {
+      return containerUid === backpack.uid ? backpack : null;
+    },
+    getRemainingCapacity() {
+      return playerState.capacity - calculatePlayerCarriedWeight();
+    },
+  });
+  if (!result?.success) {
+    return result;
   }
 
   refreshInventoryUi();
-  return { success: true };
+  return result;
 };
 
 //#endregion  -----  INVENTAIRE - POIDS ET CAPACITE  -----
@@ -3478,51 +3491,60 @@ const tryStartItemDragActionNavigation = (source, sourceItem, destination) => {
   return false;
 };
 
-const completeItemDrag = (destination) => {
-  if (!dragState.isDragging || !destination) {
-    cancelItemDrag();
-    return;
+const createInventoryMoveExecutionResult = (dragSfxSnapshot) => {
+  if (!didItemDragChangeState(dragSfxSnapshot)) {
+    return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
   }
-  const source = getDragSourceFromState();
+  playCompletedItemDragSfx(dragSfxSnapshot);
+  return {
+    success: true,
+    changes: {
+      itemUid: dragSfxSnapshot.sourceItem.uid,
+      location: findItemLocationByUid(dragSfxSnapshot.sourceItem.uid),
+      quantity: dragSfxSnapshot.sourceItem.quantity,
+    },
+  };
+};
+
+const executeInventoryMoveRequest = ({ source, destination, itemUid }) => {
   const sourceItem = getDragSourceItem(source);
-  if (sourceItem !== dragState.item) {
+  if (!sourceItem || sourceItem.uid !== itemUid) {
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.itemChanged };
   }
   if (source.locationType === "worldItem" && !isWorldItemAvailableForInteraction(sourceItem)) {
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
   }
 
   if (tryStartItemDragActionNavigation(source, sourceItem, destination)) {
     cancelItemDrag();
-    return;
+    return { success: true, changes: { navigationStarted: true, itemUid } };
   }
 
   if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
   }
 
   const destinationItem = getDragSourceItem(destination);
   const dragSfxSnapshot = createItemDragSfxSnapshot(source, sourceItem, destination, destinationItem);
 
   if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (!isDropStackToStack(sourceItem, destinationItem)) {
     if (isExceedCapacity(source, destination, sourceItem)) {
       showGameStatusMessage(getGameUiText("notEnoughCapacity"));
       cancelItemDrag();
-      return;
+      return { success: false, reason: INVENTORY_ACTION_REASON.capacityExceeded };
     }
   }
 
   if (isSameDragSourceAndDestination(source, destination)) {
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
   }
 
   let destinationContainer = null;
@@ -3531,54 +3553,65 @@ const completeItemDrag = (destination) => {
 
     if (!isValidContainerSlotParent(destinationContainer)) {
       cancelItemDrag();
-      return;
+      return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
     }
   }
 
   if (isContainerMoveIntoItself(sourceItem, destinationContainer)) {
     showGameStatusMessage(getGameUiText("cannotPlaceItem"));
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
   }
 
   if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (isContainerMoveIntoContainerItemItself(sourceItem, destinationItem)) {
     showGameStatusMessage(getGameUiText("cannotPlaceItem"));
     cancelItemDrag();
-    return;
+    return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
   }
 
   if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (tryMoveItemToFreeContainerSlotInsteadOfSwapDuringDrag(source, sourceItem, destination, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    playCompletedItemDragSfx(dragSfxSnapshot);
-    return;
+    return createInventoryMoveExecutionResult(dragSfxSnapshot);
   }
 
   showGameStatusMessage(getGameUiText("cannotPlaceItem"));
   cancelItemDrag();
+  return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
+};
+
+const completeItemDrag = (destination) => {
+  if (!dragState.isDragging || !destination || !dragState.item) {
+    cancelItemDrag();
+    return null;
+  }
+  const source = getDragSourceFromState();
+  const action = createMoveItemAction(source, destination, dragState.item.uid);
+  if (!action) {
+    cancelItemDrag();
+    return null;
+  }
+  return gameActionDispatcher.dispatch(action, {
+    executeMove: executeInventoryMoveRequest,
+  });
 };
 
 const renderItemIcon = (parentElement, item, slotSize) => {
@@ -9898,7 +9931,10 @@ const exchangePlayerCurrencyAtBank = (npc, player, dialogue, recipe, now) => {
   if (!grantResult.success) {
     rollbackPlayerBackpackItemRemovalPlan(removalPlan);
     refreshInventoryUi();
-    const failureText = grantResult.reason === "capacity" ? dialogue.notEnoughCapacity : dialogue.noRoom;
+    const failureText =
+      grantResult.reason === INVENTORY_ACTION_REASON.capacityExceeded
+        ? dialogue.notEnoughCapacity
+        : dialogue.noRoom;
     return queueNpcReply(npc, player, failureText, now, false, {}, dialogue.exchangeSuggestions);
   }
   refreshInventoryUi();
