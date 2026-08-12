@@ -213,6 +213,7 @@ const minimapRenderState = {
 };
 const decayingItems = [];
 const openedContainers = [];
+const itemCooldownOverlayElements = new Set();
 
 /* ---------- BASE - PLAYER OBJECT REFERENCE ---------- */
 const playerRenderRefs = {
@@ -6587,6 +6588,15 @@ const renderItemIcon = (parentElement, item, slotSize) => {
     quantity.classList.add("item-quantity");
     parentElement.appendChild(quantity);
   }
+  if (itemData.type === "rune" && itemData.use?.cooldownGroup) {
+    const cooldownOverlay = document.createElement("div");
+    cooldownOverlay.classList.add("item-cooldown-overlay");
+    cooldownOverlay.dataset.cooldownGroup = itemData.use.cooldownGroup;
+    cooldownOverlay.setAttribute("aria-hidden", "true");
+    parentElement.appendChild(cooldownOverlay);
+    itemCooldownOverlayElements.add(cooldownOverlay);
+    updateItemCooldownOverlayElement(cooldownOverlay, Date.now());
+  }
 };
 
 const renderEquipmentSlots = () => {
@@ -8274,15 +8284,16 @@ const startContainerWindowDockDrag = (event, windowElement, headerElement) => {
   headerElement.setPointerCapture(event.pointerId);
 
   const moveWindow = (moveEvent) => {
-    windowElement.style.pointerEvents = "none";
-    const targetWindow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest(".container-window");
-    windowElement.style.pointerEvents = "";
-    if (!targetWindow || targetWindow === windowElement || targetWindow.parentElement !== playerContainers) {
-      return;
-    }
-    const targetRect = targetWindow.getBoundingClientRect();
-    const insertAfterTarget = moveEvent.clientY >= targetRect.top + targetRect.height / 2;
-    playerContainers.insertBefore(windowElement, insertAfterTarget ? targetWindow.nextSibling : targetWindow);
+    const siblingWindows = [...playerContainers.querySelectorAll(".container-window")].filter((element) => {
+      return element !== windowElement;
+    });
+    const insertBeforeWindow =
+      siblingWindows.find((element) => {
+        const elementRect = element.getBoundingClientRect();
+        return moveEvent.clientY < elementRect.top + elementRect.height / 2;
+      }) ?? null;
+
+    playerContainers.insertBefore(windowElement, insertBeforeWindow);
   };
 
   const finishWindowMove = (finishEvent) => {
@@ -8568,6 +8579,36 @@ const startUseCooldown = (cooldownGroup) => {
     return;
   }
   nextUseCooldown[cooldownGroup] = useCooldown[cooldownGroup] + Date.now();
+  updateItemCooldownOverlays(Date.now());
+};
+
+const getUseCooldownRemainingRatio = (cooldownGroup, now) => {
+  const cooldownDuration = useCooldown[cooldownGroup];
+  const cooldownEndTime = nextUseCooldown[cooldownGroup];
+  if (!Number.isFinite(cooldownDuration) || cooldownDuration <= 0 || !Number.isFinite(cooldownEndTime)) {
+    return 0;
+  }
+  return clamp((cooldownEndTime - now) / cooldownDuration, 0, 1);
+};
+
+const updateItemCooldownOverlayElement = (element, now) => {
+  const cooldownGroup = element?.dataset.cooldownGroup;
+  if (!cooldownGroup) {
+    return;
+  }
+  const remainingRatio = getUseCooldownRemainingRatio(cooldownGroup, now);
+  element.style.setProperty("--item-cooldown-angle", `${remainingRatio * 360}deg`);
+  element.classList.toggle("item-cooldown-overlay-active", remainingRatio > 0);
+};
+
+const updateItemCooldownOverlays = (now) => {
+  for (const element of itemCooldownOverlayElements) {
+    if (!element.isConnected) {
+      itemCooldownOverlayElements.delete(element);
+      continue;
+    }
+    updateItemCooldownOverlayElement(element, now);
+  }
 };
 
 /* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
@@ -8794,6 +8835,11 @@ const handleUseItemFromSource = (source) => {
     return;
   }
   const useData = getItemUseData(item);
+  const cooldownGroup = itemData.type === "rune" ? getUseCooldownGroup(useData) : null;
+  if (itemData.type === "rune" && !isUseCooldownReady(cooldownGroup)) {
+    showGameStatusMessage(getGameUiText("exhausted"));
+    return;
+  }
   if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
     if (isWorldItemAvailableForInteraction(item) && (useData || isOpenableContainerItem(item))) {
       startPlayerActionNavigation({
@@ -10331,6 +10377,7 @@ const PLAYER_ACTION_DISTANCE_TYPE = {
 const PLAYER_AUTO_WALK_MAX_PATH_COST = MINIMAP_AUTOWALK_MAX_DISTANCE_TILES * 3;
 const PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS = 300;
 const PLAYER_ACTION_PATH_REFRESH_COOLDOWN_MS = 300;
+const PLAYER_ACTION_EXECUTION_DELAY_MS = 100;
 
 const playerNavigationState = {
   mode: null,
@@ -10338,6 +10385,7 @@ const playerNavigationState = {
   destinationTile: null,
   followEnabled: false,
   pendingAction: null,
+  actionExecuteAt: 0,
   nextPathRefreshAt: 0,
   lastFollowTargetTileKey: null,
   lastActionTargetTileKey: null,
@@ -11898,6 +11946,7 @@ const stopPlayerNavigation = () => {
   playerNavigationState.path = [];
   playerNavigationState.destinationTile = null;
   playerNavigationState.pendingAction = null;
+  playerNavigationState.actionExecuteAt = 0;
   playerNavigationState.nextPathRefreshAt = 0;
   playerNavigationState.lastFollowTargetTileKey = null;
   playerNavigationState.lastActionTargetTileKey = null;
@@ -11957,6 +12006,7 @@ const startPlayerClickNavigation = (destinationTile) => {
 
   playerNavigationState.mode = PLAYER_NAVIGATION_MODE.click;
   playerNavigationState.pendingAction = null;
+  playerNavigationState.actionExecuteAt = 0;
   playerNavigationState.destinationTile = {
     col: destinationTile.col,
     row: destinationTile.row,
@@ -12072,6 +12122,7 @@ const startPlayerFollowNavigation = () => {
 
   playerNavigationState.mode = PLAYER_NAVIGATION_MODE.follow;
   playerNavigationState.pendingAction = null;
+  playerNavigationState.actionExecuteAt = 0;
   playerNavigationState.path = [];
   playerNavigationState.destinationTile = null;
   playerNavigationState.nextPathRefreshAt = 0;
@@ -12331,8 +12382,7 @@ const refreshPlayerActionNavigationPath = (now) => {
     return false;
   }
   if (actionTarget.isReady) {
-    stopPlayerNavigation();
-    return executePlayerPendingAction(action);
+    return schedulePlayerPendingActionExecution(now);
   }
 
   const targetTile = getTilePosition(actionTarget.target);
@@ -12352,6 +12402,14 @@ const refreshPlayerActionNavigationPath = (now) => {
   return setPlayerNavigationPath(path);
 };
 
+const schedulePlayerPendingActionExecution = (now) => {
+  const movementEndTime = playerState.moveStartTime + playerState.moveDuration;
+  playerNavigationState.path = [];
+  playerNavigationState.destinationTile = null;
+  playerNavigationState.actionExecuteAt = Math.max(now, movementEndTime) + PLAYER_ACTION_EXECUTION_DELAY_MS;
+  return true;
+};
+
 const startPlayerActionNavigation = (action) => {
   if (!action || !Object.values(PLAYER_ACTION_TYPE).includes(action.type)) {
     return false;
@@ -12360,6 +12418,7 @@ const startPlayerActionNavigation = (action) => {
   playerNavigationState.path = [];
   playerNavigationState.destinationTile = null;
   playerNavigationState.pendingAction = action;
+  playerNavigationState.actionExecuteAt = 0;
   playerNavigationState.nextPathRefreshAt = 0;
   playerNavigationState.lastFollowTargetTileKey = null;
   playerNavigationState.lastActionTargetTileKey = null;
@@ -12377,12 +12436,20 @@ const updatePlayerActionNavigation = (now) => {
     return;
   }
   if (actionTarget.isReady) {
+    if (playerNavigationState.actionExecuteAt === 0) {
+      schedulePlayerPendingActionExecution(now);
+      return;
+    }
+    if (now < playerNavigationState.actionExecuteAt) {
+      return;
+    }
     const action = playerNavigationState.pendingAction;
     stopPlayerNavigation();
     executePlayerPendingAction(action);
     return;
   }
 
+  playerNavigationState.actionExecuteAt = 0;
   const targetTile = getTilePosition(actionTarget.target);
   const targetTileKey = `${actionTarget.target.z}:${targetTile.col}:${targetTile.row}`;
   const targetMoved = targetTileKey !== playerNavigationState.lastActionTargetTileKey;
@@ -16385,6 +16452,7 @@ const updateGameLogic = (now) => {
 const renderGameFrame = (now) => {
   updateRenderPositions(now);
   updateWorldRender();
+  updateItemCooldownOverlays(now);
 };
 
 const gameLoop = (frameTime) => {

@@ -1,3 +1,9 @@
+0.316 - Containers et cooldown des runes
+    - Les fenetres de bags et de corps peuvent maintenant etre replacees dans le panneau avec un drag.
+    - Les actions apres un auto walk attendent la fin visuelle du dernier pas avant de se lancer.
+    - Ajout d'un cadran sombre sur les runes pendant leur cooldown magique.
+    - Une rune en cooldown ne peut plus etre selectionnee pour une action.
+
 0.315 - Menus NPC et auto walk des actions
     - Ajout des menus par etapes pour acheter, vendre et apprendre des sorts avec les NPC.
     - Les listes de choix sont generees depuis les vrais items et sorts disponibles chez chaque NPC.

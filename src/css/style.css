@@ -1575,6 +1575,26 @@ main {
   background-repeat: no-repeat;
   pointer-events: none;
 }
+
+.item-cooldown-overlay {
+  --item-cooldown-angle: 0deg;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  opacity: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from -90deg,
+    rgba(0, 0, 0, 0.68) 0deg var(--item-cooldown-angle),
+    transparent var(--item-cooldown-angle) 360deg
+  );
+  pointer-events: none;
+}
+
+.item-cooldown-overlay-active {
+  opacity: 1;
+}
+
 .item-quantity {
   font-size: 11px;
   font-weight: 400;
@@ -2247,10 +2267,6 @@ main {
     backdrop-filter: blur(2px);
     pointer-events: auto;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.82);
-  }
-
-  #player-containers .container-window-equipment {
-    order: -100;
   }
 
   #player-containers .container-window-body {
