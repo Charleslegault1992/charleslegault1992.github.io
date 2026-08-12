@@ -1,0 +1,98 @@
+# Architecture du client
+
+## Objectif
+
+Le client est organise pour que la logique de jeu puisse migrer vers un serveur autoritaire sans etre reecrite. Le DOM et Pixi affichent l'etat; ils ne doivent pas devenir la source de verite du jeu.
+
+## Direction des dependances
+
+Les dependances vont dans ce sens:
+
+```text
+core + data
+    -> state + models
+    -> regles de domaine
+    -> systemes de jeu
+    -> render + UI + inputs
+    -> main.js
+```
+
+Un module de domaine ne doit pas importer le DOM, un element HTML ou un renderer Pixi. Un renderer peut lire un modele, mais il ne decide pas si une action est valide.
+
+## Responsabilites
+
+### `src/core`
+
+Constantes, mathematiques, atlas, heap et boucle fixe. Ces modules ne connaissent aucun ecran et aucune regle propre a une interface.
+
+### `src/data`
+
+Definitions statiques des items, monstres, NPC, classes, quetes et effets au sol. Les instances vivantes ne sont jamais stockees ici.
+
+### `src/state`
+
+Sources de verite en memoire:
+
+- `playerState.js`: personnage actif;
+- `worldState.js`: entites vivantes et index du monde;
+- `clientRuntimeState.js`: camera, drag, ciblage et etats temporaires du client;
+- `gameOptionsState.js`: options persistantes;
+- `uidAllocator.js`: identites uniques locales.
+
+### `src/items` et `src/inventory`
+
+Modeles, creation, poids, cooldowns et transactions atomiques. Une transaction est validee au complet avant sa premiere mutation.
+
+### `src/world`
+
+Coordonnees, chunks, piles d'items, surfaces, mouvement, pathfinding et effets au sol. Le pathfinder recoit ses regles d'occupation par callbacks afin de rester reutilisable cote serveur.
+
+### `src/player`, `src/monsters`, `src/npcs`, `src/combat`, `src/quests`
+
+Regles propres aux entites et a leur progression. Les index spatiaux evitent de parcourir toutes les entites pour chaque requete locale.
+
+### `src/render`, `src/pixiRenderer.js` et `src/ui`
+
+Affichage seulement. Le DOM garde les panneaux et controles; Pixi garde le monde, les entites et les effets. Le fog-of-war de la minimap est separe dans `src/minimap` parce qu'il fait partie de la progression sauvegardee.
+
+### `src/main.js`
+
+Point de composition actuel. Il branche les systemes, les evenements et les workflows qui traversent plusieurs domaines. Aucune nouvelle base de donnees, structure globale ou formule de gameplay ne doit y etre ajoutee.
+
+## Identites et index
+
+- `itemId`, `monsterId` et `npcId` identifient un type dans une base de donnees.
+- `uid` identifie une instance vivante unique.
+- Les tableaux gardent un ordre quand cet ordre a un sens.
+- Les `Map` par UID servent aux recherches directes.
+- Les index par tile/chunk servent aux recherches spatiales locales.
+
+Ces structures peuvent coexister quand elles repondent a des besoins differents, mais toute mutation doit passer par la fonction proprietaire qui maintient les index synchronises.
+
+## Rendu et performance
+
+- La logique tourne avec un fixed timestep borne.
+- Le monde Tiled est importe en chunks.
+- Pixi ne garde que les chunks visibles dans la scene.
+- Les textures de tiles sont mises en cache.
+- Les entites utilisent des index spatiaux et un ordre de rendu stable.
+- Les effets au sol sont separes des items interactifs.
+
+Le bundle initial contient encore Pixi et le jeu complet. Le prochain gain de chargement important sera un `import()` dynamique du runtime de jeu apres la selection du personnage. Ce changement doit conserver `main.js` comme point de composition et ne demande pas de dupliquer le renderer.
+
+## Prochaines extractions
+
+Ordre recommande pour reduire `main.js` sans casser les contrats:
+
+1. orchestration de sauvegarde et session du personnage;
+2. controleur complet de minimap;
+3. moteur de drag/drop et transactions d'equipement;
+4. fenetres de conteneurs;
+5. navigation et inputs desktop/mobile;
+6. IA et respawn des monstres;
+7. dialogues, commerce et banque des NPC;
+8. chat, sorts et hotkeys;
+9. ecrans options, quetes et selection de personnage;
+10. bootstrap final et chargement dynamique de Pixi.
+
+Chaque extraction doit passer le build de production et une verification des references JavaScript avant de commencer la suivante.

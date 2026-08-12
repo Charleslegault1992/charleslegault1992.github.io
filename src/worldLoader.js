@@ -90,7 +90,7 @@ export const loadWorldMaps = () => {
 //#endregion  -----  WORLD MAPS - LOAD  -----
 
 /* ==================================================== */
-//#region     -----  DEBUG  -----
+//#region     -----  WORLD MAPS - DIAGNOSTICS  -----
 /* ==================================================== */
 export const getWorldMapsDebugSummary = (worldMapsByZ) => {
   const maps = [];
@@ -119,4 +119,4 @@ export const getWorldMapsDebugSummary = (worldMapsByZ) => {
     maps,
   };
 };
-//#endregion  -----  DEBUG  -----
+//#endregion  -----  WORLD MAPS - DIAGNOSTICS  -----

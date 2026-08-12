@@ -1,6 +1,5 @@
 import {
   clearPixiItemUseTargets,
-  clearPixiGroundEffectVisuals,
   clearPixiMonsterSelection,
   clearPixiMonsterVisuals,
   clearPixiWorldItemSelection,
@@ -11,7 +10,6 @@ import {
   playPixiItemProjectile,
   playPixiRewardChestEffect,
   playPixiSpellEffect,
-  removePixiGroundEffectVisual,
   removePixiNpcVisual,
   removePixiMonsterVisual,
   removePixiWorldItemVisual,
@@ -19,19 +17,16 @@ import {
   renderPixiVisibleWorldChunks,
   setPixiMonsterSelected,
   setPixiItemUseTargets,
-  setPixiPlayerFrame,
   setPixiWorldItemSelected,
   updatePixiCamera,
   updatePixiMonsterTransform,
   updatePixiNpcTransform,
-  updatePixiPlayerTransform,
   updatePixiWorldItemTransform,
-  upsertPixiGroundEffectVisual,
   upsertPixiMonsterVisual,
   upsertPixiNpcVisual,
   upsertPixiWorldItemVisual,
-} from "./pixiRenderer.js";
-import { getWorldMapsDebugSummary, loadWorldMaps } from "./worldLoader.js";
+} from "./pixiRendererFacade.js";
+import { loadWorldMaps } from "./worldLoader.js";
 import {
   createCharacterProfile,
   DEFAULT_CHARACTER_APPEARANCE_COLORS,
@@ -54,140 +49,275 @@ import {
   unlockGameAudio,
 } from "./audioManager.js";
 import { spellsDatabase } from "./spellDatabase.js";
+import {
+  CHUNK_SIZE_TILES,
+  CORPSE_DECAY_COOLDOWN_MS,
+  DECAY_REFRESH_COOLDOWN_MS,
+  GAME_HEIGHT,
+  GAME_WIDTH,
+  MAX_ITEM_STACK_SIZE,
+  MINIMAP_AUTOWALK_MAX_DISTANCE_TILES,
+  MINIMAP_DEFAULT_CELL_SIZE,
+  MINIMAP_DYNAMIC_REFRESH_MS,
+  MINIMAP_MONSTER_REVEAL_RANGE_TILES,
+  MINIMAP_ZOOM_LEVELS,
+  MOBILE_SPELL_LONG_PRESS_MS,
+  MOBILE_SPELL_PRESS_MOVE_TOLERANCE_PX,
+  MONSTER_AI_CONFIG,
+  MONSTER_AI_STATE,
+  MONSTER_ATTACK_COOLDOWN_MS,
+  MONSTER_RESPAWN_CONFIG,
+  MOVE_SPEED,
+  NPC_DIALOGUE_CONFIG,
+  PLAYER_ATTACK_COOLDOWN_MS,
+  PLAYER_MOVE_COOLDOWN_MS,
+  SKILL_EXPERIENCE_GAIN_PER_TRY,
+  SPELL_HOTKEY_KEYS,
+  SPRITE_SIZE,
+  TILE_SIZE,
+  TORCH_FUEL_REFRESH_INTERVAL_MS,
+  TORCH_PLAYER_REVEAL_RADIUS,
+  WORLD_RENDER_LAYER_CREATURE,
+  WORLD_RENDER_LAYER_EFFECT,
+  WORLD_RENDER_LAYER_ITEM,
+} from "./core/gameConstants.js";
+import { QUEST_STATUS } from "./data/questsDatabase.js";
+import {
+  clamp,
+  getManhattanDistance,
+  getRandomFloat,
+  getRandomInt,
+  isEmpty,
+} from "./core/mathUtils.js";
+import { MinHeap } from "./core/MinHeap.js";
+import { getAtlasSource } from "./core/atlasUtils.js";
+import { startFixedStepGameLoop } from "./core/fixedStepGameLoop.js";
+import {
+  activeLitTorchesByUid,
+  decayingItems,
+  monsterElementsByUid,
+  monstersByUid,
+  monsterSpawnDefinitionsById,
+  monsterSpawnStateById,
+  npcConversationStatesByUid,
+  npcElementsByUid,
+  npcsByUid,
+  openedContainers,
+  worldItemElementsByUid,
+  worldItemsByUid,
+} from "./state/worldState.js";
+import {
+  camera,
+  characterSelectorUiState,
+  combatTargetState,
+  dragState,
+  gameRuntimeState,
+  gameplayTimingState,
+  itemUseState,
+  mousePosition,
+  pixiWorldRenderState,
+  questUiState,
+  respawnTimingState,
+  spellUiState,
+  stackSplitMenuState,
+  uiTimingState,
+} from "./state/clientRuntimeState.js";
+import { normalizePlayerSpellbook, playerState } from "./state/playerState.js";
+import { createGroundItem, createItemInstance } from "./items/itemFactory.js";
+import {
+  beginUseCooldown,
+  getUseCooldownGroup,
+  getUseCooldownRemainingRatio,
+  isUseCooldownReady,
+} from "./items/itemCooldown.js";
+import {
+  getItemData,
+  getItemRenderData,
+  getItemUseData,
+  getTorchFuelStage,
+  isContainerItem,
+  isOpenableContainerItem,
+  isValidWorldItem,
+} from "./items/itemModel.js";
+import {
+  calculatePlayerCarriedWeight,
+  getItemTotalWeight,
+  getPlayerRemainingCapacity,
+  updatePlayerCarriedWeight,
+} from "./inventory/inventoryWeight.js";
+import {
+  addItemUidToWorldTileStack,
+  canAddItemSurfaceToTile,
+  findWorldItemByUid,
+  getEntitySurfaceOffsetY,
+  getTopWorldItemAtTile,
+  getWorldItemStackIndex,
+  getWorldItemStackOffsetY,
+  getWorldTileStack,
+  isWorldItemTopOfTileStack,
+  moveItemUidToWorldTileStack,
+  removeItemUidFromWorldTileStack,
+} from "./world/worldItemStacks.js";
+import { getEntityRenderSortY, getWorldRenderZIndex } from "./render/renderOrder.js";
+import { applyItemRenderPartPosition, getAtlasPath, getHpColor } from "./render/domRenderUtils.js";
+import { getDirectionRow } from "./render/spriteDirection.js";
+import {
+  getPlayerFloatingTextElement,
+  initializePlayerRenderRefs,
+  refreshPlayerHpBar,
+  showPlayerName,
+  updatePlayerPosition,
+  updatePlayerSprite,
+} from "./render/playerRenderer.js";
+import { createMonster, getMonsterData } from "./monsters/monsterModel.js";
+import {
+  addMonsterToState,
+  findMonsterAtPosition,
+  getActiveMonstersAroundPlayer,
+  getMonstersInChunkRadius,
+  isMonsterAtPosition,
+  moveMonsterInTileIndex,
+  removeMonsterFromState,
+} from "./monsters/monsterIndex.js";
+import { getNpcData, getNpcTextureUrlsById } from "./npcs/npcModel.js";
+import {
+  findNpcAtPosition,
+  getNpcsInChunkRadius,
+  initializeNpcsForWorldMaps,
+  isNpcAtPosition,
+  moveNpcInTileIndex,
+} from "./npcs/npcIndex.js";
+import {
+  calculatePlayerAttackResult,
+  calculateRuneAttackResult,
+  getCombatModeData,
+  getEquippedWeaponCombatData,
+  getPlayerAttackRange,
+  getPlayerAttackSkillKey,
+  getPlayerShieldDefense,
+  getPlayerTotalArmor,
+  hasPlayerBlockSource,
+} from "./combat/playerCombatModel.js";
+import {
+  getQuestData,
+  hasPlayerClaimedInteractableReward,
+  recordPlayerInteractableRewardClaim,
+  setPlayerQuestStatus,
+} from "./quests/questProgress.js";
+import {
+  getCurrentGameLanguage,
+  getGameUiText,
+  getLocalizedClassData,
+  getLocalizedContentData,
+  getLocalizedItemData,
+  getLocalizedItemName,
+  getLocalizedMonsterData,
+  getLocalizedQuestData,
+  getLocalizedSkillName,
+} from "./localization/gameLocalization.js";
+import {
+  addOrRefreshGroundEffect,
+  getGroundEffectData,
+  syncGroundEffectRenderForCurrentZ,
+  updateGroundEffectDecay,
+} from "./world/groundEffects.js";
+import { getEquipmentSlotItem } from "./player/playerEquipment.js";
+import { isNearPlayer } from "./player/playerSpatial.js";
+import { advancePlayerRegeneration, resetPlayerRegenerationTimers, startPlayerRegenerationTimers } from "./player/playerRegeneration.js";
+import { removeCurrentEquipmentFromDecayTracking, restoreCharacterItem, serializeCharacterItem } from "./player/characterItemsPersistence.js";
+import { getCurrentWorldMap } from "./world/worldRuntime.js";
+import {
+  hydrateMinimapExploration,
+  isMinimapTileDiscovered,
+  revealMinimapAroundPlayer,
+  serializeMinimapExploration,
+} from "./minimap/minimapExploration.js";
+import {
+  commitContainerInsertionPlan,
+  commitPlayerBackpackItemRemovalPlan,
+  commitPlayerCurrencyValuePlan,
+  createContainerInsertionPlan,
+  createPlayerBackpackItemRemovalPlan,
+  createPlayerCurrencyValuePlan,
+  createPlayerGoldPaymentPlan,
+  getPlayerBankGoldAmount,
+  getPlayerCurrencyValuePlanWeightDifference,
+  getPlayerGoldAmount,
+  getRewardItemsTotalWeight,
+  getRewardTableData,
+  rollbackPlayerBackpackItemRemovalPlan,
+  rollbackPlayerCurrencyValuePlan,
+  spendPlayerGold,
+} from "./inventory/inventoryTransactions.js";
+import {
+  applyPlayerCurrentVitalLevelUpGains,
+  canUseShieldingBlock,
+  getLevelFromExperience,
+  getPlayerClassData,
+  getPlayerExperienceProgressData,
+  getSkillExperienceGainMultiplier,
+  getSkillLevelFromExperience,
+  getSkillProgressData,
+  isSkillTrainingTimerActive,
+  normalizeSkillExperienceGain,
+  recordShieldingBlock,
+  refreshSkillTrainingTimer,
+  syncPlayerDerivedStats,
+} from "./player/playerProgression.js";
+import {
+  DEFAULT_GAME_OPTIONS,
+  GAME_OPTIONS_STORAGE_KEY,
+  gameOptionsUiState,
+  SUPPORTED_GAME_LANGUAGES,
+} from "./state/gameOptionsState.js";
+import {
+  applyPlayerAppearanceBackground,
+  clearPlayerAppearanceColorTextureCache,
+  DEFAULT_PLAYER_APPEARANCE_ID,
+  getPlayerAppearanceData,
+  getPlayerAppearanceLayerTextureUrls,
+  PLAYER_ANIMATION_FRAMES,
+  PLAYER_FRAME_HEIGHT,
+  PLAYER_FRAME_WIDTH,
+  playerAppearancePartsDatabase,
+  playerAppearancesDatabase,
+} from "./player/playerAppearance.js";
+import {
+  getChunkPositionFromWorldPosition,
+  getTilePosition,
+  getWorldChunkForTilePosition,
+  getWorldLayerGidAtTile,
+  getWorldPosition,
+  isTiledCollisionAtTile,
+} from "./world/worldCoordinates.js";
+import { canStepFromTileToTile } from "./world/worldMovement.js";
+import {
+  createPathfinder,
+  getCardinalDirectionFromTileDelta,
+  getDistanceToClosestTile,
+  getNeighbors,
+  getPathMovementCost,
+  getTileMovementAnimationMultiplier,
+  getTileMovementCost,
+  hasLineOfSightBetweenTiles,
+} from "./world/pathfinding.js";
 
-/* ==================================================== */
-//#region     -----  BASE - ELEMENTS HTML  -----
-/* ==================================================== */
-const panneauGauche = document.querySelector(".jeux-gauche");
-const panneauDroite = document.querySelector(".jeux-droite");
-const boitePrincipale = document.querySelector("#boite-principal");
-const playerMinimap = document.querySelector("#player-minimap");
-const minimapCanvas = document.querySelector("#minimap-canvas");
-const minimapZoomOutButton = document.querySelector("#minimap-zoom-out");
-const minimapZoomInButton = document.querySelector("#minimap-zoom-in");
-const minimapCenterButton = document.querySelector("#minimap-center");
-const minimapZoomLevel = document.querySelector("#minimap-zoom-level");
-const minimapFloorUpButton = document.querySelector("#minimap-floor-up");
-const minimapFloorDownButton = document.querySelector("#minimap-floor-down");
-const minimapFloorLevel = document.querySelector("#minimap-floor-level");
-const playerStats = document.querySelector("#player-stats");
-const playerInventory = document.querySelector("#player-inventory");
-const playerQuests = document.querySelector("#player-quests");
-const gameOptionsWindow = document.querySelector("#game-options");
-const playerSpells = document.querySelector("#player-spells");
-const gameWelcome = document.querySelector("#game-welcome");
-const gameWelcomePlayButton = document.querySelector("#game-welcome-play");
-const gameWelcomeLanguageButtons = document.querySelectorAll("[data-game-language]");
-const characterSelector = document.querySelector("#character-selector");
-const stackSplitMenu = document.querySelector("#stack-split-menu");
-const playerContainers = document.querySelector("#player-containers");
-const player = document.querySelector("#player");
-const game = document.querySelector("#game");
-const boiteJeux = document.querySelector("#boite-jeux");
-const nav = document.querySelector(".navbar");
-const entete = document.querySelector(".entete-jeux");
-const boiteChat = document.querySelector("#boite-chat");
-const chat = document.querySelector("#chat");
-const chatTabs = document.querySelector("#chat-tabs");
-const chatInput = document.querySelector("#chat-input");
-const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
-const lightCanvas = document.querySelector("#light-canvas");
-const fpsCounter = document.querySelector("#fps-counter");
-const gameStatusMessage = document.querySelector("#game-status-message");
-const mobileGameControls = document.querySelector("#mobile-game-controls");
-const mobileJoystickZone = document.querySelector("#mobile-joystick-zone");
-const mobileJoystick = document.querySelector("#mobile-joystick");
-const mobileJoystickKnob = document.querySelector("#mobile-joystick-knob");
-const mobilePanelButtons = document.querySelectorAll("[data-mobile-panel]");
-const mobileActionButtons = document.querySelectorAll("[data-mobile-action]");
-const mobilePanelCloseButton = document.querySelector("#mobile-panel-close");
-const mobilePlayerName = document.querySelector("#mobile-player-name");
-const mobilePlayerLevel = document.querySelector("#mobile-player-level");
-const mobilePlayerHealthFill = document.querySelector("#mobile-player-health-fill");
-const mobilePlayerHealthValue = document.querySelector("#mobile-player-health-value");
-const mobilePlayerManaFill = document.querySelector("#mobile-player-mana-fill");
-const mobilePlayerManaValue = document.querySelector("#mobile-player-mana-value");
-const mobilePlayerSanityFill = document.querySelector("#mobile-player-sanity-fill");
-const mobilePlayerSanityValue = document.querySelector("#mobile-player-sanity-value");
-const mobileTargetHud = document.querySelector("#mobile-target-hud");
-const mobileTargetName = document.querySelector("#mobile-target-name");
-const mobileTargetValue = document.querySelector("#mobile-target-value");
-const mobileTargetHealthFill = document.querySelector("#mobile-target-health-fill");
-const mobileItemUseIndicator = document.querySelector("#mobile-item-use-indicator");
-const mobileItemUseIcon = document.querySelector("#mobile-item-use-icon");
-const mobileItemUseLabel = document.querySelector("#mobile-item-use-label");
-const mobileStanceIcon = document.querySelector("#mobile-stance-icon");
-const mobileStanceLabel = document.querySelector("#mobile-stance-label");
-//#endregion  -----  BASE - ELEMENTS HTML  -----
+import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapZoomLevel, minimapFloorUpButton, minimapFloorDownButton, minimapFloorLevel, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
+
 
 /* ==================================================== */
 //#region     -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 /* ==================================================== */
 /* ---------- BASE - DIMENSIONS ET ATLAS ---------- */
 
-const GAME_WIDTH = 1280;
-const GAME_HEIGHT = 720;
 let GAME_SCALE = 1;
-const TILE_SIZE = 64;
-const MAX_ITEM_STACK_SIZE = 100;
-const MAX_SURFACE_HEIGHT = 160;
-const MAX_STEP_HEIGHT = 40;
-const WORLD_RENDER_LAYER_SIZE = 100;
-const WORLD_RENDER_LAYER_ITEM = 10;
-const WORLD_RENDER_LAYER_CREATURE = 50;
-const WORLD_RENDER_LAYER_EFFECT = 90;
-const PLAYER_SIZE = TILE_SIZE;
-const CHUNK_SIZE_TILES = 16;
-const MOVE_SPEED = TILE_SIZE;
-const MAP_COLS = GAME_WIDTH / TILE_SIZE;
-const MAP_ROWS = GAME_HEIGHT / TILE_SIZE;
-const SPRITE_SIZE = 64;
-const ATLAS_CELL_SIZE = 66;
-const ATLAS_PADDING = 1;
-const TORCH_FUEL_REFRESH_INTERVAL_MS = 1000;
-const TORCH_PLAYER_REVEAL_RADIUS = 64;
-const MINIMAP_ZOOM_LEVELS = [3, 4, 6, 8, 12];
-const MINIMAP_DEFAULT_CELL_SIZE = 6;
-const MINIMAP_DYNAMIC_REFRESH_MS = 150;
-const MINIMAP_AUTOWALK_MAX_DISTANCE_TILES = 30;
-const MINIMAP_MONSTER_REVEAL_RANGE_TILES = 5;
-const MINIMAP_DISCOVERY_RADIUS_X = Math.ceil(MAP_COLS / 2) + 1;
-const MINIMAP_DISCOVERY_RADIUS_Y = Math.ceil(MAP_ROWS / 2) + 1;
-const SPELL_HOTKEY_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="];
-const MOBILE_SPELL_LONG_PRESS_MS = 500;
-const MOBILE_SPELL_PRESS_MOVE_TOLERANCE_PX = 12;
 
 /* ---------- BASE - TILES ---------- */
 
-const FLOOR = 0;
-const WALL = 1;
-
 /* ---------- BASE - UID ET SELECTION ---------- */
 
-let nextItemInstanceId = 1;
-let nextMonsterUid = 1;
-let nextGroundEffectUid = 1;
-let selectedMonsterUid = null;
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
-const monsterElementsByUid = new Map();
-const monstersByUid = new Map();
-const monsterUidByTileKey = new Map();
-const monsterUidsByChunkKey = new Map();
-const npcElementsByUid = new Map();
-const npcsByUid = new Map();
-const npcUidByTileKey = new Map();
-const npcConversationStatesByUid = new Map();
-const worldItemElementsByUid = new Map();
-const worldItemsByUid = new Map();
-const worldTileStacksByKey = new Map();
-const groundEffectsByUid = new Map();
-const groundEffectUidByTileKey = new Map();
-const activeLitTorchesByUid = new Map();
-const renderState = {
-  lastCameraX: null,
-  lastCameraY: null,
-};
 const minimapRenderState = {
   context: minimapCanvas?.getContext("2d") ?? null,
   cellSize: MINIMAP_DEFAULT_CELL_SIZE,
@@ -199,14 +329,10 @@ const minimapRenderState = {
   visibleRows: null,
   isFollowingPlayer: true,
   viewZ: null,
-  discoveredTileIndexesByChunkKey: new Map(),
   lastPlayerCol: null,
   lastPlayerRow: null,
   lastZ: null,
   lastViewZ: null,
-  lastDiscoveryCol: null,
-  lastDiscoveryRow: null,
-  lastDiscoveryZ: null,
   lastCenterCol: null,
   lastCenterRow: null,
   lastCellSize: null,
@@ -218,2209 +344,32 @@ const minimapRenderState = {
   panStartCenterRow: null,
   didPan: false,
 };
-const decayingItems = [];
-const openedContainers = [];
 const itemCooldownOverlayElements = new Set();
 
-/* ---------- BASE - PLAYER OBJECT REFERENCE ---------- */
-const playerRenderRefs = {
-  root: player,
-  hp: null,
-  floatingText: null,
-};
-
-const initializePlayerRenderRefs = () => {
-  playerRenderRefs.hp = playerRenderRefs.root?.querySelector(".php-red");
-  playerRenderRefs.floatingText = playerRenderRefs.root?.querySelector(".player-floating-text-layer");
-};
-
 /* ---------- BASE - ETAT DRAG ---------- */
-const dragState = {
-  isDragging: false,
-  item: null,
-  sourceLocationType: null,
-  sourceSlotIndex: null,
-  sourceEquipmentSlotName: null,
-  sourceParentContainerUid: null,
-  sourceItemUid: null,
-  pendingSourceLocation: null,
-  pendingSlotElement: null,
-  startScreenX: null,
-  startScreenY: null,
-};
-
 /* ---------- BASE - SPAWN JOUEUR ---------- */
 
 /* ---------- BASE - CAMERA ET SOURIS ---------- */
-const camera = {
-  x: 0,
-  y: 0,
-};
-
 const minChatHeight = 120;
-
-const mousePosition = {
-  screenX: null,
-  screenY: null,
-  gameX: null,
-  gameY: null,
-  worldX: null,
-  worldY: null,
-  row: null,
-  col: null,
-  isInsideMap: false,
-};
-
-const pixiWorldRenderState = {
-  worldMapsByZ: null,
-  currentZ: 0,
-  lastPlayerZ: null,
-  lastPlayerChunkX: null,
-  lastPlayerChunkY: null,
-  visibleRadiusChunks: 1,
-};
 /* ---------- BASE - ETAT ITEM USE ---------- */
 
-const itemUseState = {
-  isUsingItem: false,
-  source: null,
-  item: null,
-  useData: null,
-  startedAt: null,
-};
-let gameStatusMessageTimeoutId = null;
-
-const monsterSpawnStateById = new Map();
-const monsterSpawnDefinitionsById = new Map();
-const monsterRespawnEventHeap = [];
-let nextMonsterRespawnEventOrder = 0;
-
-const questUiState = {
-  isOpen: false,
-};
-const stackSplitMenuState = {
-  source: null,
-  itemUid: null,
-};
-
-const spellUiState = {
-  isOpen: false,
-  selectedSpellId: null,
-  mobileAssignHotkeyIndex: null,
-};
-
-const GAME_OPTIONS_STORAGE_KEY = "no-name-yet:game-options";
-const SUPPORTED_GAME_LANGUAGES = new Set(["en", "fr"]);
-const DEFAULT_GAME_OPTIONS = {
-  showFps: true,
-  showCreatureNames: true,
-  showHealthBars: true,
-  musicEnabled: true,
-  sfxEnabled: true,
-  musicVolume: 0.35,
-  sfxVolume: 0.65,
-  minimapCellSize: MINIMAP_DEFAULT_CELL_SIZE,
-  language: "en",
-};
-
-const loadGameOptions = () => {
-  try {
-    const savedOptions = JSON.parse(localStorage.getItem(GAME_OPTIONS_STORAGE_KEY));
-    const options = { ...DEFAULT_GAME_OPTIONS };
-    for (const optionKey of ["showFps", "showCreatureNames", "showHealthBars", "musicEnabled", "sfxEnabled"]) {
-      if (typeof savedOptions?.[optionKey] === "boolean") {
-        options[optionKey] = savedOptions[optionKey];
-      }
-    }
-    for (const volumeKey of ["musicVolume", "sfxVolume"]) {
-      if (Number.isFinite(savedOptions?.[volumeKey])) {
-        options[volumeKey] = Math.min(Math.max(savedOptions[volumeKey], 0), 1);
-      }
-    }
-    if (SUPPORTED_GAME_LANGUAGES.has(savedOptions?.language)) {
-      options.language = savedOptions.language;
-    }
-    if (MINIMAP_ZOOM_LEVELS.includes(savedOptions?.minimapCellSize)) {
-      options.minimapCellSize = savedOptions.minimapCellSize;
-    }
-    return options;
-  } catch {
-    return { ...DEFAULT_GAME_OPTIONS };
-  }
-};
-
-const gameOptionsUiState = {
-  isOpen: false,
-  values: loadGameOptions(),
-};
 minimapRenderState.cellSize = gameOptionsUiState.values.minimapCellSize;
 
-const characterSelectorUiState = {
-  isOpen: false,
-  view: "list",
-};
-const gameRuntimeState = {
-  isStarting: false,
-  isStarted: false,
-  isLoopRunning: false,
-  isSwitchingCharacter: false,
-  autosaveIntervalId: null,
-};
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
 const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 
-/* ==================================================== */
-//#region     -----  BASE DE DONNEES  -----
-/* ==================================================== */
-/* ---------- DATABASE - EFFETS DE SOL ---------- */
 
-const GROUND_EFFECT_DECAY_STAGE_MS = 60000;
-const groundEffectsDatabase = {
-  healthPotionFluid: { atlasCol: 0, atlasRow: 0 },
-  blood: { atlasCol: 3, atlasRow: 0 },
-  manaPotionFluid: { atlasCol: 6, atlasRow: 0 },
-  whiteFluid: { atlasCol: 9, atlasRow: 0 },
-  lava: { atlasCol: 12, atlasRow: 0 },
-  poison: { atlasCol: 15, atlasRow: 0 },
-  greenBlood: { atlasCol: 18, atlasRow: 0 },
-  purpleFluid: { atlasCol: 21, atlasRow: 0 },
-  antidoteFluid: { atlasCol: 24, atlasRow: 0 },
-};
-
-/* ---------- DATABASE - ITEMS ---------- */
-
-const itemsDatabase = {
-  apple: {
-    itemId: "apple",
-    name: "Apple",
-    desc: "An apple.",
-    type: "food",
-    suffix: "an",
-    weight: 2,
-    stackable: true,
-    blockMovement: false,
-    use: {
-      mode: "direct",
-      action: "eat",
-      sanity: 4,
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 29,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  cheese: {
-    itemId: "cheese",
-    name: "Cheese",
-    desc: "A piece of cheese.",
-    type: "food",
-    suffix: "a",
-    weight: 3,
-    stackable: true,
-    blockMovement: false,
-    use: {
-      mode: "direct",
-      action: "eat",
-      sanity: 8,
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 20,
-          atlasRow: 29,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  box: {
-    itemId: "box",
-    name: "Box",
-    desc: "A big old box.",
-    type: "container",
-    suffix: "a",
-    weight: 80,
-    stackable: false,
-    blockMovement: false,
-    surfaceHeight: 77,
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 2,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-        {
-          atlasCol: 1,
-          atlasRow: 2,
-          offsetX: 0,
-          offsetY: -SPRITE_SIZE,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  smallBox: {
-    itemId: "smallBox",
-    name: "Small box",
-    desc: "A small box.",
-    type: "container",
-    suffix: "a",
-    weight: 50,
-    stackable: false,
-    blockMovement: false,
-    surfaceHeight: 38,
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 5,
-          atlasRow: 2,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  healthPotion: {
-    itemId: "healthPotion",
-    name: "Health Potion",
-    desc: "Drinking it might give you some benefit.",
-    type: "consumable",
-    suffix: "a",
-    weight: 25,
-    stackable: false,
-    blockMovement: false,
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 1,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-    use: {
-      mode: "target",
-      action: "drinkPotion",
-      restoreStat: "hp",
-      restoreAmount: 100,
-      groundEffectId: "healthPotionFluid",
-      emptyItemId: "emptyPotion",
-      range: 1,
-      cooldownGroup: "item",
-    },
-  },
-  manaPotion: {
-    itemId: "manaPotion",
-    name: "Mana Potion",
-    desc: "A potion filled with restorative mana fluid.",
-    type: "consumable",
-    suffix: "a",
-    weight: 25,
-    stackable: false,
-    blockMovement: false,
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 1, atlasRow: 1, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-    use: {
-      mode: "target",
-      action: "drinkPotion",
-      restoreStat: "mana",
-      restoreAmount: 100,
-      groundEffectId: "manaPotionFluid",
-      emptyItemId: "emptyPotion",
-      range: 1,
-      cooldownGroup: "item",
-    },
-  },
-  emptyPotion: {
-    itemId: "emptyPotion",
-    name: "Empty Potion",
-    desc: "An empty potion bottle.",
-    type: "misc",
-    suffix: "an",
-    weight: 5,
-    stackable: false,
-    blockMovement: false,
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 2, atlasRow: 1, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  torch: {
-    itemId: "torch",
-    name: "Torch",
-    desc: "A torch that can light dark places.",
-    type: "lightSource",
-    equipmentSlot: ["ammo"],
-    suffix: "a",
-    weight: 12,
-    stackable: false,
-    blockMovement: false,
-    use: {
-      mode: "direct",
-      action: "toggleTorch",
-    },
-    lightSource: {
-      fuelDurationMs: 10 * 60 * 1000,
-      radiusByStage: [750, 560, 360],
-    },
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 0, atlasRow: 4, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  ratCorpse: {
-    itemId: "ratCorpse",
-    name: "Rat Corpse",
-    desc: "A dead rat.",
-    type: "corpse",
-    suffix: "a",
-    weight: 75,
-    stackable: false,
-    blockMovement: false,
-    container: true,
-    capacity: 5,
-    decayType: "monster",
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 3,
-          atlasRow: 3,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  playerCorpse: {
-    itemId: "playerCorpse",
-    name: "Player Corpse",
-    desc: "A dead player.",
-    type: "corpse",
-    suffix: "a",
-    weight: 75,
-    stackable: false,
-    blockMovement: false,
-    container: true,
-    capacity: 5,
-    decayType: "player",
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 3,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  sword: {
-    itemId: "sword",
-    name: "Sword",
-    desc: "An old rusty sword.",
-    type: "weapon",
-    equipmentSlot: ["weapon"],
-    suffix: "a",
-    weight: 25,
-    stackable: false,
-    blockMovement: false,
-    combat: {
-      weaponType: "sword",
-      attack: 8,
-      defense: 3,
-      skillName: "sword",
-      range: 1,
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 20,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  mace: {
-    itemId: "mace",
-    name: "Mace",
-    desc: "A crude and unreliable mace.",
-    type: "weapon",
-    equipmentSlot: ["weapon"],
-    suffix: "a",
-    weight: 30,
-    stackable: false,
-    blockMovement: false,
-    combat: {
-      weaponType: "mace",
-      attack: 6,
-      defense: 1,
-      skillName: "mace",
-      range: 1,
-    },
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 0, atlasRow: 22, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  arrow: {
-    itemId: "arrow",
-    name: "Arrow",
-    desc: "A simple arrow.",
-    type: "ammunition",
-    equipmentSlot: ["shield"],
-    suffix: "an",
-    weight: 0.5,
-    stackable: true,
-    blockMovement: false,
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 0, atlasRow: 18, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  bow: {
-    itemId: "bow",
-    name: "Bow",
-    desc: "A basic hunting bow.",
-    type: "weapon",
-    equipmentSlot: ["weapon"],
-    suffix: "a",
-    weight: 25,
-    stackable: false,
-    blockMovement: false,
-    combat: {
-      weaponType: "bow",
-      attack: 7,
-      skillName: "distance",
-      range: 7,
-      hitChanceModifier: -10,
-      ammunitionItemId: "arrow",
-      projectileItemId: "arrow",
-    },
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 0, atlasRow: 16, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  woodenShield: {
-    itemId: "woodenShield",
-    name: "Wooden Shield",
-    desc: "An old wooden shield",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 35,
-    stackable: false,
-    blockMovement: false,
-    combat: {
-      shieldDefense: 14,
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 6,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  ironShield: {
-    itemId: "ironShield",
-    name: "Iron Bulwark",
-    desc: "A dependable shield forged from solid iron.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "an",
-    weight: 42,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 16 },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  azureGuardShield: {
-    itemId: "azureGuardShield",
-    name: "Azure Guard",
-    desc: "A blue shield carried by veteran sentinels.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "an",
-    weight: 44,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 18 },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  suncrestShield: {
-    itemId: "suncrestShield",
-    name: "Suncrest Shield",
-    desc: "Its bronze crest shines like a small sun.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 46,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 20 },
-    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  lionheartShield: {
-    itemId: "lionheartShield",
-    name: "Lionheart Aegis",
-    desc: "A noble shield marked by a silver lion.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 48,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 22 },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  dreadShield: {
-    itemId: "dreadShield",
-    name: "Dreadwatch Shield",
-    desc: "A dark shield trimmed with old gold.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 50,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 24 },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  seraphShield: {
-    itemId: "seraphShield",
-    name: "Seraph Aegis",
-    desc: "A jeweled shield shaped like folded wings.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 52,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 27 },
-    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  groveShield: {
-    itemId: "groveShield",
-    name: "Grovekeeper Shield",
-    desc: "A round shield blessed with an ancient leaf.",
-    type: "shield",
-    equipmentSlot: ["shield"],
-    suffix: "a",
-    weight: 38,
-    stackable: false,
-    blockMovement: false,
-    combat: { shieldDefense: 19 },
-    render: { atlas: "items", parts: [{ atlasCol: 7, atlasRow: 6, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  hideTrousers: {
-    itemId: "hideTrousers",
-    name: "Roughhide Trousers",
-    desc: "Heavy trousers stitched from rough hide.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 22,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 2 },
-    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  wandererPants: {
-    itemId: "wandererPants",
-    name: "Wanderer Pants",
-    desc: "Simple trousers made for long roads.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 18,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 1 },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  hunterLeggings: {
-    itemId: "hunterLeggings",
-    name: "Hunter Leggings",
-    desc: "Flexible leggings reinforced at the knees.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 24,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 3 },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  chainLeggings: {
-    itemId: "chainLeggings",
-    name: "Chain Leggings",
-    desc: "Interlocked rings protect the legs without slowing them.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 32,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 4 },
-    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  knightGreaves: {
-    itemId: "knightGreaves",
-    name: "Knight Greaves",
-    desc: "Polished steel greaves made for the front line.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 38,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 5 },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  sunforgedGreaves: {
-    itemId: "sunforgedGreaves",
-    name: "Sunforged Greaves",
-    desc: "Golden greaves forged for a royal champion.",
-    type: "legs",
-    equipmentSlot: ["legs"],
-    suffix: "some",
-    weight: 40,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 6 },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 7, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  wornBoots: {
-    itemId: "wornBoots",
-    name: "Roadworn Boots",
-    desc: "Old boots that have crossed many muddy roads.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 12,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 1 },
-    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  leatherBoots: {
-    itemId: "leatherBoots",
-    name: "Leather Boots",
-    desc: "Sturdy leather boots with a comfortable fit.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 14,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 1 },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  ironBoots: {
-    itemId: "ironBoots",
-    name: "Ironstep Boots",
-    desc: "Iron-plated boots that land with authority.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 22,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 2 },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  steelBoots: {
-    itemId: "steelBoots",
-    name: "Steel Vanguard Boots",
-    desc: "Reinforced boots worn by disciplined guards.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 25,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 3 },
-    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  tidewalkerBoots: {
-    itemId: "tidewalkerBoots",
-    name: "Tidewalker Boots",
-    desc: "Blue-trimmed boots that never seem to stay wet.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 20,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 3 },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  sunforgedBoots: {
-    itemId: "sunforgedBoots",
-    name: "Sunforged Boots",
-    desc: "Ornate boots plated with warm golden steel.",
-    type: "boots",
-    equipmentSlot: ["boots"],
-    suffix: "some",
-    weight: 27,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 4 },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 8, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  leatherArmor: {
-    itemId: "leatherArmor",
-    name: "Leather Armor",
-    desc: "A classic leather armor.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 35,
-    stackable: false,
-    blockMovement: false,
-    combat: {
-      armor: 5,
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 9,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  studdedLeatherArmor: {
-    itemId: "studdedLeatherArmor",
-    name: "Studded Wayfarer Coat",
-    desc: "A leather coat reinforced with metal studs.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 38,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 6 },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  mercenaryArmor: {
-    itemId: "mercenaryArmor",
-    name: "Mercenary Harness",
-    desc: "Layered leather and iron built for practical warfare.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 42,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 7 },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  steelPlate: {
-    itemId: "steelPlate",
-    name: "Steel Vanguard Plate",
-    desc: "A dark steel breastplate made to hold the line.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 55,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 9 },
-    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  tideforgedArmor: {
-    itemId: "tideforgedArmor",
-    name: "Tideforged Mail",
-    desc: "Blue steel mail that moves like flowing water.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 48,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 10 },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  arcanistRobe: {
-    itemId: "arcanistRobe",
-    name: "Violet Arcanist Robe",
-    desc: "An ornate robe woven for a practiced spellcaster.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 24,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 7 },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  grovekeeperMantle: {
-    itemId: "grovekeeperMantle",
-    name: "Grovekeeper Mantle",
-    desc: "A moss-green mantle smelling faintly of rain.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 20,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 6 },
-    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  midnightMantle: {
-    itemId: "midnightMantle",
-    name: "Midnight Mantle",
-    desc: "A deep blue mantle favored by wandering seers.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "a",
-    weight: 21,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 7 },
-    render: { atlas: "items", parts: [{ atlasCol: 7, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  ivoryMantle: {
-    itemId: "ivoryMantle",
-    name: "Ivory Oracle Mantle",
-    desc: "A bright mantle bordered with ancient gold.",
-    type: "armor",
-    equipmentSlot: ["armor"],
-    suffix: "an",
-    weight: 22,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 8 },
-    render: { atlas: "items", parts: [{ atlasCol: 8, atlasRow: 9, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  wandererHood: {
-    itemId: "wandererHood",
-    name: "Wanderer Hood",
-    desc: "A weathered hood that keeps dust from the eyes.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "a",
-    weight: 8,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 1 },
-    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  groveHood: {
-    itemId: "groveHood",
-    name: "Grove Hood",
-    desc: "A green hood used by quiet forest wardens.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "a",
-    weight: 8,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 1 },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  leatherCap: {
-    itemId: "leatherCap",
-    name: "Ironbound Leather Cap",
-    desc: "A leather cap strengthened with narrow iron bands.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "an",
-    weight: 14,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 2 },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  ironHelm: {
-    itemId: "ironHelm",
-    name: "Iron Sentinel Helm",
-    desc: "A broad iron helm with guarded cheeks.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "an",
-    weight: 20,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 3 },
-    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  hornedSteelHelm: {
-    itemId: "hornedSteelHelm",
-    name: "Horned Steel Helm",
-    desc: "A steel helm crowned by two short horns.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "a",
-    weight: 23,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 4 },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  knightGreathelm: {
-    itemId: "knightGreathelm",
-    name: "Knight Greathelm",
-    desc: "A sealed helm built for brutal close combat.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "a",
-    weight: 26,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 5 },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-  sunforgedHelm: {
-    itemId: "sunforgedHelm",
-    name: "Sunforged Crownhelm",
-    desc: "A golden crownhelm set with a blue visor.",
-    type: "helmet",
-    equipmentSlot: ["helmet"],
-    suffix: "a",
-    weight: 28,
-    stackable: false,
-    blockMovement: false,
-    combat: { armor: 6 },
-    render: { atlas: "items", parts: [{ atlasCol: 6, atlasRow: 10, offsetX: 0, offsetY: 0, zOffset: 0 }] },
-  },
-
-  spiderCorpse: {
-    itemId: "spiderCorpse",
-    name: "Spider Corpse",
-    desc: "A dead spider.",
-    type: "corpse",
-    suffix: "a",
-    weight: 100,
-    stackable: false,
-    blockMovement: false,
-    container: true,
-    capacity: 5,
-    decayType: "monster",
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 6,
-          atlasRow: 3,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  bag: {
-    itemId: "bag",
-    name: "Bag",
-    desc: "A bag. (Slot: 8)",
-    type: "bag",
-    equipmentSlot: ["backpack"],
-    suffix: "a",
-    weight: 15,
-    stackable: false,
-    blockMovement: false,
-    container: true,
-    capacity: 8,
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 11,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  goldCoin: {
-    itemId: "goldCoin",
-    name: "Gold Coin",
-    desc: "A gold coin.",
-    type: "currency",
-    suffix: "a",
-    weight: 0.1,
-    stackable: true,
-    blockMovement: false,
-    currency: {
-      value: 1,
-      higherItemId: "azureCoin",
-    },
-    use: {
-      mode: "direct",
-      action: "splitCurrencyStack",
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 5,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-  azureCoin: {
-    itemId: "azureCoin",
-    name: "Platinum Coin",
-    desc: "A platinum coin worth 100 gold coins.",
-    type: "currency",
-    suffix: "an",
-    weight: 0.1,
-    stackable: true,
-    blockMovement: false,
-    currency: {
-      value: 100,
-      lowerItemId: "goldCoin",
-      higherItemId: "crystalCoin",
-    },
-    use: {
-      mode: "direct",
-      action: "splitCurrencyStack",
-    },
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 5, atlasRow: 5, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  crystalCoin: {
-    itemId: "crystalCoin",
-    name: "Crystal Coin",
-    desc: "A crystalline coin worth 1,000 gold coins.",
-    type: "currency",
-    suffix: "a",
-    weight: 0.1,
-    stackable: true,
-    blockMovement: false,
-    currency: {
-      value: 1000,
-      lowerItemId: "azureCoin",
-    },
-    use: {
-      mode: "direct",
-      action: "splitCurrencyStack",
-    },
-    render: {
-      atlas: "items",
-      parts: [{ atlasCol: 10, atlasRow: 5, offsetX: 0, offsetY: 0, zOffset: 0 }],
-    },
-  },
-  fireRune: {
-    itemId: "fireRune",
-    name: "Fire rune",
-    desc: "A rune engraved with fire magic, ready to unleash a burning spell.",
-    type: "rune",
-    suffix: "a",
-    weight: 5,
-    stackable: false,
-    blockMovement: false,
-    use: {
-      mode: "target",
-      action: "attackRune",
-      damage: 6,
-      charges: 5,
-      range: 7,
-      cooldownGroup: "rune",
-    },
-    render: {
-      atlas: "items",
-      parts: [
-        {
-          atlasCol: 0,
-          atlasRow: 25,
-          offsetX: 0,
-          offsetY: 0,
-          zOffset: 0,
-        },
-      ],
-    },
-  },
-};
-
-/* ---------- DATABASE - MONSTRES ---------- */
-
-const monstersDatabase = {
-  rat: {
-    monsterId: "rat",
-    name: "Rat",
-    desc: "A small but vicious rat.",
-    suffix: "a",
-    maxHp: 20,
-    experience: 50,
-    moveCooldown: 275,
-    pathRefreshCooldown: 800,
-    atlas: "monsters",
-    atlasCol: 0,
-    atlasRow: 0,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE,
-    drawOffsetX: 0,
-    drawOffsetY: 0,
-    animationFrames: 3,
-    spriteSize: SPRITE_SIZE,
-    corpseItemId: "ratCorpse",
-    bloodEffectId: "blood",
-    combat: {
-      attack: 4,
-      armor: 1,
-      defense: 1,
-      blockChance: 3,
-      hitChance: 70,
-    },
-    loot: [
-      {
-        itemId: "goldCoin",
-        chance: 80,
-        minQuantity: 1,
-        maxQuantity: 4,
-      },
-      {
-        itemId: "cheese",
-        chance: 30,
-        minQuantity: 1,
-        maxQuantity: 1,
-      },
-    ],
-  },
-  spider: {
-    monsterId: "spider",
-    name: "Spider",
-    desc: "A venomous spider.",
-    suffix: "a",
-    maxHp: 50,
-    experience: 75,
-    moveCooldown: 250,
-    pathRefreshCooldown: 800,
-    atlas: "monsters",
-    atlasCol: 6,
-    atlasRow: 0,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE,
-    drawOffsetX: 0,
-    drawOffsetY: 0,
-    animationFrames: 3,
-    spriteSize: SPRITE_SIZE,
-    corpseItemId: "spiderCorpse",
-    bloodEffectId: "greenBlood",
-    combat: {
-      attack: 8,
-      armor: 2,
-      defense: 3,
-      blockChance: 8,
-      hitChance: 75,
-    },
-    loot: [
-      {
-        itemId: "goldCoin",
-        chance: 80,
-        minQuantity: 1,
-        maxQuantity: 7,
-      },
-      {
-        itemId: "sword",
-        chance: 20,
-        minQuantity: 1,
-        maxQuantity: 1,
-      },
-    ],
-  },
-};
-
-/* ---------- DATABASE - NPCS ---------- */
-
-const npcsDatabase = {
-  kay: {
-    npcId: "kay",
-    name: "Kay",
-    desc: "A helpful resident of Tiro.",
-    suffix: "a",
-    textureUrl: new URL("./assets/images/npc/Kay.png", import.meta.url).href,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE * 2,
-    spriteSize: SPRITE_SIZE,
-    animationFrames: 4,
-    direction: "down",
-    maxHp: 100,
-    movement: {
-      enabled: true,
-      roamRadiusTiles: 2,
-      intervalMinMs: 10000,
-      intervalMaxMs: 20000,
-      moveCooldownMs: 350,
-    },
-    dialogue: {
-      en: {
-        greeting: "Hello, {playerName}. Welcome to Tiro.",
-        greetingSuggestions: ["name", "job", "help", "bye"],
-        name: "My name is Kay.",
-        job: "I help new adventurers find their way around Tiro.",
-        help: "You can ask me about my name or my job.",
-        unknown: "I am not sure what you mean.",
-        farewell: "Goodbye, {playerName}.",
-        rudeDeparture: "Wow, okay... ghosted in person. How rude!",
-        timeoutFarewell: "You are not talking anymore? All right, goodbye!",
-      },
-      fr: {
-        greeting: "Salut, {playerName}! Bienvenue a Tiro. Prends tes aises.",
-        greetingSuggestions: ["nom", "job", "aide", "bye"],
-        name: "Moi, c'est Kay.",
-        job: "J'aide les nouveaux aventuriers a se retrouver dans Tiro.",
-        help: "Demande-moi mon nom, ma job ou un coup de main.",
-        unknown: "Hmm... je te suis pas trop, la.",
-        farewell: "A la prochaine, {playerName}! Fais attention a toi.",
-        rudeDeparture: "Wow, OK... ghostee en pleine face. C'est rough!",
-        timeoutFarewell: "Tu ne parles plus? Bon, je vais prendre ca pour un au revoir!",
-      },
-    },
-  },
-  ben: {
-    npcId: "ben",
-    name: "Ben",
-    desc: "A merchant from Tiro.",
-    suffix: "a",
-    textureUrl: new URL("./assets/images/npc/Ben.png", import.meta.url).href,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE * 2,
-    spriteSize: SPRITE_SIZE,
-    animationFrames: 4,
-    direction: "down",
-    maxHp: 100,
-    movement: {
-      enabled: true,
-      roamRadiusTiles: 1,
-      intervalMinMs: 12000,
-      intervalMaxMs: 22000,
-      moveCooldownMs: 350,
-    },
-    service: {
-      type: "itemShop",
-      categories: {
-        supplies: { labels: { en: "Supplies", fr: "Provisions" }, keywords: ["supplies", "provisions"] },
-        weapons: { labels: { en: "Weapons", fr: "Armes" }, keywords: ["weapon", "weapons", "arme", "armes"] },
-        helmets: { labels: { en: "Helmets", fr: "Casques" }, keywords: ["helmet", "helmets", "casque", "casques"] },
-        armor: { labels: { en: "Armor", fr: "Armures" }, keywords: ["armor", "armors", "armure", "armures"] },
-        legs: { labels: { en: "Legs", fr: "Pantalons" }, keywords: ["legs", "pants", "leggings", "pantalon", "pantalons"] },
-        boots: { labels: { en: "Boots", fr: "Bottes" }, keywords: ["boot", "boots", "botte", "bottes"] },
-        shields: { labels: { en: "Shields", fr: "Boucliers" }, keywords: ["shield", "shields", "bouclier", "boucliers"] },
-      },
-      offers: {
-        apple: { category: "supplies", buyPrice: 3, sellPrice: 1, keywords: ["apple", "pomme"] },
-        healthPotion: { category: "supplies", buyPrice: 20, sellPrice: 8, keywords: ["health", "vie"] },
-        manaPotion: { category: "supplies", buyPrice: 20, sellPrice: 8, keywords: ["mana"] },
-        torch: { category: "supplies", buyPrice: 15, sellPrice: 5, keywords: ["torch", "torche"] },
-        mace: { category: "weapons", buyPrice: 30, sellPrice: 12, keywords: ["mace", "masse"] },
-        sword: { category: "weapons", buyPrice: null, sellPrice: 25, keywords: ["sword", "epee"] },
-        wandererHood: { category: "helmets", buyPrice: 20, sellPrice: 7, keywords: ["wanderer hood", "capuchon"] },
-        leatherArmor: { category: "armor", buyPrice: 80, sellPrice: 28, keywords: ["leather armor", "armure cuir"] },
-        wandererPants: { category: "legs", buyPrice: 25, sellPrice: 8, keywords: ["wanderer pants", "pantalon voyageur"] },
-        wornBoots: { category: "boots", buyPrice: 20, sellPrice: 7, keywords: ["worn boots", "bottes usees"] },
-        woodenShield: { category: "shields", buyPrice: 60, sellPrice: 20, keywords: ["wooden shield", "bouclier bois"] },
-      },
-    },
-    dialogue: {
-      en: {
-        greeting: "Hello, {playerName}. I buy and sell useful supplies.",
-        greetingSuggestions: ["Buy", "Sell", "Bye"],
-        confirmationSuggestions: ["yes", "no"],
-        name: "My name is Ben.",
-        job: "I trade equipment and supplies.",
-        help: "Ask me for a trade, then say buy or sell with an item name.",
-        trade: "I sell apples, health potions, mana potions, torches and maces.",
-        buyMenu: "What kind of item do you want to buy?",
-        sellMenu: "What kind of item do you want to sell?",
-        buyCategoryMenu: "Which {categoryName} do you want to buy?",
-        sellCategoryMenu: "Which {categoryName} do you want to sell?",
-        confirmBuy: "Do you want to buy {quantity} {itemName} for {price} gold?",
-        confirmSell: "Do you want to sell {quantity} {itemName} for {price} gold?",
-        confirmRequired: "Say yes to confirm or no to cancel.",
-        cancelled: "No problem. The deal is cancelled.",
-        bought: "Here you go: {quantity} {itemName} for {price} gold.",
-        sold: "Deal. I paid {price} gold for {quantity} {itemName}.",
-        notEnoughGold: "You do not have enough gold.",
-        missingItem: "You do not have that item in your backpack.",
-        noRoom: "Make some room in your backpack first.",
-        unavailable: "I do not trade that item.",
-        unknown: "Say trade, buy or sell and the item you want.",
-        farewell: "Goodbye, {playerName}.",
-        rudeDeparture: "Leaving mid-deal? In this economy? Wild.",
-        timeoutFarewell: "You are not answering? I will close the deal. Goodbye!",
-      },
-      fr: {
-        greeting: "Salut, {playerName}! J'achete et je vends du stock utile.",
-        greetingSuggestions: ["Achat", "Vente", "Bye"],
-        confirmationSuggestions: ["oui", "non"],
-        name: "Moi, c'est Ben.",
-        job: "Je vends de l'equipement et des provisions.",
-        help: "Demande-moi mes offres, puis dis acheter ou vendre avec le nom de l'objet.",
-        trade: "Je vends des pommes, des potions de vie et de mana, des torches et des masses.",
-        buyMenu: "Quelle categorie veux-tu acheter?",
-        sellMenu: "Quelle categorie veux-tu vendre?",
-        buyCategoryMenu: "Quel article dans {categoryName} veux-tu acheter?",
-        sellCategoryMenu: "Quel article dans {categoryName} veux-tu vendre?",
-        confirmBuy: "Veux-tu acheter {quantity} {itemName} pour {price} pieces d'or?",
-        confirmSell: "Veux-tu vendre {quantity} {itemName} pour {price} pieces d'or?",
-        confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
-        cancelled: "Pas de trouble. Le deal est annule.",
-        bought: "Tiens: {quantity} {itemName} pour {price} pieces d'or.",
-        sold: "Vendu. Je te donne {price} pieces d'or pour {quantity} {itemName}.",
-        notEnoughGold: "Tu n'as pas assez de pieces d'or.",
-        missingItem: "Tu n'as pas cet objet dans ton sac.",
-        noRoom: "Fais un peu de place dans ton sac avant.",
-        unavailable: "Je ne fais pas d'echange avec cet objet-la.",
-        unknown: "Dis offres, acheter ou vendre avec le nom de l'objet.",
-        farewell: "A la prochaine, {playerName}!",
-        rudeDeparture: "Partir en plein deal? Dans cette economie? Sauvage.",
-        timeoutFarewell: "Tu ne reponds plus? Je ferme le deal. Au revoir!",
-      },
-    },
-  },
-  kev: {
-    npcId: "kev",
-    name: "Kev",
-    desc: "A teacher of magic.",
-    suffix: "a",
-    textureUrl: new URL("./assets/images/npc/Kev.png", import.meta.url).href,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE * 2,
-    spriteSize: SPRITE_SIZE,
-    animationFrames: 4,
-    direction: "down",
-    maxHp: 100,
-    movement: {
-      enabled: true,
-      roamRadiusTiles: 1,
-      intervalMinMs: 14000,
-      intervalMaxMs: 24000,
-      moveCooldownMs: 350,
-    },
-    service: {
-      type: "spellTeacher",
-      spellIds: ["cura"],
-    },
-    dialogue: {
-      en: {
-        greeting: "Greetings, {playerName}. I can teach you magic.",
-        greetingSuggestions: ["Spells", "Bye"],
-        confirmationSuggestions: ["yes", "no"],
-        name: "I am Kev.",
-        job: "I teach spells to adventurers.",
-        help: "Ask me about spells, or ask me for healing.",
-        spells: "I can teach the Healing Spell for 40 gold.",
-        confirmLearn: "Do you want to learn the {spellName} for {price} gold?",
-        confirmRequired: "Say yes to learn it or no to cancel.",
-        cancelled: "Very well. No lesson today.",
-        learned: "You have learned the {spellName}. You can cast it by saying \"{incantation}\".",
-        alreadyLearned: "You already know that spell.",
-        notEnoughGold: "Come back with {price} gold and I will teach you.",
-        unavailable: "I cannot teach that spell.",
-        unknown: "Ask me about spells or ask me for healing.",
-        farewell: "May your magic guide you, {playerName}.",
-        rudeDeparture: "Vanishing mid-lesson? Your manners need more training than your magic.",
-        timeoutFarewell: "You are not talking anymore? We will continue another time. Farewell!",
-      },
-      fr: {
-        greeting: "Salut, {playerName}. Je peux t'enseigner la magie.",
-        greetingSuggestions: ["Sorts", "Bye"],
-        confirmationSuggestions: ["oui", "non"],
-        name: "Moi, c'est Kev.",
-        job: "J'enseigne des sorts aux aventuriers.",
-        help: "Demande-moi mes sorts, ou demande-moi un sort de soin.",
-        spells: "Je peux t'apprendre le sort de soin pour 40 pieces d'or.",
-        confirmLearn: "Veux-tu apprendre le {spellName} pour {price} pieces d'or?",
-        confirmRequired: "Dis oui pour apprendre le sort ou non pour annuler.",
-        cancelled: "Comme tu veux. Pas de cours aujourd'hui.",
-        learned: "Tu connais maintenant le {spellName}. Tu peux le lancer en disant \"{incantation}\".",
-        alreadyLearned: "Tu connais deja ce sort-la.",
-        notEnoughGold: "Reviens avec {price} pieces d'or et je vais te l'apprendre.",
-        unavailable: "Je ne peux pas t'enseigner ce sort-la.",
-        unknown: "Demande-moi mes sorts ou demande-moi un sort de soin.",
-        farewell: "Que ta magie te guide, {playerName}.",
-        rudeDeparture: "Disparaitre en plein cours? Tes manieres ont plus besoin d'entrainement que ta magie.",
-        timeoutFarewell: "Tu ne parles plus? On va reprendre ca une autre fois. Au revoir!",
-      },
-    },
-  },
-  charles: {
-    npcId: "charles",
-    name: "Charles",
-    desc: "The banker of Tiro.",
-    suffix: "a",
-    textureUrl: new URL("./assets/images/npc/Charles.png", import.meta.url).href,
-    drawWidth: SPRITE_SIZE,
-    drawHeight: SPRITE_SIZE * 2,
-    spriteSize: SPRITE_SIZE,
-    animationFrames: 4,
-    direction: "down",
-    maxHp: 100,
-    movement: {
-      enabled: false,
-      roamRadiusTiles: 0,
-      intervalMinMs: 60000,
-      intervalMaxMs: 60000,
-      moveCooldownMs: 350,
-    },
-    service: {
-      type: "banker",
-      exchangeRecipes: [
-        { sourceItemId: "goldCoin", sourceQuantity: 100, outputItemId: "azureCoin", outputQuantity: 1 },
-        { sourceItemId: "azureCoin", sourceQuantity: 1, outputItemId: "goldCoin", outputQuantity: 100 },
-        { sourceItemId: "azureCoin", sourceQuantity: 10, outputItemId: "crystalCoin", outputQuantity: 1 },
-        { sourceItemId: "crystalCoin", sourceQuantity: 1, outputItemId: "azureCoin", outputQuantity: 10 },
-      ],
-    },
-    dialogue: {
-      en: {
-        greeting: "Hello, {playerName}. Your bank balance is {bankBalance} gold.",
-        greetingSuggestions: ["Balance", "Deposit", "Withdraw", "Exchange", "Bye"],
-        confirmationSuggestions: ["yes", "no"],
-        name: "I am Charles, Tiro's banker.",
-        job: "I keep your gold safe and exchange coin denominations.",
-        help: "Ask for your balance, a deposit, a withdrawal or an exchange.",
-        balance: "You have {bankBalance} gold in the bank and carry {cashBalance} gold.",
-        depositPrompt: "How much gold do you want to deposit? You can also say deposit all.",
-        depositSuggestions: ["Deposit all", "Back", "Bye"],
-        withdrawPrompt: "How much gold do you want to withdraw? You can also say withdraw all.",
-        withdrawSuggestions: ["Withdraw all", "Back", "Bye"],
-        exchangePrompt: "Which exchange do you want?",
-        exchangeSuggestions: [
-          "Gold to platinum",
-          "Platinum to gold",
-          "Platinum to crystal",
-          "Crystal to platinum",
-          "Back",
-          "Bye",
-        ],
-        confirmDeposit: "Do you want to deposit {amount} gold?",
-        confirmWithdraw: "Do you want to withdraw {amount} gold?",
-        confirmExchange: "Do you want to exchange {sourceQuantity} {sourceName} for {outputQuantity} {outputName}?",
-        confirmRequired: "Say yes to confirm or no to cancel.",
-        cancelled: "No problem. The transaction is cancelled.",
-        deposited: "Done. I deposited {amount} gold. Your bank balance is now {bankBalance} gold.",
-        withdrawn: "Done. I withdrew {amount} gold. Your bank balance is now {bankBalance} gold.",
-        exchanged: "Done. Here is your {outputQuantity} {outputName}.",
-        notEnoughCash: "You do not carry enough gold for that.",
-        notEnoughBankGold: "You do not have enough gold in the bank.",
-        missingCoins: "You do not carry the coins required for that exchange.",
-        noRoom: "Make some room in your backpack first.",
-        notEnoughCapacity: "That withdrawal is too heavy for you.",
-        invalidAmount: "Tell me a whole amount of gold greater than zero.",
-        unavailable: "I cannot complete that banking transaction.",
-        unknown: "Ask me about balance, deposit, withdrawal or exchange.",
-        farewell: "Your gold is safe with me. Goodbye, {playerName}.",
-        rudeDeparture: "Running off before balancing the books? Bold financial strategy.",
-        timeoutFarewell: "No answer? I will close your account window for now. Goodbye!",
-      },
-      fr: {
-        greeting: "Salut, {playerName}. Ton solde en banque est de {bankBalance} pieces d'or.",
-        greetingSuggestions: ["Solde", "Depot", "Retrait", "Echange", "Bye"],
-        confirmationSuggestions: ["oui", "non"],
-        name: "Moi, c'est Charles, le banquier de Tiro.",
-        job: "Je garde ton or en securite et je change tes pieces.",
-        help: "Demande-moi ton solde, un depot, un retrait ou un echange.",
-        balance: "Tu as {bankBalance} pieces d'or en banque et {cashBalance} sur toi.",
-        depositPrompt: "Combien d'or veux-tu deposer? Tu peux aussi dire deposer tout.",
-        depositSuggestions: ["Deposer tout", "Retour", "Bye"],
-        withdrawPrompt: "Combien d'or veux-tu retirer? Tu peux aussi dire retirer tout.",
-        withdrawSuggestions: ["Retirer tout", "Retour", "Bye"],
-        exchangePrompt: "Quel echange veux-tu faire?",
-        exchangeSuggestions: [
-          "Or en platine",
-          "Platine en or",
-          "Platine en cristal",
-          "Cristal en platine",
-          "Retour",
-          "Bye",
-        ],
-        confirmDeposit: "Veux-tu deposer {amount} pieces d'or?",
-        confirmWithdraw: "Veux-tu retirer {amount} pieces d'or?",
-        confirmExchange: "Veux-tu echanger {sourceQuantity} {sourceName} contre {outputQuantity} {outputName}?",
-        confirmRequired: "Dis oui pour confirmer ou non pour annuler.",
-        cancelled: "Pas de trouble. La transaction est annulee.",
-        deposited: "C'est fait. J'ai depose {amount} pieces d'or. Ton solde est maintenant de {bankBalance}.",
-        withdrawn: "C'est fait. J'ai retire {amount} pieces d'or. Ton solde est maintenant de {bankBalance}.",
-        exchanged: "C'est fait. Voici {outputQuantity} {outputName}.",
-        notEnoughCash: "Tu n'as pas assez d'or sur toi.",
-        notEnoughBankGold: "Tu n'as pas assez d'or en banque.",
-        missingCoins: "Tu n'as pas les bonnes pieces pour faire cet echange.",
-        noRoom: "Fais un peu de place dans ton sac avant.",
-        notEnoughCapacity: "Ce retrait-la est trop lourd pour toi.",
-        invalidAmount: "Donne-moi un montant entier plus grand que zero.",
-        unavailable: "Je ne peux pas completer cette transaction-la.",
-        unknown: "Demande-moi ton solde, un depot, un retrait ou un echange.",
-        farewell: "Ton or est en securite avec moi. A la prochaine, {playerName}!",
-        rudeDeparture: "Partir avant de balancer les comptes? Strategie financiere audacieuse.",
-        timeoutFarewell: "Pas de reponse? Je ferme ton dossier pour le moment. Au revoir!",
-      },
-    },
-  },
-};
-
-/* ---------- DATABASE - RECOMPENSES ---------- */
-
-const rewardTablesDatabase = {
-  tiro_cave_spider_reward: {
-    rewardTableId: "tiro_cave_spider_reward",
-    items: [
-      { itemId: "healthPotion", quantity: 1 },
-      { itemId: "sword", quantity: 1 },
-      { itemId: "torch", quantity: 1 },
-    ],
-  },
-};
-
-/* ---------- DATABASE - QUETES ---------- */
-
-const QUEST_STATUS = {
-  started: "started",
-  completed: "completed",
-};
-
-const questsDatabase = {
-  tiro_cave_spider_treasure: {
-    questId: "tiro_cave_spider_treasure",
-    name: "Spider Cave Treasure",
-    description: "You found the treasure hidden in the spider cave.",
-  },
-};
-//#endregion  -----  BASE DE DONNEES  -----
 
 /* ==================================================== */
 //#region     -----  CORE - TIMING ET COOLDOWNS  -----
 /* ==================================================== */
 /* ---------- TIMING - BOUCLE DE JEU ---------- */
 
-const GAME_LOGIC_STEP_MS = 1000 / 60;
-const MAX_FRAME_DELTA_MS = 250;
-const MAX_LOGIC_STEPS_PER_FRAME = 5;
-
-let previousFrameTime = null;
-let accumulatedLogicTime = 0;
-
-let fpsFrameCount = 0;
-let fpsLastUpdateTime = 0;
-let currentFps = 0;
-
 /* ---------- TIMING - DECAY ---------- */
 
-const DECAY_REFRESH_COOLDOWN_MS = 1000;
-let nextDecayRefresh = 0;
-let nextGroundEffectDecayRefresh = 0;
-let nextTorchFuelRefresh = 0;
-let corpseDecayCooldown = {
-  player: {
-    stage0: 600000,
-    stage1: 900000,
-    stage2: 1800000,
-  },
-  monster: {
-    stage0: 120000,
-    stage1: 180000,
-    stage2: 300000,
-  },
-};
-
-/* ---------- TIMING - JOUEUR ---------- */
-
-let PLAYER_ATTACK_COOLDOWN_MS = 1000;
-let PLAYER_MOVE_COOLDOWN_MS = 200;
-
-let nextPlayerMoveTime = 0;
-let nextPlayerAttackTime = 0;
-
-const SKILL_TRAINING_COOLDOWN_MS = 45000;
-const SHIELDING_BLOCK_COOLDOWN_MS = 2000;
-const SHIELDING_MAX_BLOCKS_PER_COOLDOWN = 2;
-const SKILL_EXPERIENCE_GAIN_PER_TRY = 25;
-const SANITY_DECAY_INTERVAL_MS = 6000;
-
-/* ---------- TIMING - MONSTRES ---------- */
-
-const MONSTER_ATTACK_COOLDOWN_MS = 1500;
-const MONSTER_RESPAWN_CONFIG = {
-  blockedRetryMs: 30000,
-  playerBlockRangeX: Math.ceil(MAP_COLS / 2) + 2,
-  playerBlockRangeY: Math.ceil(MAP_ROWS / 2) + 2,
-  maxEventsPerLogicStep: 20,
-};
-const MONSTER_AI_STATE = {
-  idle: "idle",
-  wander: "wander",
-  chase: "chase",
-  combat: "combat",
-  flee: "flee",
-};
-
-const MONSTER_AI_CONFIG = {
-  wakeRangeX: Math.ceil(MAP_COLS / 2) + 4,
-  wakeRangeY: Math.ceil(MAP_ROWS / 2) + 4,
-  sleepRangeX: Math.ceil(MAP_COLS / 2) + 8,
-  sleepRangeY: Math.ceil(MAP_ROWS / 2) + 8,
-  visionX: Math.ceil(MAP_COLS / 2) + 1,
-  visionY: Math.ceil(MAP_ROWS / 2) + 1,
-  deaggroX: Math.ceil(MAP_COLS / 2) + 5,
-  deaggroY: Math.ceil(MAP_ROWS / 2) + 5,
-  hearingScanRange: 8,
-  maxHearingPathLength: 8,
-  maxChasePathLength: 18,
-  maxBadPathDurationMs: 2000,
-  combatDanceCooldownMinMs: 2000,
-  combatDanceCooldownMaxMs: 5300,
-  blockedChaseMoveCooldownMinMs: 1000,
-  blockedChaseMoveCooldownMaxMs: 1800,
-  dynamicPathRefreshCooldownMs: 300,
-  aggroCheckCooldownMinMs: 200,
-  aggroCheckCooldownMaxMs: 350,
-  wanderRadiusTiles: 4,
-  idleDurationMinMs: 1200,
-  idleDurationMaxMs: 3000,
-  wanderStepCooldownMinMs: 450,
-  wanderStepCooldownMaxMs: 900,
-  wanderStepsMin: 1,
-  wanderStepsMax: 3,
-};
-
-const MONSTER_AI_CHUNK_RADIUS = Math.ceil(
-  Math.max(
-    MONSTER_AI_CONFIG.wakeRangeX,
-    MONSTER_AI_CONFIG.wakeRangeY,
-    MONSTER_AI_CONFIG.sleepRangeX,
-    MONSTER_AI_CONFIG.sleepRangeY,
-    MONSTER_AI_CONFIG.deaggroX,
-    MONSTER_AI_CONFIG.deaggroY,
-  ) / CHUNK_SIZE_TILES,
-);
-
-/* ---------- TIMING - NPCS ---------- */
-
-const NPC_DIALOGUE_CONFIG = {
-  talkRange: 3,
-  responseDelayMs: 500,
-  lineIntervalMs: 900,
-  conversationTimeoutMs: 60000,
-  maxQueuedReplies: 8,
-};
-
-/* ---------- TIMING - ITEM USE ---------- */
-
-const useCooldown = {
-  rune: 2000,
-  spell: 2000,
-  item: 1000,
-};
-
-const nextUseCooldown = {
-  rune: 0,
-  spell: 0,
-  item: 0,
-};
-//#endregion  -----  CORE - TIMING ET COOLDOWNS  -----
-
-/* ==================================================== */
-//#region     -----  PLAYER - CONFIG SPRITE  -----
-/* ==================================================== */
-const PLAYER_FRAME_WIDTH = TILE_SIZE;
-const PLAYER_FRAME_HEIGHT = TILE_SIZE * 2;
-const PLAYER_ANIMATION_FRAMES = 4;
-const DEFAULT_PLAYER_APPEARANCE_ID = "male";
-const PLAYER_APPEARANCE_LAYER_ORDER = ["legs", "boots", "body", "head"];
-const playerAppearanceLayerTexturePromiseByCacheKey = new Map();
-const playerAppearanceSourceImagePromiseByUrl = new Map();
-const playerAppearancesDatabase = {
-  male: {
-    appearanceId: "male",
-    label: "Boy",
-  },
-  female: {
-    appearanceId: "female",
-    label: "Girl",
-  },
-};
-const playerAppearancePartsDatabase = {
-  head: {
-    partId: "head",
-    layerName: "head",
-    label: "1",
-    colorKey: "hair",
-    colorMask: "hair",
-    referenceBrightness: 105,
-    textureUrl: new URL("./assets/images/joueurs/head.png", import.meta.url).href,
-  },
-  head1: {
-    partId: "head1",
-    layerName: "head",
-    label: "2",
-    colorKey: "hair",
-    colorMask: "hair",
-    referenceBrightness: 105,
-    textureUrl: new URL("./assets/images/joueurs/head1.png", import.meta.url).href,
-  },
-  body: {
-    partId: "body",
-    layerName: "body",
-    label: "1",
-    colorKey: "clothes",
-    colorMask: "clothes",
-    referenceBrightness: 230,
-    textureUrl: new URL("./assets/images/joueurs/body.png", import.meta.url).href,
-  },
-  body2: {
-    partId: "body2",
-    layerName: "body",
-    label: "2",
-    colorKey: "clothes",
-    colorMask: "clothes",
-    referenceBrightness: 230,
-    textureUrl: new URL("./assets/images/joueurs/body2.png", import.meta.url).href,
-  },
-  legs: {
-    partId: "legs",
-    layerName: "legs",
-    label: "Legs",
-    colorKey: "pants",
-    colorMask: "all",
-    referenceBrightness: 120,
-    textureUrl: new URL("./assets/images/joueurs/legs.png", import.meta.url).href,
-  },
-  boots: {
-    partId: "boots",
-    layerName: "boots",
-    label: "Boots",
-    colorKey: "shoes",
-    colorMask: "all",
-    referenceBrightness: 75,
-    textureUrl: new URL("./assets/images/joueurs/boots.png", import.meta.url).href,
-  },
-};
-
-const getPlayerAppearanceData = (appearanceId = playerState?.appearanceId) => {
-  return playerAppearancesDatabase[appearanceId] ?? playerAppearancesDatabase[DEFAULT_PLAYER_APPEARANCE_ID];
-};
-
-const getPlayerAppearancePartData = (partId) => {
-  return playerAppearancePartsDatabase[partId] ?? null;
-};
-
-const clearPlayerAppearanceColorTextureCache = (colorKey, previousColor) => {
-  for (const partData of Object.values(playerAppearancePartsDatabase)) {
-    if (partData.colorKey === colorKey) {
-      playerAppearanceLayerTexturePromiseByCacheKey.delete(`${partData.partId}:${previousColor}`);
-    }
-  }
-};
-
-const getPlayerAppearancePartsByLayer = (appearanceParts) => {
-  const normalizedParts = normalizeCharacterAppearanceParts(appearanceParts);
-  return {
-    head: getPlayerAppearancePartData(normalizedParts.headId),
-    body: getPlayerAppearancePartData(normalizedParts.bodyId),
-    legs: getPlayerAppearancePartData(normalizedParts.legsId),
-    boots: getPlayerAppearancePartData(normalizedParts.bootsId),
-  };
-};
-
-const parseHexColor = (hexColor) => {
-  const normalizedColor = normalizeCharacterAppearanceColors({ hair: hexColor, clothes: hexColor }).hair;
-  return {
-    red: Number.parseInt(normalizedColor.slice(1, 3), 16),
-    green: Number.parseInt(normalizedColor.slice(3, 5), 16),
-    blue: Number.parseInt(normalizedColor.slice(5, 7), 16),
-  };
-};
-
-const loadPlayerAppearanceSourceImage = (textureUrl) => {
-  if (!playerAppearanceSourceImagePromiseByUrl.has(textureUrl)) {
-    playerAppearanceSourceImagePromiseByUrl.set(
-      textureUrl,
-      new Promise((resolve, reject) => {
-        const image = new Image();
-        image.addEventListener("load", () => resolve(image), { once: true });
-        image.addEventListener("error", reject, { once: true });
-        image.src = textureUrl;
-      }),
-    );
-  }
-  return playerAppearanceSourceImagePromiseByUrl.get(textureUrl);
-};
-
-const collectAppearanceHairPixels = (pixelData, imageWidth, frameCol, frameRow) => {
-  const selectedPixelIndexes = [];
-
-  for (let localY = 0; localY < PLAYER_FRAME_HEIGHT; localY++) {
-    for (let localX = 0; localX < PLAYER_FRAME_WIDTH; localX++) {
-      const imageX = frameCol * PLAYER_FRAME_WIDTH + localX;
-      const imageY = frameRow * PLAYER_FRAME_HEIGHT + localY;
-      const pixelOffset = (imageY * imageWidth + imageX) * 4;
-      const red = pixelData[pixelOffset];
-      const green = pixelData[pixelOffset + 1];
-      const blue = pixelData[pixelOffset + 2];
-      const alpha = pixelData[pixelOffset + 3];
-      const isHairPalette =
-        alpha > 24 &&
-        red >= 35 &&
-        green <= 2 &&
-        Math.abs(red - blue) <= 2;
-      if (isHairPalette) {
-        selectedPixelIndexes.push(pixelOffset);
-      }
-    }
-  }
-  return selectedPixelIndexes;
-};
-
-const collectAppearanceClothesPixels = (pixelData) => {
-  const selectedPixelIndexes = [];
-  for (let pixelOffset = 0; pixelOffset < pixelData.length; pixelOffset += 4) {
-    const red = pixelData[pixelOffset];
-    const green = pixelData[pixelOffset + 1];
-    const blue = pixelData[pixelOffset + 2];
-    const alpha = pixelData[pixelOffset + 3];
-    const brightness = (red + green + blue) / 3;
-    const colorSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
-    if (alpha > 24 && brightness >= 45 && colorSpread <= 35) {
-      selectedPixelIndexes.push(pixelOffset);
-    }
-  }
-  return selectedPixelIndexes;
-};
-
-const collectAllOpaqueAppearancePixels = (pixelData) => {
-  const selectedPixelIndexes = [];
-  for (let pixelOffset = 0; pixelOffset < pixelData.length; pixelOffset += 4) {
-    const brightness =
-      (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
-    if (pixelData[pixelOffset + 3] > 24 && brightness > 14) {
-      selectedPixelIndexes.push(pixelOffset);
-    }
-  }
-  return selectedPixelIndexes;
-};
-
-const recolorAppearancePixels = (pixelData, pixelIndexes, targetColor, referenceBrightness) => {
-  for (const pixelOffset of pixelIndexes) {
-    const brightness =
-      (pixelData[pixelOffset] + pixelData[pixelOffset + 1] + pixelData[pixelOffset + 2]) / 3;
-    const shade = clamp(brightness / referenceBrightness, 0.2, 1.35);
-    pixelData[pixelOffset] = Math.min(255, Math.round(targetColor.red * shade));
-    pixelData[pixelOffset + 1] = Math.min(255, Math.round(targetColor.green * shade));
-    pixelData[pixelOffset + 2] = Math.min(255, Math.round(targetColor.blue * shade));
-  }
-};
-
-const createPlayerAppearancePartTextureUrl = async (partData, targetHexColor) => {
-  const sourceImage = await loadPlayerAppearanceSourceImage(partData.textureUrl);
-  const canvas = document.createElement("canvas");
-  canvas.width = sourceImage.naturalWidth;
-  canvas.height = sourceImage.naturalHeight;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    return partData.textureUrl;
-  }
-
-  context.drawImage(sourceImage, 0, 0);
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  let pixelIndexes = [];
-  if (partData.colorMask === "hair") {
-    for (let frameRow = 0; frameRow < PLAYER_ANIMATION_FRAMES; frameRow++) {
-      for (let frameCol = 0; frameCol < PLAYER_ANIMATION_FRAMES; frameCol++) {
-        pixelIndexes.push(...collectAppearanceHairPixels(imageData.data, canvas.width, frameCol, frameRow));
-      }
-    }
-  } else if (partData.colorMask === "clothes") {
-    pixelIndexes = collectAppearanceClothesPixels(imageData.data);
-  } else {
-    pixelIndexes = collectAllOpaqueAppearancePixels(imageData.data);
-  }
-  recolorAppearancePixels(
-    imageData.data,
-    pixelIndexes,
-    parseHexColor(targetHexColor),
-    partData.referenceBrightness,
-  );
-  context.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/png");
-};
-
-const getPlayerAppearanceLayerTextureUrls = (appearanceParts, appearanceColors) => {
-  const partsByLayer = getPlayerAppearancePartsByLayer(appearanceParts);
-  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
-  const textureUrlPromises = PLAYER_APPEARANCE_LAYER_ORDER.map(async (layerName) => {
-    const partData = partsByLayer[layerName];
-    const targetColor = normalizedColors[partData.colorKey];
-    const cacheKey = `${partData.partId}:${targetColor}`;
-    if (!playerAppearanceLayerTexturePromiseByCacheKey.has(cacheKey)) {
-      playerAppearanceLayerTexturePromiseByCacheKey.set(
-        cacheKey,
-        createPlayerAppearancePartTextureUrl(partData, targetColor).catch(() => partData.textureUrl),
-      );
-    }
-    return [layerName, await playerAppearanceLayerTexturePromiseByCacheKey.get(cacheKey)];
-  });
-  return Promise.all(textureUrlPromises).then((entries) => Object.fromEntries(entries));
-};
-
-const getOrCreatePlayerAppearancePreviewLayers = (element) => {
-  const layersByName = new Map();
-  for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
-    let layerElement = element.querySelector(`[data-appearance-layer="${layerName}"]`);
-    if (!layerElement) {
-      layerElement = document.createElement("span");
-      layerElement.classList.add("character-appearance-layer");
-      layerElement.dataset.appearanceLayer = layerName;
-      element.appendChild(layerElement);
-    }
-    layersByName.set(layerName, layerElement);
-  }
-  return layersByName;
-};
-
-const applyPlayerAppearanceBackground = async (element, appearanceParts, appearanceColors) => {
-  if (!element) {
-    return;
-  }
-  const normalizedParts = normalizeCharacterAppearanceParts(appearanceParts);
-  const normalizedColors = normalizeCharacterAppearanceColors(appearanceColors);
-  const requestKey = `${normalizedParts.headId}:${normalizedParts.bodyId}:${normalizedColors.hair}:${normalizedColors.clothes}:${normalizedColors.pants}:${normalizedColors.shoes}`;
-  element.dataset.appearanceRequestKey = requestKey;
-  const layersByName = getOrCreatePlayerAppearancePreviewLayers(element);
-  const textureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(normalizedParts, normalizedColors);
-  if (element.dataset.appearanceRequestKey !== requestKey) {
-    return;
-  }
-  for (const [layerName, textureUrl] of Object.entries(textureUrlsByLayer)) {
-    const layerElement = layersByName.get(layerName);
-    if (layerElement) {
-      layerElement.style.backgroundImage = `url("${textureUrl}")`;
-    }
-  }
-};
-//#endregion  -----  PLAYER - CONFIG SPRITE  -----
-
-/* ==================================================== */
-//#region     -----  PLAYER  -----
-/* ==================================================== */
-/* ---------- JOUEUR - DONNEES ---------- */
-
-const createDefaultPlayerSpellbook = () => {
-  const learnedSpellIds = Object.values(spellsDatabase)
-    .filter((spellData) => spellData.learnedByDefault === true)
-    .map((spellData) => spellData.spellId);
-  const hotkeySpellIds = Array(SPELL_HOTKEY_KEYS.length).fill(null);
-  hotkeySpellIds[0] = learnedSpellIds[0] ?? null;
-  return {
-    learnedSpellIds,
-    hotkeySpellIds,
-  };
-};
-
-const normalizePlayerSpellbook = (spellbook) => {
-  const defaultSpellbook = createDefaultPlayerSpellbook();
-  if (!spellbook || !Array.isArray(spellbook.learnedSpellIds) || !Array.isArray(spellbook.hotkeySpellIds)) {
-    return defaultSpellbook;
-  }
-
-  const learnedSpellIds = [...new Set([...defaultSpellbook.learnedSpellIds, ...spellbook.learnedSpellIds])].filter(
-    (spellId) => typeof spellId === "string" && spellId in spellsDatabase,
-  );
-  const learnedSpellIdSet = new Set(learnedSpellIds);
-  const hotkeySpellIds = Array.from({ length: SPELL_HOTKEY_KEYS.length }, (_, index) => {
-    const spellId = spellbook.hotkeySpellIds[index];
-    return learnedSpellIdSet.has(spellId) ? spellId : null;
-  });
-
-  return {
-    learnedSpellIds,
-    hotkeySpellIds,
-  };
-};
-
-const playerState = {
-  uid: "local-player",
-  x: null,
-  y: null,
-  oldX: null,
-  oldY: null,
-  renderX: null,
-  renderY: null,
-  moveStartTime: 0,
-  moveDuration: 0,
-  name: "Charles",
-  appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
-  appearanceParts: normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS),
-  appearanceColors: normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS),
-  hp: 100,
-  maxHp: 100,
-  mana: 0,
-  maxMana: 0,
-  sanity: 0,
-  maxSanity: 100,
-  level: 0,
-  experience: 0,
-  classId: "noClass",
-  gold: 0,
-  bank: {
-    goldBalance: 0,
-  },
-  damage: 5,
-  z: 0,
-  spawn: {
-    z: 0,
-    spawnId: "tiro",
-  },
-  skillTraining: {
-    lastEffectiveHitAt: 0,
-    shieldingBlockCount: 0,
-    shieldingBlockCooldownStartedAt: 0,
-  },
-  regeneration: {
-    nextHealthRegenAt: 0,
-    nextManaRegenAt: 0,
-    nextSanityDecayAt: 0,
-  },
-  spellEffects: {
-    light: {
-      radius: 0,
-      expiresAt: 0,
-    },
-  },
-  spellbook: createDefaultPlayerSpellbook(),
-  progress: {
-    questsById: {},
-    rewardClaimsByInteractableId: {},
-    minimapExplorationByChunkKey: {},
-  },
-  skills: {
-    magic: {
-      level: 0,
-      experience: 0,
-    },
-    fist: {
-      level: 1,
-      experience: 100,
-    },
-    sword: {
-      level: 1,
-      experience: 100,
-    },
-    mace: {
-      level: 1,
-      experience: 100,
-    },
-    axe: {
-      level: 1,
-      experience: 100,
-    },
-    distance: {
-      level: 1,
-      experience: 100,
-    },
-    shielding: {
-      level: 1,
-      experience: 100,
-    },
-  },
-  carriedWeight: 0,
-  capacity: 350,
-  speed: 1,
-  direction: "down",
-  walkFrame: 1,
-  light: 750,
-  combatMode: "balanced",
-  equipment: {
-    necklace: null,
-    helmet: null,
-    armor: null,
-    shield: null,
-    weapon: null,
-    legs: null,
-    ammo: null,
-    ring: null,
-    boots: null,
-    backpack: null,
-  },
-};
-
-/* ---------- JOUEUR - SAUVEGARDE ---------- */
-
-const serializeCharacterItem = (item) => {
-  if (!item) {
-    return null;
-  }
-
-  const serializedItem = {
-    uid: item.uid,
-    itemId: item.itemId,
-    quantity: item.quantity,
-  };
-
-  if (Number.isInteger(item.charges)) {
-    serializedItem.charges = item.charges;
-  }
-  if (Number.isInteger(item.decayStage)) {
-    serializedItem.decayStage = item.decayStage;
-  }
-  if (Number.isFinite(item.nextDecayAt)) {
-    serializedItem.nextDecayAt = item.nextDecayAt;
-  }
-  if (typeof item.isLit === "boolean") {
-    serializedItem.isLit = item.isLit;
-  }
-  if (Number.isFinite(item.fuelRemainingMs)) {
-    serializedItem.fuelRemainingMs = item.fuelRemainingMs;
-  }
-  if (Array.isArray(item.content)) {
-    serializedItem.content = Array.from(item.content, (contentItem) => serializeCharacterItem(contentItem));
-  }
-
-  return serializedItem;
-};
+const corpseDecayCooldown = CORPSE_DECAY_COOLDOWN_MS;
 
 const createCharacterSaveSnapshot = () => {
   syncActiveTorchFuel(Date.now());
@@ -2475,87 +424,6 @@ const createCharacterSaveSnapshot = () => {
     combatMode: playerState.combatMode,
     equipment,
   };
-};
-
-const collectCharacterItemUids = (item, itemUids) => {
-  if (!item || !(itemUids instanceof Set)) {
-    return;
-  }
-  itemUids.add(item.uid);
-  if (Array.isArray(item.content)) {
-    for (const contentItem of item.content) {
-      collectCharacterItemUids(contentItem, itemUids);
-    }
-  }
-};
-
-const removeCurrentEquipmentFromDecayTracking = () => {
-  const equipmentItemUids = new Set();
-  for (const item of Object.values(playerState.equipment)) {
-    collectCharacterItemUids(item, equipmentItemUids);
-  }
-  for (let index = decayingItems.length - 1; index >= 0; index--) {
-    if (equipmentItemUids.has(decayingItems[index]?.uid)) {
-      decayingItems.splice(index, 1);
-    }
-  }
-  for (const itemUid of equipmentItemUids) {
-    activeLitTorchesByUid.delete(itemUid);
-  }
-};
-
-const restoreCharacterItem = (serializedItem, restoredItemUids) => {
-  if (
-    !serializedItem ||
-    !Number.isInteger(serializedItem.uid) ||
-    restoredItemUids.has(serializedItem.uid) ||
-    !getItemData(serializedItem.itemId) ||
-    !Number.isInteger(serializedItem.quantity) ||
-    serializedItem.quantity <= 0
-  ) {
-    return null;
-  }
-
-  const itemData = getItemData(serializedItem.itemId);
-  const item = {
-    uid: serializedItem.uid,
-    itemId: serializedItem.itemId,
-    quantity: serializedItem.quantity,
-  };
-
-  restoredItemUids.add(item.uid);
-  nextItemInstanceId = Math.max(nextItemInstanceId, item.uid + 1);
-
-  if (Number.isInteger(serializedItem.charges)) {
-    item.charges = serializedItem.charges;
-  }
-
-  if (itemData.lightSource) {
-    item.fuelRemainingMs = Number.isFinite(serializedItem.fuelRemainingMs)
-      ? clamp(serializedItem.fuelRemainingMs, 0, itemData.lightSource.fuelDurationMs)
-      : itemData.lightSource.fuelDurationMs;
-    item.isLit = serializedItem.isLit === true && item.fuelRemainingMs > 0;
-    item.lastFuelUpdateAt = item.isLit ? Date.now() : 0;
-    if (item.isLit) {
-      activeLitTorchesByUid.set(item.uid, item);
-    }
-  }
-
-  if (itemData.container) {
-    const serializedContent = Array.isArray(serializedItem.content) ? serializedItem.content : [];
-    item.content = Array.from(serializedContent, (contentItem) => restoreCharacterItem(contentItem, restoredItemUids));
-  }
-
-  if (itemData.decayType) {
-    const decayCooldown = corpseDecayCooldown[itemData.decayType];
-    item.decayStage = Number.isInteger(serializedItem.decayStage) ? serializedItem.decayStage : 0;
-    item.nextDecayAt = Number.isFinite(serializedItem.nextDecayAt)
-      ? serializedItem.nextDecayAt
-      : Date.now() + decayCooldown.stage0;
-    decayingItems.push(item);
-  }
-
-  return item;
 };
 
 const applyCharacterSaveSnapshot = (characterSnapshot) => {
@@ -2687,105 +555,6 @@ const startCharacterAutosave = () => {
 
 /* ---------- JOUEUR - AFFICHAGE ---------- */
 
-const showPlayerName = (name) => {
-  const playerName = document.createElement("div");
-  playerName.classList.add("name");
-  playerName.textContent = `${name}`;
-  player.appendChild(playerName);
-};
-
-const getDirectionRow = (playerDirection) => {
-  if (playerDirection === "down") {
-    return 0;
-  } else if (playerDirection === "left") {
-    return 1;
-  } else if (playerDirection === "right") {
-    return 2;
-  } else if (playerDirection === "up") {
-    return 3;
-  }
-  return 0;
-};
-
-const updatePlayerSprite = () => {
-  const colonne = playerState.walkFrame;
-  const ligne = getDirectionRow(playerState.direction);
-  const sourceX = colonne * PLAYER_FRAME_WIDTH;
-  const sourceY = ligne * PLAYER_FRAME_HEIGHT;
-  setPixiPlayerFrame({
-    sourceX,
-    sourceY,
-    sourceWidth: PLAYER_FRAME_WIDTH,
-    sourceHeight: PLAYER_FRAME_HEIGHT,
-  });
-};
-
-const updatePlayerPosition = () => {
-  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
-  const renderX = playerState.renderX;
-  const renderY = playerState.renderY - TILE_SIZE - surfaceOffsetY;
-  const zIndex = getWorldRenderZIndex(getEntityRenderSortY(playerState), WORLD_RENDER_LAYER_CREATURE);
-
-  updatePixiPlayerTransform({ x: renderX, y: renderY, zIndex });
-
-  player.style.left = `${renderX - camera.x}px`;
-  player.style.top = `${renderY - camera.y}px`;
-  player.style.zIndex = zIndex;
-};
-
-/* ---------- JOUEUR - SKILLS / EXPERIENCE ---------- */
-const normalizeSkillExperienceGain = (experienceGain) => {
-  if (!Number.isFinite(experienceGain) || experienceGain <= 0) {
-    return 0;
-  }
-  return Math.max(Math.round(experienceGain), 1);
-};
-
-const refreshSkillTrainingTimer = (now) => {
-  if (!Number.isInteger(now)) {
-    return;
-  }
-  playerState.skillTraining.lastEffectiveHitAt = now;
-};
-
-const isSkillTrainingTimerActive = (now) => {
-  if (!Number.isInteger(now)) {
-    return false;
-  }
-
-  const lastEffectiveHitAt = playerState.skillTraining.lastEffectiveHitAt;
-  if (!lastEffectiveHitAt) {
-    return false;
-  }
-
-  return now - lastEffectiveHitAt <= SKILL_TRAINING_COOLDOWN_MS;
-};
-
-const resetShieldingBlockCooldownIfNeeded = (now) => {
-  if (playerState.skillTraining.shieldingBlockCooldownStartedAt === 0) {
-    playerState.skillTraining.shieldingBlockCooldownStartedAt = now;
-    return;
-  }
-  if (playerState.skillTraining.shieldingBlockCooldownStartedAt + SHIELDING_BLOCK_COOLDOWN_MS <= now) {
-    playerState.skillTraining.shieldingBlockCount = 0;
-    playerState.skillTraining.shieldingBlockCooldownStartedAt = now;
-  }
-};
-
-const canUseShieldingBlock = (now) => {
-  resetShieldingBlockCooldownIfNeeded(now);
-  if (playerState.skillTraining.shieldingBlockCount >= SHIELDING_MAX_BLOCKS_PER_COOLDOWN) {
-    return false;
-  } else {
-    return true;
-  }
-};
-
-const recordShieldingBlock = (now) => {
-  resetShieldingBlockCooldownIfNeeded(now);
-  playerState.skillTraining.shieldingBlockCount += 1;
-};
-
 const applyShieldingExperienceFromBlockAttempt = (now) => {
   if (!isSkillTrainingTimerActive(now)) {
     return false;
@@ -2795,210 +564,6 @@ const applyShieldingExperienceFromBlockAttempt = (now) => {
   const finalExp = normalizeSkillExperienceGain(baseExp * expMultiplier);
   applyExperienceToPlayerSkill("shielding", finalExp);
   return true;
-};
-
-/* ---------- JOUEUR - CLASSES ---------- */
-const playerClassesDatabase = {
-  noClass: {
-    classId: "noClass",
-    name: "Classless",
-    skillExperienceMultipliers: {
-      fist: 0.5,
-      sword: 0.5,
-      mace: 0.5,
-      axe: 0.5,
-      distance: 0.5,
-      shielding: 0.5,
-      magic: 0.25,
-    },
-    levelUpGains: {
-      hp: 5,
-      mana: 5,
-      capacity: 10,
-    },
-    regeneration: {
-      healthAmount: 1,
-      healthIntervalMs: 6000,
-      manaAmount: 1,
-      manaIntervalMs: 6000,
-    },
-  },
-  knight: {
-    classId: "knight",
-    name: "Knight",
-    skillExperienceMultipliers: {
-      fist: 1,
-      sword: 1.35,
-      mace: 1.35,
-      axe: 1.35,
-      distance: 0.7,
-      shielding: 1.35,
-      magic: 0.25,
-    },
-    levelUpGains: {
-      hp: 15,
-      mana: 5,
-      capacity: 25,
-    },
-    regeneration: {
-      healthAmount: 1,
-      healthIntervalMs: 3000,
-      manaAmount: 1,
-      manaIntervalMs: 6000,
-    },
-  },
-
-  archer: {
-    classId: "archer",
-    name: "Archer",
-    skillExperienceMultipliers: {
-      fist: 1,
-      sword: 0.7,
-      mace: 0.7,
-      axe: 0.7,
-      distance: 1.35,
-      shielding: 0.85,
-      magic: 0.25,
-    },
-    levelUpGains: {
-      hp: 10,
-      mana: 7,
-      capacity: 20,
-    },
-    regeneration: {
-      healthAmount: 1,
-      healthIntervalMs: 4000,
-      manaAmount: 1,
-      manaIntervalMs: 4000,
-    },
-  },
-
-  mage: {
-    classId: "mage",
-    name: "Mage",
-    skillExperienceMultipliers: {
-      fist: 1,
-      sword: 0.5,
-      mace: 0.5,
-      axe: 0.5,
-      distance: 0.5,
-      shielding: 0.5,
-      magic: 1.45,
-    },
-    levelUpGains: {
-      hp: 5,
-      mana: 30,
-      capacity: 10,
-    },
-    regeneration: {
-      healthAmount: 1,
-      healthIntervalMs: 6000,
-      manaAmount: 1,
-      manaIntervalMs: 3000,
-    },
-  },
-
-  priest: {
-    classId: "priest",
-    name: "Priest",
-    skillExperienceMultipliers: {
-      fist: 1,
-      sword: 0.5,
-      mace: 0.7,
-      axe: 0.5,
-      distance: 0.5,
-      shielding: 0.6,
-      magic: 1.35,
-    },
-    levelUpGains: {
-      hp: 7,
-      mana: 30,
-      capacity: 10,
-    },
-    regeneration: {
-      healthAmount: 1,
-      healthIntervalMs: 4000,
-      manaAmount: 1,
-      manaIntervalMs: 3000,
-    },
-  },
-};
-
-const getPlayerClassData = () => {
-  const classId = playerState.classId;
-  if (classId in playerClassesDatabase) {
-    return playerClassesDatabase[classId];
-  }
-  return playerClassesDatabase.noClass;
-};
-
-const getPlayerClassRegenerationData = () => {
-  const classData = getPlayerClassData();
-  if (classData?.regeneration) {
-    return classData.regeneration;
-  }
-  return playerClassesDatabase.noClass.regeneration;
-};
-
-const getPlayerBaseStats = () => {
-  return {
-    maxHp: 100,
-    maxMana: 0,
-    maxSanity: 100,
-    capacity: 350,
-  };
-};
-
-const getPlayerDerivedStats = () => {
-  const baseStats = getPlayerBaseStats();
-  const classData = getPlayerClassData();
-  if (!classData || !baseStats) {
-    return baseStats;
-  }
-  const level = playerState.level;
-  const maxHp = baseStats.maxHp + level * classData.levelUpGains.hp;
-  const maxMana = baseStats.maxMana + level * classData.levelUpGains.mana;
-  const maxSanity = baseStats.maxSanity;
-  const capacity = baseStats.capacity + level * classData.levelUpGains.capacity;
-
-  return {
-    maxHp,
-    maxMana,
-    maxSanity,
-    capacity,
-  };
-};
-
-const syncPlayerDerivedStats = () => {
-  const playerDerivedStats = getPlayerDerivedStats();
-  if (!playerDerivedStats) {
-    return;
-  }
-  playerState.maxHp = playerDerivedStats.maxHp;
-  playerState.maxMana = playerDerivedStats.maxMana;
-  playerState.maxSanity = playerDerivedStats.maxSanity;
-  playerState.capacity = playerDerivedStats.capacity;
-  if (playerState.hp > playerState.maxHp) {
-    playerState.hp = playerState.maxHp;
-  }
-  if (playerState.mana > playerState.maxMana) {
-    playerState.mana = playerState.maxMana;
-  }
-  if (playerState.sanity > playerState.maxSanity) {
-    playerState.sanity = playerState.maxSanity;
-  }
-};
-
-const getSkillExperienceGainMultiplier = (skillKey) => {
-  const classData = getPlayerClassData();
-  if (
-    !classData ||
-    !("skillExperienceMultipliers" in classData) ||
-    !(skillKey in classData.skillExperienceMultipliers)
-  ) {
-    return 0.2;
-  }
-  return classData.skillExperienceMultipliers[skillKey];
 };
 
 /* ---------- JOUEUR - VIE ET MORT ---------- */
@@ -3028,84 +593,8 @@ const resetPlayerPositionToSpawn = () => {
   applyPlayerSpawn(playerSpawn);
 };
 
-const hpRefresh = () => {
-  const playerHp = playerRenderRefs.hp;
-  if (playerHp) {
-    playerHp.style.width = `${(playerState.hp / playerState.maxHp) * 100}%`;
-    playerHp.style.setProperty("--hp-color", getHpColor(playerState.hp, playerState.maxHp));
-  }
-};
-
-const resetPlayerRegenerationTimers = () => {
-  playerState.regeneration.nextHealthRegenAt = 0;
-  playerState.regeneration.nextManaRegenAt = 0;
-  playerState.regeneration.nextSanityDecayAt = 0;
-};
-
-const startPlayerRegenerationTimers = (now) => {
-  const regenerationData = getPlayerClassRegenerationData();
-  if (!Number.isFinite(now) || !regenerationData) {
-    return false;
-  }
-
-  playerState.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
-  playerState.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
-  playerState.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
-  return true;
-};
-
 const updatePlayerRegeneration = (now) => {
-  if (!Number.isFinite(now) || !playerState.regeneration) {
-    return;
-  }
-  if (playerState.sanity <= 0) {
-    playerState.sanity = 0;
-    resetPlayerRegenerationTimers();
-    return;
-  }
-
-  const regenerationData = getPlayerClassRegenerationData();
-  if (!regenerationData) {
-    return;
-  }
-  if (
-    playerState.regeneration.nextHealthRegenAt === 0 ||
-    playerState.regeneration.nextManaRegenAt === 0 ||
-    playerState.regeneration.nextSanityDecayAt === 0
-  ) {
-    startPlayerRegenerationTimers(now);
-    return;
-  }
-
-  let didVitalChange = false;
-
-  if (now >= playerState.regeneration.nextHealthRegenAt) {
-    if (playerState.hp < playerState.maxHp) {
-      playerState.hp = Math.min(playerState.hp + regenerationData.healthAmount, playerState.maxHp);
-      didVitalChange = true;
-    }
-    playerState.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
-  }
-
-  if (now >= playerState.regeneration.nextManaRegenAt) {
-    if (playerState.mana < playerState.maxMana) {
-      playerState.mana = Math.min(playerState.mana + regenerationData.manaAmount, playerState.maxMana);
-      didVitalChange = true;
-    }
-    playerState.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
-  }
-
-  if (now >= playerState.regeneration.nextSanityDecayAt) {
-    playerState.sanity = Math.max(playerState.sanity - 1, 0);
-    didVitalChange = true;
-    if (playerState.sanity > 0) {
-      playerState.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
-    } else {
-      resetPlayerRegenerationTimers();
-    }
-  }
-
-  if (didVitalChange) {
+  if (advancePlayerRegeneration(now)) {
     refreshPlayerVitalsUi();
   }
 };
@@ -3145,7 +634,7 @@ const playerDead = () => {
 };
 
 const resetAfterDeath = () => {
-  selectedMonsterUid = null;
+  combatTargetState.monsterUid = null;
   stopPlayerNavigation();
   cancelItemDrag();
   cancelItemUse();
@@ -3174,160 +663,6 @@ const resetAfterDeath = () => {
 const updateCamera = () => {
   camera.x = playerState.renderX + TILE_SIZE / 2 - GAME_WIDTH / 2;
   camera.y = playerState.renderY + TILE_SIZE / 2 - GAME_HEIGHT / 2;
-};
-//#endregion  -----  CAMERA  -----
-
-/* ==================================================== */
-//#region     -----  MAP  -----
-/* ==================================================== */
-/* ---------- MAP - DONNEES ---------- */
-
-const gameMap = [
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-  [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1,
-  ],
-];
-
-const mapWidth = gameMap[0].length * TILE_SIZE;
-const mapHeight = gameMap.length * TILE_SIZE;
-
-const currentMap = {
-  data: gameMap,
-  dark: true,
-};
-
-/* ---------- MAP - COLLISIONS ET LIMITES ---------- */
-
-const isInsideMap = (testX, testY) => {
-  return testX >= 0 && testX <= mapWidth - PLAYER_SIZE && testY >= 0 && testY <= mapHeight - PLAYER_SIZE;
-};
-
-const canStepFromTileToTile = (fromX, fromY, toX, toY, z) => {
-  const fromHeight = getWorldTileSurfaceHeight(fromX, fromY, z);
-  const toHeight = getWorldTileSurfaceHeight(toX, toY, z);
-  const heightDifference = toHeight - fromHeight;
-  return heightDifference <= MAX_STEP_HEIGHT;
 };
 
 const canMoveTo = (fromX, fromY, testX, testY) => {
@@ -3358,78 +693,6 @@ const canMoveTo = (fromX, fromY, testX, testY) => {
 /* ==================================================== */
 /* ---------- OUTILS - MATH ET DISTANCE ---------- */
 
-const getRandomInt = (min, max) => {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-};
-
-const getRandomFloat = (min, max) => {
-  return Math.random() * (max - min) + min;
-};
-
-const getChunkPositionFromWorldPosition = (x, y) => {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return null;
-  }
-  const col = Math.floor(x / TILE_SIZE);
-  const row = Math.floor(y / TILE_SIZE);
-  const chunkX = Math.floor(col / CHUNK_SIZE_TILES);
-  const chunkY = Math.floor(row / CHUNK_SIZE_TILES);
-  return { chunkX, chunkY };
-};
-
-const getWorldChunkForTilePosition = (worldMap, col, row) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return null;
-  }
-  const chunkX = Math.floor(col / CHUNK_SIZE_TILES);
-  const chunkY = Math.floor(row / CHUNK_SIZE_TILES);
-  const chunkKey = `${worldMap.z}:${chunkX}:${chunkY}`;
-  return worldMap.chunksByKey.get(chunkKey) ?? null;
-};
-
-const getLocalTileIndexInChunk = (col, row) => {
-  if (!Number.isInteger(col) || !Number.isInteger(row)) {
-    return null;
-  }
-  const localCol = ((col % CHUNK_SIZE_TILES) + CHUNK_SIZE_TILES) % CHUNK_SIZE_TILES;
-  const localRow = ((row % CHUNK_SIZE_TILES) + CHUNK_SIZE_TILES) % CHUNK_SIZE_TILES;
-  const index = localRow * CHUNK_SIZE_TILES + localCol;
-  return index;
-};
-
-const getCollisionGidAtTile = (worldMap, col, row) => {
-  if (!worldMap || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return 0;
-  }
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  const index = getLocalTileIndexInChunk(col, row);
-  if (!chunk || !Number.isInteger(index)) {
-    return 0;
-  }
-  const collisionLayer = chunk.layers?.collision ?? null;
-  if (!Array.isArray(collisionLayer)) {
-    return 0;
-  }
-  const gid = collisionLayer[index] ?? 0;
-  return gid;
-};
-
-const getWorldLayerGidAtTile = (worldMap, layerName, col, row) => {
-  if (!worldMap || typeof layerName !== "string" || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return 0;
-  }
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  const index = getLocalTileIndexInChunk(col, row);
-  if (!chunk || !Number.isInteger(index)) {
-    return 0;
-  }
-  const layer = chunk.layers?.[layerName];
-  if (!Array.isArray(layer)) {
-    return 0;
-  }
-  return layer[index] ?? 0;
-};
-
 const getMinimapTileColor = (worldMap, col, row) => {
   const chunk = getWorldChunkForTilePosition(worldMap, col, row);
   if (!chunk) {
@@ -3451,100 +714,6 @@ const getMinimapTileColor = (worldMap, col, row) => {
     return "#756b56";
   }
   return "#91846a";
-};
-
-const getMinimapExplorationChunkKey = (z, col, row) => {
-  if (!Number.isInteger(z) || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return null;
-  }
-  const chunkX = Math.floor(col / CHUNK_SIZE_TILES);
-  const chunkY = Math.floor(row / CHUNK_SIZE_TILES);
-  return `${z}:${chunkX}:${chunkY}`;
-};
-
-const serializeMinimapExploration = () => {
-  const serializedExploration = {};
-  for (const [chunkKey, discoveredIndexes] of minimapRenderState.discoveredTileIndexesByChunkKey.entries()) {
-    serializedExploration[chunkKey] = Array.from(discoveredIndexes).sort((firstIndex, secondIndex) => {
-      return firstIndex - secondIndex;
-    });
-  }
-  return serializedExploration;
-};
-
-const hydrateMinimapExploration = (serializedExploration) => {
-  minimapRenderState.discoveredTileIndexesByChunkKey.clear();
-  if (!serializedExploration || typeof serializedExploration !== "object") {
-    return;
-  }
-  const maxTileIndex = CHUNK_SIZE_TILES * CHUNK_SIZE_TILES;
-  for (const [chunkKey, discoveredIndexes] of Object.entries(serializedExploration)) {
-    if (!Array.isArray(discoveredIndexes)) {
-      continue;
-    }
-    const validIndexes = discoveredIndexes.filter((index) => {
-      return Number.isInteger(index) && index >= 0 && index < maxTileIndex;
-    });
-    minimapRenderState.discoveredTileIndexesByChunkKey.set(chunkKey, new Set(validIndexes));
-  }
-  minimapRenderState.lastDiscoveryCol = null;
-  minimapRenderState.lastDiscoveryRow = null;
-  minimapRenderState.lastDiscoveryZ = null;
-};
-
-const isMinimapTileDiscovered = (z, col, row) => {
-  const chunkKey = getMinimapExplorationChunkKey(z, col, row);
-  const tileIndex = getLocalTileIndexInChunk(col, row);
-  if (!chunkKey || !Number.isInteger(tileIndex)) {
-    return false;
-  }
-  return minimapRenderState.discoveredTileIndexesByChunkKey.get(chunkKey)?.has(tileIndex) === true;
-};
-
-const discoverMinimapTile = (worldMap, col, row) => {
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  const chunkKey = getMinimapExplorationChunkKey(worldMap?.z, col, row);
-  const tileIndex = getLocalTileIndexInChunk(col, row);
-  if (!chunk || !chunkKey || !Number.isInteger(tileIndex)) {
-    return false;
-  }
-  let discoveredIndexes = minimapRenderState.discoveredTileIndexesByChunkKey.get(chunkKey);
-  if (!discoveredIndexes) {
-    discoveredIndexes = new Set();
-    minimapRenderState.discoveredTileIndexesByChunkKey.set(chunkKey, discoveredIndexes);
-  }
-  const wasAlreadyDiscovered = discoveredIndexes.has(tileIndex);
-  discoveredIndexes.add(tileIndex);
-  return !wasAlreadyDiscovered;
-};
-
-const revealMinimapAroundPlayer = () => {
-  const worldMap = getCurrentWorldMap();
-  if (!worldMap) {
-    return false;
-  }
-  const playerCol = Math.floor(playerState.x / TILE_SIZE);
-  const playerRow = Math.floor(playerState.y / TILE_SIZE);
-  if (
-    minimapRenderState.lastDiscoveryCol === playerCol &&
-    minimapRenderState.lastDiscoveryRow === playerRow &&
-    minimapRenderState.lastDiscoveryZ === playerState.z
-  ) {
-    return false;
-  }
-
-  let didDiscoverTile = false;
-  for (let row = playerRow - MINIMAP_DISCOVERY_RADIUS_Y; row <= playerRow + MINIMAP_DISCOVERY_RADIUS_Y; row++) {
-    for (let col = playerCol - MINIMAP_DISCOVERY_RADIUS_X; col <= playerCol + MINIMAP_DISCOVERY_RADIUS_X; col++) {
-      if (discoverMinimapTile(worldMap, col, row)) {
-        didDiscoverTile = true;
-      }
-    }
-  }
-  minimapRenderState.lastDiscoveryCol = playerCol;
-  minimapRenderState.lastDiscoveryRow = playerRow;
-  minimapRenderState.lastDiscoveryZ = playerState.z;
-  return didDiscoverTile;
 };
 
 const getMinimapWorldMap = () => {
@@ -3723,7 +892,7 @@ const drawMinimapDynamicMarkers = (context) => {
     const monsterDistance = Math.max(Math.abs(monsterCol - playerCol), Math.abs(monsterRow - playerRow));
     if (monster && monster.z === playerState.z && monsterDistance <= MINIMAP_MONSTER_REVEAL_RANGE_TILES) {
       drawMinimapCreatureMarker(context, monster, "#d94c45");
-      if (monster.uid === selectedMonsterUid) {
+      if (monster.uid === combatTargetState.monsterUid) {
         const position = getMinimapCanvasPositionForTile(
           Math.floor(monster.x / TILE_SIZE),
           Math.floor(monster.y / TILE_SIZE),
@@ -3790,7 +959,7 @@ const renderPlayerMinimap = (forceRender = false) => {
   if (!worldMap) {
     return;
   }
-  const didDiscoverTile = revealMinimapAroundPlayer();
+  const didDiscoverTile = revealMinimapAroundPlayer(getCurrentWorldMap(), playerState);
   if (
     minimapRenderState.isFollowingPlayer ||
     !Number.isInteger(minimapRenderState.centerCol) ||
@@ -3955,61 +1124,6 @@ const findInteractableAtTile = (worldMap, col, row) => {
   }
 
   return null;
-};
-
-/* ---------- INTERACTABLES - QUETES ET RECOMPENSES ---------- */
-
-const getQuestData = (questId) => {
-  if (typeof questId !== "string" || !(questId in questsDatabase)) {
-    return null;
-  }
-  return questsDatabase[questId];
-};
-
-const getPlayerQuestState = (questId) => {
-  if (typeof questId !== "string" || !playerState.progress?.questsById) {
-    return null;
-  }
-  return playerState.progress.questsById[questId] ?? null;
-};
-
-const setPlayerQuestStatus = (questId, status, now = Date.now()) => {
-  if (!getQuestData(questId) || !Object.values(QUEST_STATUS).includes(status) || !Number.isFinite(now)) {
-    return false;
-  }
-
-  const currentQuestState = getPlayerQuestState(questId);
-  const nextQuestState = {
-    questId,
-    status,
-    startedAt: currentQuestState?.startedAt ?? now,
-    completedAt: status === QUEST_STATUS.completed ? currentQuestState?.completedAt ?? now : null,
-  };
-  playerState.progress.questsById[questId] = nextQuestState;
-  return true;
-};
-
-const hasPlayerClaimedInteractableReward = (interactableId) => {
-  if (typeof interactableId !== "string" || !playerState.progress?.rewardClaimsByInteractableId) {
-    return false;
-  }
-  return interactableId in playerState.progress.rewardClaimsByInteractableId;
-};
-
-const recordPlayerInteractableRewardClaim = (interactableId, now = Date.now()) => {
-  if (
-    typeof interactableId !== "string" ||
-    interactableId === "" ||
-    !Number.isFinite(now) ||
-    !playerState.progress?.rewardClaimsByInteractableId
-  ) {
-    return false;
-  }
-  playerState.progress.rewardClaimsByInteractableId[interactableId] = {
-    interactableId,
-    claimedAt: now,
-  };
-  return true;
 };
 
 const isPlayerNearTiledObject = (tiledObject, range = 1) => {
@@ -4303,60 +1417,7 @@ const compareMonsterRespawnEvents = (firstEvent, secondEvent) => {
   return firstEvent.order - secondEvent.order;
 };
 
-const pushMonsterRespawnEvent = (event) => {
-  monsterRespawnEventHeap.push(event);
-  let index = monsterRespawnEventHeap.length - 1;
-
-  while (index > 0) {
-    const parentIndex = Math.floor((index - 1) / 2);
-    if (compareMonsterRespawnEvents(monsterRespawnEventHeap[parentIndex], event) <= 0) {
-      break;
-    }
-    monsterRespawnEventHeap[index] = monsterRespawnEventHeap[parentIndex];
-    index = parentIndex;
-  }
-
-  monsterRespawnEventHeap[index] = event;
-};
-
-const popMonsterRespawnEvent = () => {
-  if (monsterRespawnEventHeap.length === 0) {
-    return null;
-  }
-
-  const firstEvent = monsterRespawnEventHeap[0];
-  const lastEvent = monsterRespawnEventHeap.pop();
-  if (monsterRespawnEventHeap.length === 0) {
-    return firstEvent;
-  }
-
-  let index = 0;
-  while (true) {
-    const leftIndex = index * 2 + 1;
-    const rightIndex = leftIndex + 1;
-    if (leftIndex >= monsterRespawnEventHeap.length) {
-      break;
-    }
-
-    let smallestChildIndex = leftIndex;
-    if (
-      rightIndex < monsterRespawnEventHeap.length &&
-      compareMonsterRespawnEvents(monsterRespawnEventHeap[rightIndex], monsterRespawnEventHeap[leftIndex]) < 0
-    ) {
-      smallestChildIndex = rightIndex;
-    }
-
-    if (compareMonsterRespawnEvents(lastEvent, monsterRespawnEventHeap[smallestChildIndex]) <= 0) {
-      break;
-    }
-
-    monsterRespawnEventHeap[index] = monsterRespawnEventHeap[smallestChildIndex];
-    index = smallestChildIndex;
-  }
-
-  monsterRespawnEventHeap[index] = lastEvent;
-  return firstEvent;
-};
+const monsterRespawnEventQueue = new MinHeap(compareMonsterRespawnEvents);
 
 const scheduleMonsterRespawnAt = (spawnId, dueAt) => {
   const spawnDefinition = monsterSpawnDefinitionsById.get(spawnId);
@@ -4370,10 +1431,10 @@ const scheduleMonsterRespawnAt = (spawnId, dueAt) => {
   }
 
   spawnState.pendingRespawnCount++;
-  pushMonsterRespawnEvent({
+  monsterRespawnEventQueue.push({
     spawnId,
     dueAt,
-    order: nextMonsterRespawnEventOrder++,
+    order: respawnTimingState.nextEventOrder++,
   });
   return true;
 };
@@ -4384,22 +1445,6 @@ const scheduleMonsterRespawn = (spawnId, now) => {
     return false;
   }
   return scheduleMonsterRespawnAt(spawnId, now + spawnDefinition.respawnMs);
-};
-
-const countMonstersFromSpawnZone = (spawnId) => {
-  if (typeof spawnId !== "string" || spawnId === "") {
-    return 0;
-  }
-
-  let count = 0;
-
-  for (const monster of monstersByUid.values()) {
-    if (monster.spawnId === spawnId) {
-      count++;
-    }
-  }
-
-  return count;
 };
 
 const isPlayerBlockingMonsterRespawnAtTile = (player, worldMap, col, row) => {
@@ -4481,8 +1526,8 @@ const processMonsterRespawnEvent = (event, now) => {
   }
 
   event.dueAt = now + MONSTER_RESPAWN_CONFIG.blockedRetryMs;
-  event.order = nextMonsterRespawnEventOrder++;
-  pushMonsterRespawnEvent(event);
+  event.order = respawnTimingState.nextEventOrder++;
+  monsterRespawnEventQueue.push(event);
   return false;
 };
 
@@ -4493,11 +1538,11 @@ const updateMonsterRespawns = (now) => {
 
   let processedEventCount = 0;
   while (
-    monsterRespawnEventHeap.length > 0 &&
-    monsterRespawnEventHeap[0].dueAt <= now &&
+    monsterRespawnEventQueue.size > 0 &&
+    monsterRespawnEventQueue.peek().dueAt <= now &&
     processedEventCount < MONSTER_RESPAWN_CONFIG.maxEventsPerLogicStep
   ) {
-    const event = popMonsterRespawnEvent();
+    const event = monsterRespawnEventQueue.pop();
     processMonsterRespawnEvent(event, now);
     processedEventCount++;
   }
@@ -4699,229 +1744,6 @@ const isTileInsideTiledObject = (tileCol, tileRow, tiledObject) => {
   );
 };
 
-const getCurrentWorldMap = () => {
-  if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return null;
-  }
-  return pixiWorldRenderState.worldMapsByZ.get(pixiWorldRenderState.currentZ) ?? null;
-};
-
-const isTiledCollisionAtTile = (worldMap, col, row) => {
-  if (!worldMap || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return false;
-  }
-  return getCollisionGidAtTile(worldMap, col, row) > 0;
-};
-
-const isNearPlayer = (target, range = 1) => {
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
-  const targetCol = target.x / TILE_SIZE;
-  const targetRow = target.y / TILE_SIZE;
-
-  return Math.abs(playerCol - targetCol) <= range && Math.abs(playerRow - targetRow) <= range;
-};
-
-const isContainerItem = (item) => {
-  if (!item) {
-    return false;
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return false;
-  }
-  return itemData.container === true;
-};
-
-const clamp = (value, min, max) => {
-  if (value < min) {
-    return min;
-  }
-  if (value > max) {
-    return max;
-  }
-  return value;
-};
-
-const isEmpty = (valeur) => {
-  if (valeur == null) return true;
-
-  if (typeof valeur === "string" || Array.isArray(valeur)) {
-    return valeur.length === 0;
-  }
-
-  if (typeof valeur === "object") {
-    return Object.keys(valeur).length === 0;
-  }
-
-  return false;
-};
-
-/* ---------- OUTILS - TILE ---------- */
-const getWorldTileStackKey = (x, y, z) => {
-  const col = Math.floor(x / TILE_SIZE);
-  const row = Math.floor(y / TILE_SIZE);
-
-  return `${z}:${col}:${row}`;
-};
-
-const getWorldTileStack = (x, y, z) => {
-  const tileStackKey = getWorldTileStackKey(x, y, z);
-  return worldTileStacksByKey.get(tileStackKey) ?? null;
-};
-
-const getTopWorldItemUidAtTile = (x, y, z) => {
-  const tileStack = getWorldTileStack(x, y, z);
-  if (!tileStack) {
-    return null;
-  }
-  if (tileStack.itemUids.length <= 0) {
-    return null;
-  }
-  return tileStack.itemUids[tileStack.itemUids.length - 1];
-};
-
-const getTopWorldItemAtTile = (x, y, z) => {
-  const itemUid = getTopWorldItemUidAtTile(x, y, z);
-  if (!itemUid) {
-    return null;
-  }
-  return findWorldItemByUid(itemUid);
-};
-
-const getOrCreateWorldTileStack = (x, y, z) => {
-  const tileStackKey = getWorldTileStackKey(x, y, z);
-  let tileStack = getWorldTileStack(x, y, z);
-  if (tileStack) {
-    return tileStack;
-  }
-  tileStack = {
-    x,
-    y,
-    z,
-    itemUids: [],
-  };
-  worldTileStacksByKey.set(tileStackKey, tileStack);
-  return tileStack;
-};
-
-const addItemUidToWorldTileStack = (item) => {
-  if (!isValidWorldItem(item)) {
-    return false;
-  }
-  const tileStack = getOrCreateWorldTileStack(item.x, item.y, item.z);
-  if (!tileStack.itemUids.includes(item.uid)) {
-    tileStack.itemUids.push(item.uid);
-  }
-  return true;
-};
-
-const removeItemUidFromWorldTileStack = (item) => {
-  if (!isValidWorldItem(item)) {
-    return false;
-  }
-  const tileStack = getWorldTileStack(item.x, item.y, item.z);
-  if (!tileStack?.itemUids?.includes(item.uid)) {
-    return false;
-  }
-  const index = tileStack.itemUids.indexOf(item.uid);
-  tileStack.itemUids.splice(index, 1);
-  if (tileStack.itemUids.length <= 0) {
-    const tileStackKey = getWorldTileStackKey(item.x, item.y, item.z);
-    worldTileStacksByKey.delete(tileStackKey);
-  }
-  return true;
-};
-
-const moveItemUidToWorldTileStack = (item, nextX, nextY) => {
-  if (!item || !item.uid || !Number.isInteger(nextX) || !Number.isInteger(nextY)) {
-    return false;
-  }
-  removeItemUidFromWorldTileStack(item);
-  item.x = nextX;
-  item.y = nextY;
-  addItemUidToWorldTileStack(item);
-  return true;
-};
-
-const isWorldItemTopOfTileStack = (item) => {
-  if (!isValidWorldItem(item)) {
-    return false;
-  }
-  return getTopWorldItemUidAtTile(item.x, item.y, item.z) === item.uid;
-};
-
-const getWorldItemStackIndex = (item) => {
-  if (!isValidWorldItem(item)) {
-    return 0;
-  }
-
-  const tileStack = getWorldTileStack(item.x, item.y, item.z);
-  if (!tileStack) {
-    return 0;
-  }
-
-  const index = tileStack.itemUids.indexOf(item.uid);
-  if (index === -1) {
-    return 0;
-  }
-
-  return index;
-};
-
-const getWorldRenderZIndex = (worldY, localLayer = 0) => {
-  const WORLD_RENDER_Z_INDEX_BASE = 1000000;
-  return WORLD_RENDER_Z_INDEX_BASE + worldY * WORLD_RENDER_LAYER_SIZE + localLayer;
-};
-
-const getEntityRenderSortY = (entity) => {
-  if (!Number.isFinite(entity?.y)) {
-    return 0;
-  }
-
-  const isStillMovingUp =
-    Number.isFinite(entity.oldY) &&
-    Number.isFinite(entity.renderY) &&
-    entity.oldY > entity.y &&
-    entity.renderY > entity.y;
-
-  return isStillMovingUp ? entity.oldY : entity.y;
-};
-
-const canAddItemSurfaceToTile = (item, x, y) => {
-  const currentHeight = getWorldTileSurfaceHeight(x, y, item.z);
-  const itemSurfaceHeight = getItemSurfaceHeight(item);
-  return currentHeight + itemSurfaceHeight <= MAX_SURFACE_HEIGHT;
-};
-/* ---------- OUTILS - ATLAS ET COULEURS ---------- */
-
-const getAtlasSource = (col, row, spriteSize) => {
-  return {
-    sourceX: col * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceY: row * ATLAS_CELL_SIZE + ATLAS_PADDING,
-    sourceWidth: spriteSize,
-    sourceHeight: spriteSize,
-  };
-};
-
-const getHpColor = (hp, maxHp) => {
-  const percent = hp / maxHp;
-
-  const hue = percent * 120;
-
-  return `hsl(${hue}, 100%, 45%)`;
-};
-
-const getAtlasPath = (atlasName) => {
-  if (atlasName === "items") {
-    return new URL("./assets/images/items/items-sheet.png", import.meta.url).href;
-  }
-  if (atlasName === "monsters") {
-    return new URL("./assets/images/monstres/monsters-sheet.png", import.meta.url).href;
-  }
-  console.error(`atlasName: ${atlasName} n'existe pas`);
-};
-
 /* ---------- OUTILS - SOURIS ---------- */
 const isMouseInsideMap = (mousePosition) => {
   if (!mousePosition || !Number.isFinite(mousePosition.worldX) || !Number.isFinite(mousePosition.worldY)) {
@@ -4962,272 +1784,6 @@ const updateMousePositionInfo = (screenX, screenY) => {
   mousePosition.row = row;
   mousePosition.col = col;
   mousePosition.isInsideMap = isMouseInsideMap(mousePosition);
-};
-
-//#endregion  -----  CORE - OUTILS / HELPERS  -----
-
-/* ==================================================== */
-//#region     -----  ITEMS - DONNEES ET VALIDATION  -----
-/* ==================================================== */
-/* ---------- ITEMS - ACCES BASE DE DONNEES ---------- */
-
-const getItemData = (itemId) => {
-  if (itemsDatabase[itemId]) {
-    return itemsDatabase[itemId];
-  } else {
-    console.log(`itemId: ${itemId} n'existe pas dans itemsDatabase`);
-    return null;
-  }
-};
-
-const getItemUseData = (item) => {
-  const itemData = getItemData(item.itemId);
-  if (!itemData || !itemData.use) {
-    return null;
-  }
-  return itemData.use;
-};
-
-/* ---------- ITEMS - VALIDATION GAMEPLAY ---------- */
-
-const isValidWorldItem = (item) => {
-  if (!item) {
-    return false;
-  }
-  const itemData = getItemData(item.itemId);
-  if (
-    !itemData ||
-    !item.uid ||
-    !Number.isInteger(item.x) ||
-    !Number.isInteger(item.y) ||
-    !Number.isInteger(item.quantity) ||
-    item.quantity <= 0
-  ) {
-    return false;
-  }
-  return true;
-};
-
-/* ---------- ITEMS - DONNEES ATLAS ---------- */
-
-const getItemRenderParts = (itemId) => {
-  const itemData = getItemData(itemId);
-  if (!itemData || !itemData.render || !itemData.render.parts) {
-    return [];
-  }
-  return itemData.render.parts;
-};
-
-const getStackableAtlasColOffset = (quantity) => {
-  if (quantity >= 50) {
-    return 4;
-  } else if (quantity >= 25) {
-    return 3;
-  } else if (quantity >= 3) {
-    return 2;
-  } else if (quantity >= 2) {
-    return 1;
-  } else {
-    return 0;
-  }
-};
-
-const getTorchFuelStage = (item) => {
-  const itemData = getItemData(item?.itemId);
-  const fuelDurationMs = itemData?.lightSource?.fuelDurationMs;
-  if (!Number.isFinite(fuelDurationMs) || fuelDurationMs <= 0 || !Number.isFinite(item?.fuelRemainingMs)) {
-    return null;
-  }
-  if (item.fuelRemainingMs <= 0) {
-    return 3;
-  }
-  const fuelRatio = item.fuelRemainingMs / fuelDurationMs;
-  if (fuelRatio > 2 / 3) {
-    return 0;
-  }
-  if (fuelRatio > 1 / 3) {
-    return 1;
-  }
-  return 2;
-};
-
-const getTorchAtlasCol = (item) => {
-  const fuelStage = getTorchFuelStage(item);
-  if (!Number.isInteger(fuelStage)) {
-    return null;
-  }
-  if (fuelStage >= 3) {
-    return 6;
-  }
-  return (item.isLit ? 3 : 0) + fuelStage;
-};
-
-const getItemRenderData = (item) => {
-  if (!item) {
-    return [];
-  }
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return [];
-  }
-  const parts = getItemRenderParts(item.itemId);
-  const enrichedParts = parts.map((part) => {
-    let atlasCol = part.atlasCol;
-    const torchAtlasCol = getTorchAtlasCol(item);
-    if (Number.isInteger(torchAtlasCol)) {
-      atlasCol = torchAtlasCol;
-    }
-    if (itemData.stackable && itemData.stackAtlasVariants !== false) {
-      atlasCol += getStackableAtlasColOffset(item.quantity);
-    }
-    if (item.decayStage) {
-      atlasCol += item.decayStage;
-    }
-    const source = getAtlasSource(atlasCol, part.atlasRow, SPRITE_SIZE);
-    return {
-      ...part,
-      ...source,
-    };
-  });
-  return enrichedParts;
-};
-
-const getItemSurfaceHeight = (item) => {
-  if (!item) {
-    return 0;
-  }
-  const itemData = getItemData(item.itemId);
-  return itemData?.surfaceHeight ?? 0;
-};
-
-const getEntitySurfaceOffsetY = (entity) => {
-  if (!entity || !Number.isFinite(entity.x) || !Number.isFinite(entity.y) || !Number.isInteger(entity.z)) {
-    return 0;
-  }
-  return getWorldTileSurfaceHeight(entity.x, entity.y, entity.z);
-};
-
-const getWorldTileSurfaceHeight = (x, y, z) => {
-  const tileStack = getWorldTileStack(x, y, z);
-  if (!tileStack) {
-    return 0;
-  }
-  let totalSurfaceHeight = 0;
-  for (const itemUid of tileStack.itemUids) {
-    const item = findWorldItemByUid(itemUid);
-    totalSurfaceHeight += getItemSurfaceHeight(item);
-  }
-  return Math.min(totalSurfaceHeight, MAX_SURFACE_HEIGHT);
-};
-
-const getWorldItemStackOffsetY = (item) => {
-  if (!isValidWorldItem(item)) {
-    return 0;
-  }
-  const tileStack = getWorldTileStack(item.x, item.y, item.z);
-  if (!tileStack) {
-    return 0;
-  }
-  let itemSurfaceHeight = 0;
-  for (const itemUid of tileStack.itemUids) {
-    if (itemUid === item.uid) {
-      break;
-    }
-    const stackItem = findWorldItemByUid(itemUid);
-    itemSurfaceHeight += getItemSurfaceHeight(stackItem);
-  }
-  return Math.min(itemSurfaceHeight, MAX_SURFACE_HEIGHT);
-};
-
-const applyItemRenderPartPosition = (element, position) => {
-  element.style.left = `${position.left}px`;
-  element.style.top = `${position.top}px`;
-  element.style.width = `${position.width}px`;
-  element.style.height = `${position.height}px`;
-  element.style.zIndex = position.zIndex;
-};
-
-/* ---------- ITEMS - VALIDATION ATLAS FUTUR ---------- */
-
-const isValidItemRenderPart = (part) => {
-  if (
-    !part ||
-    !Number.isInteger(part.atlasCol) ||
-    !Number.isInteger(part.atlasRow) ||
-    !Number.isInteger(part.offsetX) ||
-    !Number.isInteger(part.offsetY) ||
-    !Number.isInteger(part.zOffset)
-  ) {
-    return false;
-  }
-  return true;
-};
-
-const areValidItemRenderParts = (parts) => {
-  if (!parts || !Array.isArray(parts) || parts.length <= 0) {
-    return false;
-  }
-  return parts.every((part) => {
-    return isValidItemRenderPart(part);
-  });
-};
-//#endregion  -----  ITEMS - DONNEES ET VALIDATION  -----
-
-/* ==================================================== */
-//#region     -----  ITEMS - INSTANCES, MONDE ET RENDU DOM  -----
-/* ==================================================== */
-/* ---------- ITEMS - CREATION DONNEES ---------- */
-const createItemInstance = (itemId, quantity, content = []) => {
-  const itemData = getItemData(itemId);
-  if (!itemData) {
-    return;
-  }
-  const itemInstance = {
-    itemId,
-    quantity,
-    uid: nextItemInstanceId++,
-  };
-
-  if (itemData.use && "charges" in itemData.use) {
-    itemInstance.charges = itemData.use.charges;
-  }
-
-  if (itemData.container) {
-    itemInstance.content = content;
-  }
-
-  if (itemData.lightSource) {
-    itemInstance.isLit = false;
-    itemInstance.fuelRemainingMs = itemData.lightSource.fuelDurationMs;
-    itemInstance.lastFuelUpdateAt = 0;
-  }
-
-  if (itemData.decayType) {
-    const decayType = itemData.decayType;
-    if (!(decayType in corpseDecayCooldown)) {
-      return;
-    }
-    itemInstance.decayStage = 0;
-    itemInstance.nextDecayAt = Date.now() + corpseDecayCooldown[decayType].stage0;
-    decayingItems.push(itemInstance);
-  }
-
-  return itemInstance;
-};
-
-const createGroundItem = (itemId, quantity, x, y, z, content = []) => {
-  const itemData = getItemData(itemId);
-  if (!itemData) {
-    return null;
-  }
-  const worldItem = createItemInstance(itemId, quantity, content);
-  if (!worldItem) {
-    return null;
-  }
-  worldItem.x = x;
-  worldItem.y = y;
-  worldItem.z = z;
-  return worldItem;
 };
 
 /* ---------- ITEMS - CREATION RENDU ---------- */
@@ -5466,10 +2022,10 @@ const syncActiveTorchFuel = (now) => {
 };
 
 const updateTorchFuel = (now) => {
-  if (!Number.isFinite(now) || now < nextTorchFuelRefresh) {
+  if (!Number.isFinite(now) || now < gameplayTimingState.nextTorchFuelRefresh) {
     return;
   }
-  nextTorchFuelRefresh = now + TORCH_FUEL_REFRESH_INTERVAL_MS;
+  gameplayTimingState.nextTorchFuelRefresh = now + TORCH_FUEL_REFRESH_INTERVAL_MS;
   syncActiveTorchFuel(now);
 };
 
@@ -5522,8 +2078,8 @@ const applyCorpseDecayRemoval = (item) => {
   return true;
 };
 const updateCorpseDecay = (now) => {
-  if (nextDecayRefresh < now) {
-    nextDecayRefresh = now + DECAY_REFRESH_COOLDOWN_MS;
+  if (gameplayTimingState.nextDecayRefresh < now) {
+    gameplayTimingState.nextDecayRefresh = now + DECAY_REFRESH_COOLDOWN_MS;
 
     for (let i = decayingItems.length - 1; i >= 0; i--) {
       const item = decayingItems[i];
@@ -5567,536 +2123,6 @@ const isBlockingItemAtPosition = (x, y, z = playerState.z) => {
     const itemData = getItemData(item.itemId);
     return itemData?.blockMovement === true;
   });
-};
-//#endregion  -----  ITEMS - INSTANCES, MONDE ET RENDU DOM  -----
-
-/* ==================================================== */
-//#region     -----  EFFETS DE SOL  -----
-/* ==================================================== */
-const getGroundEffectData = (groundEffectId) => {
-  return groundEffectsDatabase[groundEffectId] ?? null;
-};
-
-const renderGroundEffect = (groundEffect) => {
-  if (!groundEffect || groundEffect.z !== playerState.z) {
-    return false;
-  }
-
-  const groundEffectData = getGroundEffectData(groundEffect.groundEffectId);
-  if (!groundEffectData) {
-    return false;
-  }
-
-  const source = getAtlasSource(
-    groundEffectData.atlasCol + groundEffect.decayStage,
-    groundEffectData.atlasRow,
-    SPRITE_SIZE,
-  );
-  return upsertPixiGroundEffectVisual({
-    uid: groundEffect.uid,
-    ...source,
-    x: groundEffect.x,
-    y: groundEffect.y,
-  });
-};
-
-const removeGroundEffect = (groundEffectUid) => {
-  const groundEffect = groundEffectsByUid.get(groundEffectUid);
-  if (!groundEffect) {
-    return false;
-  }
-
-  const tileKey = getWorldTileStackKey(groundEffect.x, groundEffect.y, groundEffect.z);
-  if (groundEffectUidByTileKey.get(tileKey) === groundEffectUid) {
-    groundEffectUidByTileKey.delete(tileKey);
-  }
-  groundEffectsByUid.delete(groundEffectUid);
-  removePixiGroundEffectVisual(groundEffectUid);
-  return true;
-};
-
-const addOrRefreshGroundEffect = (groundEffectId, x, y, z, decayStage = 0, now = Date.now()) => {
-  if (
-    !getGroundEffectData(groundEffectId) ||
-    !Number.isInteger(x) ||
-    !Number.isInteger(y) ||
-    !Number.isInteger(z) ||
-    !Number.isInteger(decayStage) ||
-    decayStage < 0 ||
-    decayStage > 2 ||
-    !Number.isFinite(now)
-  ) {
-    return null;
-  }
-
-  const tileKey = getWorldTileStackKey(x, y, z);
-  const existingUid = groundEffectUidByTileKey.get(tileKey) ?? null;
-  let groundEffect = groundEffectsByUid.get(existingUid) ?? null;
-
-  if (!groundEffect) {
-    groundEffect = {
-      uid: nextGroundEffectUid++,
-      groundEffectId,
-      x,
-      y,
-      z,
-      decayStage,
-      nextDecayAt: now + GROUND_EFFECT_DECAY_STAGE_MS,
-    };
-    groundEffectsByUid.set(groundEffect.uid, groundEffect);
-    groundEffectUidByTileKey.set(tileKey, groundEffect.uid);
-  } else {
-    groundEffect.groundEffectId = groundEffectId;
-    groundEffect.decayStage = decayStage;
-    groundEffect.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
-  }
-
-  renderGroundEffect(groundEffect);
-  return groundEffect;
-};
-
-const syncGroundEffectRenderForCurrentZ = () => {
-  clearPixiGroundEffectVisuals();
-  for (const groundEffect of groundEffectsByUid.values()) {
-    renderGroundEffect(groundEffect);
-  }
-};
-
-const updateGroundEffectDecay = (now) => {
-  if (now < nextGroundEffectDecayRefresh) {
-    return;
-  }
-  nextGroundEffectDecayRefresh = now + DECAY_REFRESH_COOLDOWN_MS;
-
-  for (const groundEffect of [...groundEffectsByUid.values()]) {
-    if (now < groundEffect.nextDecayAt) {
-      continue;
-    }
-    if (groundEffect.decayStage >= 2) {
-      removeGroundEffect(groundEffect.uid);
-      continue;
-    }
-    groundEffect.decayStage += 1;
-    groundEffect.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
-    renderGroundEffect(groundEffect);
-  }
-};
-//#endregion  -----  EFFETS DE SOL  -----
-
-/* ==================================================== */
-//#region     -----  INVENTAIRE - POIDS ET CAPACITE  -----
-/* ==================================================== */
-/* ---------- INVENTAIRE - CALCULE DONNEES ---------- */
-
-const getItemTotalWeight = (item) => {
-  if (!item) {
-    return 0;
-  }
-
-  let totalWeight = 0;
-  const itemData = getItemData(item.itemId);
-  if (!itemData) {
-    return 0;
-  }
-  const weight = itemData.weight * item.quantity;
-  totalWeight += weight;
-  if (isContainerItem(item) && item.content && item.content.length > 0) {
-    item.content.forEach((itemInBag) => {
-      totalWeight += getItemTotalWeight(itemInBag);
-    });
-  }
-  return totalWeight;
-};
-
-const calculatePlayerCarriedWeight = () => {
-  let totalWeight = 0;
-  Object.values(playerState.equipment).forEach((equipment) => {
-    if (equipment) {
-      totalWeight += getItemTotalWeight(equipment);
-    }
-  });
-  return totalWeight;
-};
-
-const getPlayerRemainingCapacity = () => {
-  const remainingCapacity = playerState.capacity - playerState.carriedWeight;
-  return Number(remainingCapacity.toFixed(1));
-};
-
-const updatePlayerCarriedWeight = () => {
-  playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
-};
-
-/* ---------- INVENTAIRE - MONNAIE ET RETRAITS ---------- */
-
-const visitContainerItems = (containerItem, visitor) => {
-  if (!Array.isArray(containerItem?.content) || typeof visitor !== "function") {
-    return;
-  }
-  for (let slotIndex = 0; slotIndex < containerItem.content.length; slotIndex++) {
-    const item = containerItem.content[slotIndex];
-    if (!item) {
-      continue;
-    }
-    visitor(item, containerItem, slotIndex);
-    if (Array.isArray(item.content)) {
-      visitContainerItems(item, visitor);
-    }
-  }
-};
-
-const getPlayerBackpackItemQuantity = (itemId) => {
-  const backpack = getEquipmentSlotItem("backpack");
-  if (!backpack || typeof itemId !== "string") {
-    return 0;
-  }
-  let quantity = 0;
-  visitContainerItems(backpack, (item) => {
-    if (item.itemId === itemId) {
-      quantity += item.quantity;
-    }
-  });
-  return quantity;
-};
-
-const getPlayerGoldAmount = () => {
-  const backpack = getEquipmentSlotItem("backpack");
-  if (!backpack) {
-    return 0;
-  }
-  let goldAmount = 0;
-  visitContainerItems(backpack, (item) => {
-    const currencyValue = getItemData(item.itemId)?.currency?.value;
-    if (Number.isInteger(currencyValue) && currencyValue > 0) {
-      goldAmount += currencyValue * item.quantity;
-    }
-  });
-  return goldAmount;
-};
-
-const getPlayerBankGoldAmount = () => {
-  return Number.isSafeInteger(playerState.bank?.goldBalance) && playerState.bank.goldBalance >= 0
-    ? playerState.bank.goldBalance
-    : 0;
-};
-
-const visitContainerSlots = (containerItem, visitor) => {
-  const capacity = getItemData(containerItem?.itemId)?.capacity;
-  if (!Array.isArray(containerItem?.content) || !Number.isInteger(capacity) || typeof visitor !== "function") {
-    return;
-  }
-  for (let slotIndex = 0; slotIndex < capacity; slotIndex++) {
-    const item = containerItem.content[slotIndex] ?? null;
-    visitor(containerItem, slotIndex, item);
-    if (Array.isArray(item?.content)) {
-      visitContainerSlots(item, visitor);
-    }
-  }
-};
-
-const getCurrencyDataByValueDescending = () => {
-  return Object.values(itemsDatabase)
-    .filter((itemData) => Number.isInteger(itemData.currency?.value) && itemData.currency.value > 0)
-    .sort((firstCurrency, secondCurrency) => secondCurrency.currency.value - firstCurrency.currency.value);
-};
-
-const createCurrencyItemsForGoldAmount = (goldAmount) => {
-  if (!Number.isInteger(goldAmount) || goldAmount < 0) {
-    return null;
-  }
-  const currencyItems = [];
-  let remainingGold = goldAmount;
-  for (const currencyData of getCurrencyDataByValueDescending()) {
-    let currencyQuantity = Math.floor(remainingGold / currencyData.currency.value);
-    remainingGold %= currencyData.currency.value;
-    while (currencyQuantity > 0) {
-      const stackQuantity = Math.min(currencyQuantity, MAX_ITEM_STACK_SIZE);
-      const item = createItemInstance(currencyData.itemId, stackQuantity);
-      if (!item) {
-        return null;
-      }
-      currencyItems.push(item);
-      currencyQuantity -= stackQuantity;
-    }
-  }
-  return remainingGold === 0 ? currencyItems : null;
-};
-
-const createPlayerCurrencyValuePlan = (goldAmount) => {
-  const backpack = getEquipmentSlotItem("backpack");
-  const currencyItems = createCurrencyItemsForGoldAmount(goldAmount);
-  if (!backpack || !currencyItems) {
-    return { success: false };
-  }
-
-  const occupiedCurrencySlots = [];
-  const emptySlots = [];
-  visitContainerSlots(backpack, (containerItem, slotIndex, item) => {
-    if (!item) {
-      emptySlots.push({ containerItem, slotIndex });
-    } else if (Number.isInteger(getItemData(item.itemId)?.currency?.value)) {
-      occupiedCurrencySlots.push({ containerItem, slotIndex });
-    }
-  });
-
-  const availableSlots = [...occupiedCurrencySlots, ...emptySlots];
-  if (currencyItems.length > availableSlots.length) {
-    return { success: false };
-  }
-  return {
-    success: true,
-    slots: availableSlots,
-    previousItems: availableSlots.map(({ containerItem, slotIndex }) => containerItem.content[slotIndex] ?? null),
-    nextItems: availableSlots.map((_, index) => currencyItems[index] ?? null),
-  };
-};
-
-const commitPlayerCurrencyValuePlan = (currencyPlan) => {
-  if (!currencyPlan?.success || !Array.isArray(currencyPlan.slots)) {
-    return false;
-  }
-  for (let index = 0; index < currencyPlan.slots.length; index++) {
-    const { containerItem, slotIndex } = currencyPlan.slots[index];
-    containerItem.content[slotIndex] = currencyPlan.nextItems[index];
-  }
-  return true;
-};
-
-const rollbackPlayerCurrencyValuePlan = (currencyPlan) => {
-  if (!currencyPlan?.success || !Array.isArray(currencyPlan.slots)) {
-    return false;
-  }
-  for (let index = 0; index < currencyPlan.slots.length; index++) {
-    const { containerItem, slotIndex } = currencyPlan.slots[index];
-    containerItem.content[slotIndex] = currencyPlan.previousItems[index];
-  }
-  return true;
-};
-
-const getPlayerCurrencyValuePlanWeightDifference = (currencyPlan) => {
-  if (!currencyPlan?.success || !Array.isArray(currencyPlan.previousItems) || !Array.isArray(currencyPlan.nextItems)) {
-    return null;
-  }
-  const previousWeight = currencyPlan.previousItems.reduce((total, item) => total + (item ? getItemTotalWeight(item) : 0), 0);
-  const nextWeight = currencyPlan.nextItems.reduce((total, item) => total + (item ? getItemTotalWeight(item) : 0), 0);
-  return nextWeight - previousWeight;
-};
-
-const createPlayerGoldPaymentPlan = (goldAmount) => {
-  if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
-    return { success: false };
-  }
-  const remainingGold = getPlayerGoldAmount() - goldAmount;
-  if (remainingGold < 0) {
-    return { success: false };
-  }
-  return createPlayerCurrencyValuePlan(remainingGold);
-};
-
-const createPlayerBackpackItemRemovalPlan = (itemId, quantity) => {
-  const backpack = getEquipmentSlotItem("backpack");
-  if (!backpack || typeof itemId !== "string" || !Number.isInteger(quantity) || quantity <= 0) {
-    return { success: false, reason: "configuration" };
-  }
-
-  let remainingQuantity = quantity;
-  const operations = [];
-  visitContainerItems(backpack, (item, containerItem, slotIndex) => {
-    if (remainingQuantity <= 0 || item.itemId !== itemId) {
-      return;
-    }
-    const quantityToRemove = Math.min(item.quantity, remainingQuantity);
-    operations.push({ containerItem, slotIndex, item, quantity: quantityToRemove });
-    remainingQuantity -= quantityToRemove;
-  });
-
-  if (remainingQuantity > 0) {
-    return { success: false, reason: "quantity" };
-  }
-  return { success: true, operations };
-};
-
-const commitPlayerBackpackItemRemovalPlan = (removalPlan) => {
-  if (!removalPlan?.success || !Array.isArray(removalPlan.operations)) {
-    return false;
-  }
-  for (const operation of removalPlan.operations) {
-    if (operation.quantity >= operation.item.quantity) {
-      operation.containerItem.content[operation.slotIndex] = null;
-    } else {
-      operation.item.quantity -= operation.quantity;
-    }
-  }
-  return true;
-};
-
-const rollbackPlayerBackpackItemRemovalPlan = (removalPlan) => {
-  if (!removalPlan?.success || !Array.isArray(removalPlan.operations)) {
-    return false;
-  }
-  for (let index = removalPlan.operations.length - 1; index >= 0; index--) {
-    const operation = removalPlan.operations[index];
-    if (operation.containerItem.content[operation.slotIndex] === null) {
-      operation.containerItem.content[operation.slotIndex] = operation.item;
-    } else {
-      operation.item.quantity += operation.quantity;
-    }
-  }
-  return true;
-};
-
-const spendPlayerGold = (goldAmount) => {
-  const paymentPlan = createPlayerGoldPaymentPlan(goldAmount);
-  if (!paymentPlan.success) {
-    return false;
-  }
-  return commitPlayerCurrencyValuePlan(paymentPlan);
-};
-
-/* ---------- INVENTAIRE - TRANSACTIONS DE RECOMPENSE ---------- */
-
-const getRewardTableData = (rewardTableId) => {
-  if (typeof rewardTableId !== "string" || !(rewardTableId in rewardTablesDatabase)) {
-    return null;
-  }
-  return rewardTablesDatabase[rewardTableId];
-};
-
-const getRewardItemsTotalWeight = (rewardItems) => {
-  if (!Array.isArray(rewardItems)) {
-    return null;
-  }
-
-  let totalWeight = 0;
-  for (const rewardItem of rewardItems) {
-    const itemData = getItemData(rewardItem?.itemId);
-    if (!itemData || !Number.isInteger(rewardItem.quantity) || rewardItem.quantity <= 0) {
-      return null;
-    }
-    totalWeight += itemData.weight * rewardItem.quantity;
-  }
-  return totalWeight;
-};
-
-const createContainerInsertionPlan = (containerItem, itemEntries) => {
-  const containerData = getItemData(containerItem?.itemId);
-  if (!containerItem?.content || !containerData?.capacity || !Array.isArray(itemEntries)) {
-    return { success: false, reason: "container" };
-  }
-
-  const simulatedSlots = Array.from({ length: containerData.capacity }, (_, slotIndex) => {
-    const slotItem = containerItem.content[slotIndex];
-    if (!slotItem) {
-      return null;
-    }
-    return {
-      itemId: slotItem.itemId,
-      quantity: slotItem.quantity,
-    };
-  });
-  const operations = [];
-
-  for (const itemEntry of itemEntries) {
-    const itemData = getItemData(itemEntry?.itemId);
-    if (!itemData || !Number.isInteger(itemEntry.quantity) || itemEntry.quantity <= 0) {
-      return { success: false, reason: "configuration" };
-    }
-
-    let remainingQuantity = itemEntry.quantity;
-
-    if (itemData.stackable) {
-      for (let slotIndex = 0; slotIndex < simulatedSlots.length && remainingQuantity > 0; slotIndex++) {
-        const simulatedItem = simulatedSlots[slotIndex];
-        if (!simulatedItem || simulatedItem.itemId !== itemEntry.itemId || simulatedItem.quantity >= MAX_ITEM_STACK_SIZE) {
-          continue;
-        }
-
-        const quantityToStack = Math.min(MAX_ITEM_STACK_SIZE - simulatedItem.quantity, remainingQuantity);
-        simulatedItem.quantity += quantityToStack;
-        remainingQuantity -= quantityToStack;
-        operations.push({ type: "stack", slotIndex, quantity: quantityToStack });
-      }
-
-      while (remainingQuantity > 0) {
-        const slotIndex = simulatedSlots.findIndex((slotItem) => slotItem === null);
-        if (slotIndex === -1) {
-          return { success: false, reason: "space" };
-        }
-
-        const quantityToCreate = Math.min(remainingQuantity, MAX_ITEM_STACK_SIZE);
-        simulatedSlots[slotIndex] = {
-          itemId: itemEntry.itemId,
-          quantity: quantityToCreate,
-        };
-        remainingQuantity -= quantityToCreate;
-        operations.push({
-          type: "create",
-          slotIndex,
-          itemId: itemEntry.itemId,
-          quantity: quantityToCreate,
-        });
-      }
-      continue;
-    }
-
-    while (remainingQuantity > 0) {
-      const slotIndex = simulatedSlots.findIndex((slotItem) => slotItem === null);
-      if (slotIndex === -1) {
-        return { success: false, reason: "space" };
-      }
-
-      simulatedSlots[slotIndex] = {
-        itemId: itemEntry.itemId,
-        quantity: 1,
-      };
-      remainingQuantity--;
-      operations.push({
-        type: "create",
-        slotIndex,
-        itemId: itemEntry.itemId,
-        quantity: 1,
-      });
-    }
-  }
-
-  return {
-    success: true,
-    containerItem,
-    operations,
-  };
-};
-
-const commitContainerInsertionPlan = (insertionPlan) => {
-  if (!insertionPlan?.success || !insertionPlan.containerItem?.content || !Array.isArray(insertionPlan.operations)) {
-    return false;
-  }
-
-  const createdItemsByOperationIndex = new Map();
-  for (let operationIndex = 0; operationIndex < insertionPlan.operations.length; operationIndex++) {
-    const operation = insertionPlan.operations[operationIndex];
-    if (operation.type !== "create") {
-      continue;
-    }
-    const item = createItemInstance(operation.itemId, operation.quantity);
-    if (!item) {
-      return false;
-    }
-    createdItemsByOperationIndex.set(operationIndex, item);
-  }
-
-  for (let operationIndex = 0; operationIndex < insertionPlan.operations.length; operationIndex++) {
-    const operation = insertionPlan.operations[operationIndex];
-    if (operation.type === "stack") {
-      const slotItem = insertionPlan.containerItem.content[operation.slotIndex];
-      if (!slotItem) {
-        return false;
-      }
-      slotItem.quantity += operation.quantity;
-    } else if (operation.type === "create") {
-      insertionPlan.containerItem.content[operation.slotIndex] = createdItemsByOperationIndex.get(operationIndex);
-    }
-  }
-  return true;
 };
 
 const grantRewardItemsToPlayer = (rewardItems) => {
@@ -7177,16 +3203,6 @@ const isDropStackToStack = (sourceItem, destinationItem) => {
   return false;
 };
 
-const isOpenableContainerItem = (item) => {
-  if (!isContainerItem(item)) {
-    return false;
-  }
-  if (item.decayStage >= 2) {
-    return false;
-  }
-  return true;
-};
-
 const getItemFromLocation = (itemLocation) => {
   if (!itemLocation || !itemLocation.locationType) {
     return null;
@@ -7274,10 +3290,6 @@ const findItemLocationByUid = (uid) => {
     }
   }
   return null;
-};
-
-const findWorldItemByUid = (itemUid) => {
-  return worldItemsByUid.get(itemUid) ?? null;
 };
 
 const refreshAllByUid = (uid) => {
@@ -7568,19 +3580,6 @@ const completeItemDrag = (destination) => {
   showGameStatusMessage(getGameUiText("cannotPlaceItem"));
   cancelItemDrag();
 };
-//#endregion  -----  DRAG AND DROP - SOURCES, DESTINATIONS ET REGLES  -----
-
-/* ==================================================== */
-//#region     -----  UI - EQUIPMENT / INVENTAIRE  -----
-/* ==================================================== */
-
-/* ---------- UI - INVENTAIRE ---------- */
-const getEquipmentSlotItem = (slotName) => {
-  if (!playerState.equipment[slotName]) {
-    return null;
-  }
-  return playerState.equipment[slotName];
-};
 
 const renderItemIcon = (parentElement, item, slotSize) => {
   parentElement.innerHTML = "";
@@ -7697,492 +3696,6 @@ const renderEquipmentSlots = () => {
       equipmentElement.classList.add("equipment-slot-empty");
     }
   });
-};
-
-/* ---------- UI - OPTIONS ---------- */
-
-const GAME_UI_TEXT = {
-  en: {
-    play: "PLAY",
-    home: "Home",
-    game: "Game",
-    account: "Account",
-    minimap: "Minimap",
-    zoomIn: "Zoom in",
-    zoomOut: "Zoom out",
-    centerMinimap: "Center on player",
-    floorUp: "View upper floor",
-    floorDown: "View lower floor",
-    language: "Language",
-    english: "English",
-    french: "French",
-    showFps: "Show FPS",
-    showCreatureNames: "Creature names",
-    showHealthBars: "Health bars",
-    musicEnabled: "Music",
-    sfxEnabled: "Sound effects",
-    musicVolume: "Music volume",
-    sfxVolume: "Effects volume",
-    restoreDefaults: "Restore defaults",
-    closeOptions: "Close options",
-    quests: "Quests",
-    closeQuests: "Close quests",
-    noQuests: "No quests started.",
-    questCompleted: "Completed",
-    questStarted: "Started",
-    characters: "Characters",
-    closeCharacters: "Close characters",
-    noCharacters: "No characters created.",
-    current: "Current",
-    select: "Select",
-    delete: "Delete",
-    deleteCharacter: (name) => `Delete ${name}`,
-    deleteCharacterConfirm: (name) => `Delete ${name}? This cannot be undone.`,
-    newCharacter: "New character",
-    backToCharacters: "Back to characters",
-    sex: "Sex",
-    head: "Head",
-    body: "Body",
-    characterName: "Character name",
-    hairColor: "Hair",
-    clothesColor: "Clothes",
-    pantsColor: "Pants",
-    shoesColor: "Shoes",
-    create: "Create",
-    equipments: "Equipments",
-    capacityShort: "Cap",
-    follow: "Follow",
-    hotkeys: "Spells",
-    spells: "Spells",
-    closeSpells: "Close spells",
-    spellBar: "Spell bar",
-    spellWindowHelp: "Tap a spell to cast it, or select Assign and then choose a slot above.",
-    spellAssignPrompt: (spellName) => `Choose a slot above for ${spellName}.`,
-    mobileSpellBarHelp: "Tap to cast. Hold a slot to reassign it.",
-    mobileSpellAssignPrompt: (key) => `Choose a learned spell for slot ${key}.`,
-    emptySpellSlot: "Empty spell slot",
-    spellSlotLabel: (key, spellName) => `Slot ${key}: ${spellName}`,
-    clearSpellSlot: (key) => `Clear spell slot ${key}`,
-    learnedSpells: "Learned spells",
-    castSpell: "Cast",
-    assignSpell: "Assign",
-    clearHotkey: "Clear",
-    noLearnedSpells: "No spells learned.",
-    options: "Options",
-    logout: "Logout",
-    fullAttack: "Full Attack",
-    balanced: "Balanced",
-    fullDefense: "Full Defense",
-    stats: "Stats",
-    mobileMap: "Map",
-    mobileEquipment: "Gear",
-    mobileBackpack: "Bag",
-    mobileChat: "Chat",
-    rotateDeviceTitle: "Rotate your phone",
-    rotateDeviceText: "This game is played in landscape mode.",
-    nameLabel: "Name:",
-    healthLabel: "Hp:",
-    manaLabel: "Mana:",
-    sanityLabel: "Sanity:",
-    experienceLabel: "Experience:",
-    levelLabel: "Level:",
-    magicLabel: "Magic:",
-    fistLabel: "Fist Fighting:",
-    swordLabel: "Sword Fighting:",
-    maceLabel: "Mace Fighting:",
-    axeLabel: "Axe Fighting:",
-    distanceLabel: "Distance:",
-    shieldingLabel: "Shielding:",
-    xpRemaining: (amount) => `${amount} XP left to go.`,
-    characterSaved: "Character saved.",
-    characterSaveFailed: "Unable to save character.",
-    currentCharacterSaveFailed: "Unable to save the current character.",
-    cannotPlaceItem: "You cannot place this item there.",
-    notEnoughCapacity: "You do not have enough capacity.",
-    pvpUnavailable: "PVP is not implemented yet.",
-    cannotPourPotion: "You cannot pour this potion there.",
-    exhausted: "You are exhausted.",
-    splitStack: "Split stack",
-    splitAmount: "Amount",
-    splitConfirm: "Split",
-    splitStackNeedsSpace: "You need an empty slot to split this stack.",
-    cancel: "Cancel",
-    targetOutOfRange: "Target is out of range.",
-    runeBlockedByWall: "You cannot use this rune through a wall.",
-    alreadyFull: "You are already full.",
-    fullHealth: "You are already at full health.",
-    fullMana: "You are already at full mana.",
-    torchBurnedOut: "This torch is burned out.",
-    torchNeedsPlacement: "Equip or place the torch on the ground before lighting it.",
-    noPath: "No path possible.",
-    destinationTooFar: "Destination is too far.",
-    minimapWrongFloor: "Return to your floor before walking there.",
-    targetLost: "Target lost.",
-    arrowsRequired: "You need arrows to use this bow.",
-    invalidCharacterName: "Use 2 to 20 letters. Spaces, apostrophes and hyphens are allowed.",
-    invalidAppearance: "Choose a character appearance.",
-    spellWrongClass: "Your class cannot cast this spell.",
-    spellNotLearned: "You have not learned this spell.",
-    spellMagicLevelRequired: (level) => `You need magic level ${level} to cast this spell.`,
-    spellNotEnoughMana: "You do not have enough mana.",
-    duplicateCharacterName: "A character with this name already exists.",
-    characterStorageError: "The character data could not be saved.",
-    corruptedSave: "The character data is corrupted.",
-    unsupportedSave: "This character save format is not supported.",
-    characterNotFound: "This character no longer exists.",
-    characterOperationFailed: "The character operation failed.",
-    backpackRequired: "You need to equip a backpack.",
-    backpackFull: "Your backpack is full.",
-    invalidReward: "This chest has an invalid reward configuration.",
-    rewardCommitFailed: "The reward could not be added to your backpack.",
-    chestOpenFailed: "You cannot open this chest.",
-    rewardFallback: "your reward",
-    questCompletionLog: (questName, rewardText) => `Quest completed: ${questName}. You received ${rewardText}.`,
-    questCompletionFloating: (questName, rewardText) => `Quest completed!\n${questName}\nLoot: ${rewardText}`,
-    questAlreadyCompleted: (questName) => `You have already completed ${questName}.`,
-    levelAdvanced: (level) => `You advanced to level ${level}.`,
-    skillAdvanced: (skill, level) => `Your ${skill} skill advanced to level ${level}.`,
-    youSeeProperName: (name) => `You see ${name}.`,
-    youSee: (article, name) => `You see ${article} ${name}.`,
-    youSeeYourself: (level) => `You see yourself. You are level ${level}.`,
-    youSeeYourselfClass: (className, level) => `You see yourself. You are a ${className} level ${level}.`,
-    attack: "Attack",
-    defense: "Defense",
-    itemCharges: (charges) => `It has ${charges} charge${charges > 1 ? "s" : ""}`,
-    itemWeight: (weight) => `It weighs ${weight.toFixed(1)} oz.`,
-    itemsWeight: (weight) => `They weigh ${weight.toFixed(1)} oz.`,
-    unknownItem: "unknown item",
-    lootNothing: "Loot: nothing.",
-    lootFromNothing: (sourceName) => `Loot from ${sourceName}: nothing.`,
-    lootList: (items) => `Loot: ${items}.`,
-    lootFromList: (sourceName, items) => `Loot from ${sourceName}: ${items}.`,
-    experienceGained: (amount) => `You gained ${amount} experience.`,
-    experienceGainedFrom: (amount, sourceName) => `You gained ${amount} experience from ${sourceName}.`,
-    damageTaken: (amount, sourceName) => `You took ${amount} damage from ${sourceName}.`,
-    damageDealt: (amount, sourceName) => `You dealt ${amount} damage to ${sourceName}.`,
-    tileName: "Tile",
-    tileDescription: "A tile.",
-    localChannel: "Local",
-    globalChannel: "Global",
-    tradeChannel: "Trade",
-    logsChannel: "Logs",
-    npcQueue: (name, position) => `${name} asks you to wait. Queue position: ${position}.`,
-    sayNpcOption: (speech) => `Say ${speech}`,
-    npcOptionsLabel: "You can say:",
-  },
-  fr: {
-    play: "JOUER",
-    home: "Accueil",
-    game: "Jeu",
-    account: "Compte",
-    minimap: "Mini-carte",
-    zoomIn: "Zoom avant",
-    zoomOut: "Zoom arriere",
-    centerMinimap: "Recentrer sur le joueur",
-    floorUp: "Voir l'etage du haut",
-    floorDown: "Voir l'etage du bas",
-    language: "Langue",
-    english: "Anglais",
-    french: "Francais",
-    showFps: "Afficher les FPS",
-    showCreatureNames: "Noms des creatures",
-    showHealthBars: "Barres de vie",
-    musicEnabled: "Musique",
-    sfxEnabled: "Effets sonores",
-    musicVolume: "Volume de la musique",
-    sfxVolume: "Volume des effets",
-    restoreDefaults: "Remettre par defaut",
-    closeOptions: "Fermer les options",
-    quests: "Quetes",
-    closeQuests: "Fermer les quetes",
-    noQuests: "Aucune quete commencee.",
-    questCompleted: "Terminee",
-    questStarted: "Commencee",
-    characters: "Personnages",
-    closeCharacters: "Fermer les personnages",
-    noCharacters: "Aucun personnage cree.",
-    current: "Actuel",
-    select: "Choisir",
-    delete: "Supprimer",
-    deleteCharacter: (name) => `Supprimer ${name}`,
-    deleteCharacterConfirm: (name) => `Supprimer ${name}? Cette action est irreversible.`,
-    newCharacter: "Nouveau personnage",
-    backToCharacters: "Retour aux personnages",
-    sex: "Sexe",
-    head: "Tete",
-    body: "Corps",
-    characterName: "Nom du personnage",
-    hairColor: "Cheveux",
-    clothesColor: "Linge",
-    pantsColor: "Pantalon",
-    shoesColor: "Souliers",
-    create: "Creer",
-    equipments: "Equipement",
-    capacityShort: "Cap",
-    follow: "Suivre",
-    hotkeys: "Sort",
-    spells: "Sorts",
-    closeSpells: "Fermer les sorts",
-    spellBar: "Barre de sorts",
-    spellWindowHelp: "Touche un sort pour le lancer, ou choisis Assigner puis un emplacement en haut.",
-    spellAssignPrompt: (spellName) => `Choisis un emplacement en haut pour ${spellName}.`,
-    mobileSpellBarHelp: "Touche pour lancer. Maintiens une case pour la reassigner.",
-    mobileSpellAssignPrompt: (key) => `Choisis un sort appris pour la case ${key}.`,
-    emptySpellSlot: "Emplacement de sort vide",
-    spellSlotLabel: (key, spellName) => `Emplacement ${key}: ${spellName}`,
-    clearSpellSlot: (key) => `Vider l'emplacement de sort ${key}`,
-    learnedSpells: "Sorts appris",
-    castSpell: "Lancer",
-    assignSpell: "Assigner",
-    clearHotkey: "Vider",
-    noLearnedSpells: "Aucun sort appris.",
-    options: "Options",
-    logout: "Quitter",
-    fullAttack: "Attaque",
-    balanced: "Equilibre",
-    fullDefense: "Defense",
-    stats: "Stats",
-    mobileMap: "Carte",
-    mobileEquipment: "Equip.",
-    mobileBackpack: "Sac",
-    mobileChat: "Chat",
-    rotateDeviceTitle: "Tourne ton telephone",
-    rotateDeviceText: "Le jeu se joue en mode paysage.",
-    nameLabel: "Nom:",
-    healthLabel: "Vie:",
-    manaLabel: "Mana:",
-    sanityLabel: "Satiete:",
-    experienceLabel: "Experience:",
-    levelLabel: "Niveau:",
-    magicLabel: "Magie:",
-    fistLabel: "Combat a mains nues:",
-    swordLabel: "Epee:",
-    maceLabel: "Masse:",
-    axeLabel: "Hache:",
-    distanceLabel: "Distance:",
-    shieldingLabel: "Bouclier:",
-    xpRemaining: (amount) => `${amount} XP avant le prochain niveau.`,
-    characterSaved: "Personnage sauvegarde.",
-    characterSaveFailed: "Impossible de sauvegarder le personnage.",
-    currentCharacterSaveFailed: "Impossible de sauvegarder le personnage actuel.",
-    cannotPlaceItem: "Tu ne peux pas placer cet objet la.",
-    notEnoughCapacity: "Tu n'as pas assez de capacite.",
-    pvpUnavailable: "Le PVP n'est pas encore disponible.",
-    cannotPourPotion: "Tu ne peux pas vider cette potion la.",
-    exhausted: "Tu es epuise.",
-    splitStack: "Separer la pile",
-    splitAmount: "Quantite",
-    splitConfirm: "Separer",
-    splitStackNeedsSpace: "Il te faut une case vide pour separer cette pile.",
-    cancel: "Annuler",
-    targetOutOfRange: "La cible est trop loin.",
-    runeBlockedByWall: "Tu ne peux pas lancer cette rune a travers un mur.",
-    alreadyFull: "Tu n'as plus faim.",
-    fullHealth: "Ta vie est deja pleine.",
-    fullMana: "Ton mana est deja plein.",
-    torchBurnedOut: "Cette torche est completement brulee.",
-    torchNeedsPlacement: "Equipe la torche ou pose-la au sol avant de l'allumer.",
-    noPath: "Aucun chemin possible.",
-    destinationTooFar: "La destination est trop loin.",
-    minimapWrongFloor: "Reviens a ton etage avant de marcher la.",
-    targetLost: "Cible perdue.",
-    arrowsRequired: "Il te faut des fleches pour utiliser cet arc.",
-    invalidCharacterName: "Utilise de 2 a 20 lettres. Les espaces, apostrophes et tirets sont permis.",
-    invalidAppearance: "Choisis une apparence.",
-    spellWrongClass: "Ta classe ne peut pas lancer ce sort.",
-    spellNotLearned: "Tu n'as pas appris ce sort.",
-    spellMagicLevelRequired: (level) => `Il te faut le niveau de magie ${level} pour lancer ce sort.`,
-    spellNotEnoughMana: "Tu n'as pas assez de mana.",
-    duplicateCharacterName: "Un personnage porte deja ce nom.",
-    characterStorageError: "Les donnees du personnage n'ont pas pu etre sauvegardees.",
-    corruptedSave: "La sauvegarde du personnage est corrompue.",
-    unsupportedSave: "Ce format de sauvegarde n'est pas supporte.",
-    characterNotFound: "Ce personnage n'existe plus.",
-    characterOperationFailed: "L'operation sur le personnage a echoue.",
-    backpackRequired: "Tu dois equiper un sac.",
-    backpackFull: "Ton sac est plein.",
-    invalidReward: "La recompense de ce coffre est mal configuree.",
-    rewardCommitFailed: "La recompense n'a pas pu etre ajoutee a ton sac.",
-    chestOpenFailed: "Tu ne peux pas ouvrir ce coffre.",
-    rewardFallback: "ta recompense",
-    questCompletionLog: (questName, rewardText) => `Quete terminee: ${questName}. Tu as recu ${rewardText}.`,
-    questCompletionFloating: (questName, rewardText) => `Quete terminee!\n${questName}\nButin: ${rewardText}`,
-    questAlreadyCompleted: (questName) => `Tu as deja termine ${questName}.`,
-    levelAdvanced: (level) => `Tu es maintenant niveau ${level}.`,
-    skillAdvanced: (skill, level) => `Ta competence ${skill} est maintenant niveau ${level}.`,
-    youSeeProperName: (name) => `Tu vois ${name}.`,
-    youSee: (article, name) => `Tu vois ${article} ${name}.`,
-    youSeeYourself: (level) => `Tu te vois. Tu es niveau ${level}.`,
-    youSeeYourselfClass: (className, level) => `Tu te vois. Tu es ${className}, niveau ${level}.`,
-    attack: "Attaque",
-    defense: "Defense",
-    itemCharges: (charges) => `Il reste ${charges} charge${charges > 1 ? "s" : ""}.`,
-    itemWeight: (weight) => `Il pese ${weight.toFixed(1)} oz.`,
-    itemsWeight: (weight) => `Ils pesent ${weight.toFixed(1)} oz.`,
-    unknownItem: "objet inconnu",
-    lootNothing: "Butin: rien.",
-    lootFromNothing: (sourceName) => `Butin de ${sourceName}: rien.`,
-    lootList: (items) => `Butin: ${items}.`,
-    lootFromList: (sourceName, items) => `Butin de ${sourceName}: ${items}.`,
-    experienceGained: (amount) => `Tu as gagne ${amount} points d'experience.`,
-    experienceGainedFrom: (amount, sourceName) => `Tu as gagne ${amount} points d'experience grace a ${sourceName}.`,
-    damageTaken: (amount, sourceName) => `Tu as recu ${amount} degats de ${sourceName}.`,
-    damageDealt: (amount, sourceName) => `Tu as inflige ${amount} degats a ${sourceName}.`,
-    tileName: "Tuile",
-    tileDescription: "Une tuile.",
-    localChannel: "Local",
-    globalChannel: "Global",
-    tradeChannel: "Echange",
-    logsChannel: "Journal",
-    npcQueue: (name, position) => `${name} te demande d'attendre. Position dans la file : ${position}.`,
-    sayNpcOption: (speech) => `Dire ${speech}`,
-    npcOptionsLabel: "Tu peux dire :",
-  },
-};
-
-const GAME_CONTENT_TEXT = {
-  fr: {
-    items: {
-      apple: { name: "Pomme", pluralName: "Pommes", desc: "Une pomme.", suffix: "une" },
-      cheese: { name: "Fromage", pluralName: "Fromages", desc: "Un morceau de fromage.", suffix: "un" },
-      box: { name: "Caisse", pluralName: "Caisses", desc: "Une grosse vieille caisse.", suffix: "une" },
-      smallBox: { name: "Petite caisse", pluralName: "Petites caisses", desc: "Une petite caisse.", suffix: "une" },
-      healthPotion: { name: "Potion de vie", pluralName: "Potions de vie", desc: "Une potion qui redonne de la vie.", suffix: "une" },
-      manaPotion: { name: "Potion de mana", pluralName: "Potions de mana", desc: "Une potion qui redonne du mana.", suffix: "une" },
-      emptyPotion: { name: "Fiole vide", pluralName: "Fioles vides", desc: "Une fiole vide.", suffix: "une" },
-      torch: { name: "Torche", pluralName: "Torches", desc: "Une torche qui eclaire les endroits sombres.", suffix: "une" },
-      ratCorpse: { name: "Cadavre de rat", pluralName: "Cadavres de rat", desc: "Un rat mort.", suffix: "un" },
-      playerCorpse: { name: "Cadavre de joueur", pluralName: "Cadavres de joueur", desc: "Un joueur mort.", suffix: "un" },
-      sword: { name: "Epee", pluralName: "Epees", desc: "Une vieille epee rouillee.", suffix: "une" },
-      mace: { name: "Masse", pluralName: "Masses", desc: "Une masse rudimentaire et peu fiable.", suffix: "une" },
-      arrow: { name: "Fleche", pluralName: "Fleches", desc: "Une fleche toute simple.", suffix: "une" },
-      bow: { name: "Arc", pluralName: "Arcs", desc: "Un arc de chasse de base.", suffix: "un" },
-      woodenShield: { name: "Bouclier de bois", pluralName: "Boucliers de bois", desc: "Un vieux bouclier de bois.", suffix: "un" },
-      ironShield: { name: "Rempart de fer", pluralName: "Remparts de fer", desc: "Un bouclier fiable forge en fer massif.", suffix: "un" },
-      azureGuardShield: { name: "Garde azur", pluralName: "Gardes azur", desc: "Un bouclier bleu porte par les sentinelles aguerries.", suffix: "un" },
-      suncrestShield: { name: "Bouclier solaire", pluralName: "Boucliers solaires", desc: "Son embleme de bronze brille comme un petit soleil.", suffix: "un" },
-      lionheartShield: { name: "Egide Coeur-de-lion", pluralName: "Egides Coeur-de-lion", desc: "Un bouclier noble marque d'un lion argente.", suffix: "une" },
-      dreadShield: { name: "Bouclier du guetteur noir", pluralName: "Boucliers du guetteur noir", desc: "Un bouclier sombre borde de vieil or.", suffix: "un" },
-      seraphShield: { name: "Egide du seraphin", pluralName: "Egides du seraphin", desc: "Un bouclier serti de joyaux en forme d'ailes repliees.", suffix: "une" },
-      groveShield: { name: "Bouclier du gardien des bois", pluralName: "Boucliers du gardien des bois", desc: "Un bouclier rond beni par une feuille ancienne.", suffix: "un" },
-      hideTrousers: { name: "Pantalon de peau brute", pluralName: "Pantalons de peau brute", desc: "Un pantalon lourd cousu dans une peau epaisse.", suffix: "un" },
-      wandererPants: { name: "Pantalon du vagabond", pluralName: "Pantalons du vagabond", desc: "Un pantalon simple fait pour les longues routes.", suffix: "un" },
-      hunterLeggings: { name: "Jambieres du chasseur", pluralName: "Jambieres du chasseur", desc: "Des jambieres souples renforcees aux genoux.", suffix: "des" },
-      chainLeggings: { name: "Jambieres de mailles", pluralName: "Jambieres de mailles", desc: "Des anneaux entrelaces protegent les jambes sans les ralentir.", suffix: "des" },
-      knightGreaves: { name: "Grevieres du chevalier", pluralName: "Grevieres du chevalier", desc: "Des grevieres d'acier polies pour la premiere ligne.", suffix: "des" },
-      sunforgedGreaves: { name: "Grevieres solaires", pluralName: "Grevieres solaires", desc: "Des grevieres dorees forgees pour un champion royal.", suffix: "des" },
-      wornBoots: { name: "Bottes usees", pluralName: "Bottes usees", desc: "De vieilles bottes qui ont traverse bien des routes boueuses.", suffix: "des" },
-      leatherBoots: { name: "Bottes de cuir", pluralName: "Bottes de cuir", desc: "Des bottes de cuir solides et confortables.", suffix: "des" },
-      ironBoots: { name: "Bottes Pas-de-fer", pluralName: "Bottes Pas-de-fer", desc: "Des bottes plaquees de fer qui frappent le sol avec autorite.", suffix: "des" },
-      steelBoots: { name: "Bottes de l'avant-garde", pluralName: "Bottes de l'avant-garde", desc: "Des bottes renforcees portees par les gardes disciplines.", suffix: "des" },
-      tidewalkerBoots: { name: "Bottes Marche-maree", pluralName: "Bottes Marche-maree", desc: "Des bottes bleues qui ne semblent jamais rester mouillees.", suffix: "des" },
-      sunforgedBoots: { name: "Bottes solaires", pluralName: "Bottes solaires", desc: "Des bottes ornees plaquees d'acier dore.", suffix: "des" },
-      leatherArmor: { name: "Armure de cuir", pluralName: "Armures de cuir", desc: "Une armure de cuir classique.", suffix: "une" },
-      studdedLeatherArmor: { name: "Manteau cloute du voyageur", pluralName: "Manteaux cloutes du voyageur", desc: "Un manteau de cuir renforce de clous metalliques.", suffix: "un" },
-      mercenaryArmor: { name: "Harnais du mercenaire", pluralName: "Harnais du mercenaire", desc: "Du cuir et du fer superposes pour une guerre sans fla-fla.", suffix: "un" },
-      steelPlate: { name: "Plastron de l'avant-garde", pluralName: "Plastrons de l'avant-garde", desc: "Un plastron d'acier sombre concu pour tenir la ligne.", suffix: "un" },
-      tideforgedArmor: { name: "Cotte forge-maree", pluralName: "Cottes forge-maree", desc: "Une cotte d'acier bleu qui bouge comme l'eau.", suffix: "une" },
-      arcanistRobe: { name: "Robe violette de l'arcaniste", pluralName: "Robes violettes de l'arcaniste", desc: "Une robe ornee tissee pour un mage experimente.", suffix: "une" },
-      grovekeeperMantle: { name: "Manteau du gardien des bois", pluralName: "Manteaux du gardien des bois", desc: "Un manteau vert mousse qui sent legerement la pluie.", suffix: "un" },
-      midnightMantle: { name: "Manteau de minuit", pluralName: "Manteaux de minuit", desc: "Un manteau bleu profond aime des voyants voyageurs.", suffix: "un" },
-      ivoryMantle: { name: "Manteau d'ivoire de l'oracle", pluralName: "Manteaux d'ivoire de l'oracle", desc: "Un manteau clair borde d'or ancien.", suffix: "un" },
-      wandererHood: { name: "Capuchon du vagabond", pluralName: "Capuchons du vagabond", desc: "Un capuchon use qui garde la poussiere loin des yeux.", suffix: "un" },
-      groveHood: { name: "Capuchon des bois", pluralName: "Capuchons des bois", desc: "Un capuchon vert porte par les gardiens silencieux de la foret.", suffix: "un" },
-      leatherCap: { name: "Coiffe de cuir cerclee", pluralName: "Coiffes de cuir cerclees", desc: "Une coiffe de cuir renforcee de bandes de fer.", suffix: "une" },
-      ironHelm: { name: "Casque de la sentinelle", pluralName: "Casques de la sentinelle", desc: "Un large casque de fer qui protege les joues.", suffix: "un" },
-      hornedSteelHelm: { name: "Casque d'acier cornu", pluralName: "Casques d'acier cornus", desc: "Un casque d'acier couronne de deux petites cornes.", suffix: "un" },
-      knightGreathelm: { name: "Grand heaume du chevalier", pluralName: "Grands heaumes du chevalier", desc: "Un heaume ferme fait pour les combats brutaux.", suffix: "un" },
-      sunforgedHelm: { name: "Heaume-couronne solaire", pluralName: "Heaumes-couronnes solaires", desc: "Un heaume dore muni d'une visiere bleue.", suffix: "un" },
-      spiderCorpse: { name: "Cadavre d'araignee", pluralName: "Cadavres d'araignee", desc: "Une araignee morte.", suffix: "un" },
-      bag: { name: "Sac", pluralName: "Sacs", desc: "Un sac de 8 cases.", suffix: "un" },
-      goldCoin: { name: "Piece d'or", pluralName: "Pieces d'or", desc: "Une piece d'or.", suffix: "une" },
-      azureCoin: { name: "Piece de platine", pluralName: "Pieces de platine", desc: "Une piece de platine qui vaut 100 pieces d'or.", suffix: "une" },
-      crystalCoin: { name: "Piece de cristal", pluralName: "Pieces de cristal", desc: "Une piece cristalline qui vaut 1 000 pieces d'or.", suffix: "une" },
-      fireRune: { name: "Rune de feu", pluralName: "Runes de feu", desc: "Une rune gravee de magie de feu.", suffix: "une" },
-    },
-    monsters: {
-      rat: { name: "Rat", desc: "Un petit rat feroce.", suffix: "un" },
-      spider: { name: "Araignee", desc: "Une araignee venimeuse.", suffix: "une" },
-    },
-    classes: {
-      noClass: { name: "Sans classe" },
-      knight: { name: "Chevalier" },
-      archer: { name: "Archer" },
-      mage: { name: "Mage" },
-      priest: { name: "Pretre" },
-    },
-    appearances: {
-      male: { label: "Garcon" },
-      female: { label: "Fille" },
-    },
-    quests: {
-      tiro_cave_spider_treasure: {
-        name: "Tresor de la caverne aux araignees",
-        description: "Tu as trouve le tresor cache dans la caverne aux araignees.",
-      },
-    },
-  },
-};
-
-const getCurrentGameLanguage = () => {
-  const language = gameOptionsUiState.values.language;
-  return SUPPORTED_GAME_LANGUAGES.has(language) ? language : DEFAULT_GAME_OPTIONS.language;
-};
-
-const getGameUiText = (textKey) => {
-  const language = getCurrentGameLanguage();
-  return GAME_UI_TEXT[language]?.[textKey] ?? GAME_UI_TEXT.en[textKey] ?? textKey;
-};
-
-const getLocalizedContentData = (contentType, contentId, fallbackData) => {
-  const language = getCurrentGameLanguage();
-  const localizedData = GAME_CONTENT_TEXT[language]?.[contentType]?.[contentId];
-  return localizedData ? { ...fallbackData, ...localizedData } : fallbackData;
-};
-
-const getLocalizedItemData = (itemId) => {
-  const itemData = getItemData(itemId);
-  return itemData ? getLocalizedContentData("items", itemId, itemData) : null;
-};
-
-const getLocalizedMonsterData = (monsterId) => {
-  const monsterData = getMonsterData(monsterId);
-  return monsterData ? getLocalizedContentData("monsters", monsterId, monsterData) : null;
-};
-
-const getLocalizedClassData = (classId) => {
-  const classData = playerClassesDatabase[classId];
-  return classData ? getLocalizedContentData("classes", classId, classData) : null;
-};
-
-const getLocalizedQuestData = (questId) => {
-  const questData = getQuestData(questId);
-  return questData ? getLocalizedContentData("quests", questId, questData) : null;
-};
-
-const getLocalizedItemName = (itemId, quantity = 1) => {
-  const itemData = getLocalizedItemData(itemId);
-  if (!itemData) {
-    return itemId;
-  }
-  if (quantity > 1) {
-    return itemData.pluralName ?? `${itemData.name}s`;
-  }
-  return itemData.name;
-};
-
-const getLocalizedSkillName = (skillKey) => {
-  const textKeyBySkill = {
-    magic: "magicLabel",
-    fist: "fistLabel",
-    sword: "swordLabel",
-    mace: "maceLabel",
-    axe: "axeLabel",
-    distance: "distanceLabel",
-    shielding: "shieldingLabel",
-  };
-  const label = getGameUiText(textKeyBySkill[skillKey]);
-  return typeof label === "string" ? label.replace(":", "").toLowerCase() : skillKey;
 };
 
 const refreshLocalizedWorldLabels = () => {
@@ -9863,37 +5376,12 @@ const consumeOneChargeFromRune = (item, source) => {
   refreshItemUiAfterDrag();
   return true;
 };
-/* ---------- ITEM USE - COOLDOWN ---------- */
-const getUseCooldownGroup = (useData) => {
-  if (!useData.cooldownGroup) {
-    return null;
-  }
-  return useData.cooldownGroup;
-};
-
-const isUseCooldownReady = (cooldownGroup) => {
-  if (cooldownGroup === null) {
-    return true;
-  }
-
-  return nextUseCooldown[cooldownGroup] <= Date.now();
-};
 
 const startUseCooldown = (cooldownGroup) => {
-  if (cooldownGroup === null) {
+  if (!beginUseCooldown(cooldownGroup)) {
     return;
   }
-  nextUseCooldown[cooldownGroup] = useCooldown[cooldownGroup] + Date.now();
   updateItemCooldownOverlays(Date.now());
-};
-
-const getUseCooldownRemainingRatio = (cooldownGroup, now) => {
-  const cooldownDuration = useCooldown[cooldownGroup];
-  const cooldownEndTime = nextUseCooldown[cooldownGroup];
-  if (!Number.isFinite(cooldownDuration) || cooldownDuration <= 0 || !Number.isFinite(cooldownEndTime)) {
-    return 0;
-  }
-  return clamp((cooldownEndTime - now) / cooldownDuration, 0, 1);
 };
 
 const updateItemCooldownOverlayElement = (element, now) => {
@@ -10656,7 +6144,7 @@ const bindCombatModeButtons = () => {
 /* ---------- UI - STATS JOUEUR ---------- */
 const refreshPlayerVitalsUi = () => {
   updatePlayerStats();
-  hpRefresh();
+  refreshPlayerHpBar();
 };
 
 const playerStatsUi = {
@@ -10907,110 +6395,6 @@ const updatePlayerStats = () => {
   updatePlayerStatsUi();
 };
 
-const getPlayerExperienceProgressData = () => {
-  const experience = playerState.experience;
-  const level = getLevelFromExperience(experience);
-  const currentLevelExperienceRequired = getExperienceRequiredForLevel(level);
-  const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
-  const experienceInCurrentLevel = getExperienceProgressForLevel(experience, level);
-  const experienceNeededForNextLevel = getExperienceRequiredForNextLevel(experience, level);
-  const totalLevelExperience = nextLevelExperienceRequired - currentLevelExperienceRequired;
-  let progressRatio = 0;
-  if (totalLevelExperience > 0) {
-    progressRatio = clamp(experienceInCurrentLevel / totalLevelExperience, 0, 1);
-  }
-  return {
-    experience,
-    level,
-    currentLevelExperienceRequired,
-    nextLevelExperienceRequired,
-    experienceInCurrentLevel,
-    experienceNeededForNextLevel,
-    totalLevelExperience,
-    progressRatio,
-  };
-};
-
-const getExperienceRequiredForLevel = (level) => {
-  if (!Number.isFinite(level)) {
-    return 0;
-  }
-  return Math.floor(80 * level + 8 * level ** 2 + 12 * level ** 1.5);
-};
-
-const getLevelFromExperience = (experience) => {
-  if (!Number.isFinite(experience)) {
-    return 0;
-  }
-  let level = 0;
-  while (getExperienceRequiredForLevel(level + 1) <= experience) {
-    level++;
-  }
-  return level;
-};
-
-const getExperienceProgressForLevel = (experience, level) => {
-  if (!Number.isFinite(level) || !Number.isFinite(experience)) {
-    return 0;
-  }
-  const currentLevelExperienceRequired = getExperienceRequiredForLevel(level);
-  return experience - currentLevelExperienceRequired;
-};
-
-const getExperienceRequiredForNextLevel = (experience, level) => {
-  if (!Number.isFinite(level) || !Number.isFinite(experience)) {
-    return 0;
-  }
-  const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
-  return nextLevelExperienceRequired - experience;
-};
-
-const getSkillExperienceRequiredForLevel = (skillLevel) => {
-  if (!Number.isFinite(skillLevel)) {
-    return 0;
-  }
-  return Math.floor(80 * skillLevel + 8 * skillLevel ** 2 + 12 * skillLevel ** 1.5);
-};
-
-const getSkillLevelFromExperience = (skillExperience, baseLevel = 0) => {
-  if (!Number.isFinite(skillExperience)) {
-    return 0;
-  }
-  let level = baseLevel;
-  while (getSkillExperienceRequiredForLevel(level + 1) <= skillExperience) {
-    level++;
-  }
-  return level;
-};
-
-const getSkillProgressData = (skillKey) => {
-  const skill = playerState.skills[skillKey] || null;
-  if (!skill) {
-    return null;
-  }
-  const experience = skill.experience;
-  const level = getSkillLevelFromExperience(experience);
-  const currentLevelExperienceRequired = getSkillExperienceRequiredForLevel(level);
-  const nextLevelExperienceRequired = getSkillExperienceRequiredForLevel(level + 1);
-  const experienceInCurrentLevel = experience - currentLevelExperienceRequired;
-  const experienceNeededForNextLevel = nextLevelExperienceRequired - experience;
-  const totalLevelExperience = nextLevelExperienceRequired - currentLevelExperienceRequired;
-  let progressRatio = 0;
-  if (totalLevelExperience > 0) {
-    progressRatio = clamp(experienceInCurrentLevel / totalLevelExperience, 0, 1);
-  }
-  return {
-    experience,
-    level,
-    currentLevelExperienceRequired,
-    nextLevelExperienceRequired,
-    experienceInCurrentLevel,
-    experienceNeededForNextLevel,
-    totalLevelExperience,
-    progressRatio,
-  };
-};
-
 const updatePlayerSkillLevel = (skillKey) => {
   if (!skillKey || !(skillKey in playerState.skills)) {
     return;
@@ -11036,17 +6420,6 @@ const applyExperienceToPlayerSkill = (skillKey, experienceAmount) => {
   }
   playerState.skills[skillKey].experience += experienceAmount;
   updatePlayerSkillLevel(skillKey);
-};
-
-const applyPlayerCurrentVitalLevelUpGains = (previousMaxHp, previousMaxMana) => {
-  if (!Number.isFinite(previousMaxHp) || !Number.isFinite(previousMaxMana)) {
-    return;
-  }
-
-  const hpGain = Math.max(playerState.maxHp - previousMaxHp, 0);
-  const manaGain = Math.max(playerState.maxMana - previousMaxMana, 0);
-  playerState.hp = Math.min(playerState.hp + hpGain, playerState.maxHp);
-  playerState.mana = Math.min(playerState.mana + manaGain, playerState.maxMana);
 };
 
 const updatePlayerExperience = () => {
@@ -11181,7 +6554,7 @@ const syncMobilePlayerHud = () => {
 };
 
 const syncMobileTargetHud = () => {
-  const monster = selectedMonsterUid === null ? null : (monstersByUid.get(selectedMonsterUid) ?? null);
+  const monster = combatTargetState.monsterUid === null ? null : (monstersByUid.get(combatTargetState.monsterUid) ?? null);
   if (!monster || monster.z !== playerState.z) {
     mobileTargetHud?.toggleAttribute("hidden", true);
     return;
@@ -11259,16 +6632,16 @@ const showGameStatusMessage = (text, durationMs = 2500) => {
     return false;
   }
 
-  if (gameStatusMessageTimeoutId !== null) {
-    clearTimeout(gameStatusMessageTimeoutId);
+  if (uiTimingState.gameStatusMessageTimeoutId !== null) {
+    clearTimeout(uiTimingState.gameStatusMessageTimeoutId);
   }
 
   gameStatusMessage.textContent = text;
   gameStatusMessage.classList.add("game-status-message-visible");
-  gameStatusMessageTimeoutId = setTimeout(() => {
+  uiTimingState.gameStatusMessageTimeoutId = setTimeout(() => {
     gameStatusMessage.textContent = "";
     gameStatusMessage.classList.remove("game-status-message-visible");
-    gameStatusMessageTimeoutId = null;
+    uiTimingState.gameStatusMessageTimeoutId = null;
   }, durationMs);
   return true;
 };
@@ -11631,7 +7004,7 @@ const showFloatingTextAboveMonster = (monster, text, type) => {
 };
 
 const showFloatingTextAbovePlayer = (text, type) => {
-  const playerTextElement = playerRenderRefs.floatingText;
+  const playerTextElement = getPlayerFloatingTextElement();
   if (!playerTextElement) {
     return;
   }
@@ -11962,7 +7335,7 @@ const updateMobileJoystickFromPointer = (clientX, clientY) => {
 };
 
 const cancelPlayerNavigationForManualMovement = () => {
-  const shouldCancelFollow = playerNavigationState.followEnabled && selectedMonsterUid !== null;
+  const shouldCancelFollow = playerNavigationState.followEnabled && combatTargetState.monsterUid !== null;
   if (shouldCancelFollow) {
     playerNavigationState.followEnabled = false;
   }
@@ -12012,7 +7385,7 @@ const updateMovement = (now) => {
     return;
   }
 
-  if (now < nextPlayerMoveTime) {
+  if (now < gameplayTimingState.nextPlayerMoveTime) {
     return;
   }
 
@@ -12038,7 +7411,7 @@ const updateMovement = (now) => {
   const baseMoveCooldown = getPlayerMoveCooldown();
   const moveDuration = baseMoveCooldown * animationMultiplier;
   const moveCooldown = baseMoveCooldown * movementCost;
-  nextPlayerMoveTime = now + moveCooldown;
+  gameplayTimingState.nextPlayerMoveTime = now + moveCooldown;
 
   const canMove =
     canMoveTo(playerState.x, playerState.y, nextX, nextY) &&
@@ -12952,140 +8325,6 @@ mobilePanelCloseButton?.addEventListener("click", (event) => {
 mobileGameLayoutMedia.addEventListener("change", syncMobileGameLayout);
 syncMobileGameLayout();
 
-//#endregion  -----  INPUTS - CLAVIER / SOURIS / RESIZE  -----
-
-/* ==================================================== */
-//#region     -----  PATHFINDING A*  -----
-/* ==================================================== */
-/* ---------- PATHFINDING - POSITIONS ET VOISINS ---------- */
-
-const getTilePosition = (source) => {
-  const col = source.x / TILE_SIZE;
-  const row = source.y / TILE_SIZE;
-  return { col, row };
-};
-
-const getWorldPosition = (tile) => {
-  const tileX = tile.col * TILE_SIZE;
-  const tileY = tile.row * TILE_SIZE;
-  return { tileX, tileY };
-};
-
-const getTileMovementCost = (fromTile, toTile) => {
-  if (
-    !Number.isInteger(fromTile?.col) ||
-    !Number.isInteger(fromTile?.row) ||
-    !Number.isInteger(toTile?.col) ||
-    !Number.isInteger(toTile?.row)
-  ) {
-    return null;
-  }
-
-  const distanceCol = Math.abs(toTile.col - fromTile.col);
-  const distanceRow = Math.abs(toTile.row - fromTile.row);
-
-  if (distanceCol > 1 || distanceRow > 1 || (distanceCol === 0 && distanceRow === 0)) {
-    return null;
-  }
-
-  return distanceCol === 1 && distanceRow === 1 ? 3 : 1;
-};
-
-const getTileMovementAnimationMultiplier = (fromTile, toTile) => {
-  const movementCost = getTileMovementCost(fromTile, toTile);
-
-  if (movementCost === null) {
-    return null;
-  }
-
-  return movementCost === 3 ? 2 : 1;
-};
-
-const getCardinalDirectionFromTileDelta = (deltaCol, deltaRow, fallbackDirection = "down") => {
-  if (deltaCol > 0) {
-    return "right";
-  }
-
-  if (deltaCol < 0) {
-    return "left";
-  }
-
-  if (deltaRow < 0) {
-    return "up";
-  }
-
-  if (deltaRow > 0) {
-    return "down";
-  }
-
-  return fallbackDirection;
-};
-
-const getPathMovementCost = (startTile, path) => {
-  if (!startTile || !Array.isArray(path)) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  let totalCost = 0;
-  let previousTile = startTile;
-
-  for (const tile of path) {
-    const movementCost = getTileMovementCost(previousTile, tile);
-
-    if (movementCost === null) {
-      return Number.POSITIVE_INFINITY;
-    }
-
-    totalCost += movementCost;
-    previousTile = tile;
-  }
-
-  return totalCost;
-};
-
-const hasLineOfSightBetweenTiles = (worldMap, fromTile, toTile) => {
-  if (
-    !(worldMap?.chunksByKey instanceof Map) ||
-    !Number.isInteger(fromTile?.col) ||
-    !Number.isInteger(fromTile?.row) ||
-    !Number.isInteger(toTile?.col) ||
-    !Number.isInteger(toTile?.row)
-  ) {
-    return false;
-  }
-
-  let currentCol = fromTile.col;
-  let currentRow = fromTile.row;
-
-  const distanceCol = Math.abs(toTile.col - currentCol);
-  const distanceRow = -Math.abs(toTile.row - currentRow);
-
-  const stepCol = currentCol < toTile.col ? 1 : -1;
-  const stepRow = currentRow < toTile.row ? 1 : -1;
-
-  let error = distanceCol + distanceRow;
-
-  while (currentCol !== toTile.col || currentRow !== toTile.row) {
-    const doubledError = error * 2;
-
-    if (doubledError >= distanceRow) {
-      error += distanceRow;
-      currentCol += stepCol;
-    }
-
-    if (doubledError <= distanceCol) {
-      error += distanceCol;
-      currentRow += stepRow;
-    }
-
-    if (isTiledCollisionAtTile(worldMap, currentCol, currentRow)) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
 const hasPlayerLineOfSightToEntity = (entity) => {
   return hasPlayerLineOfSightToWorldPosition(entity);
 };
@@ -13099,19 +8338,6 @@ const hasPlayerLineOfSightToWorldPosition = (worldPosition) => {
     return false;
   }
   return hasLineOfSightBetweenTiles(worldMap, getTilePosition(playerState), getTilePosition(worldPosition));
-};
-
-const getNeighbors = (tile) => {
-  return [
-    { row: tile.row - 1, col: tile.col - 1 },
-    { row: tile.row - 1, col: tile.col },
-    { row: tile.row - 1, col: tile.col + 1 },
-    { row: tile.row, col: tile.col - 1 },
-    { row: tile.row, col: tile.col + 1 },
-    { row: tile.row + 1, col: tile.col - 1 },
-    { row: tile.row + 1, col: tile.col },
-    { row: tile.row + 1, col: tile.col + 1 },
-  ];
 };
 
 const isTilePathTraversable = (row, col, fromTile = null) => {
@@ -13163,250 +8389,10 @@ const isTileOccupiedByCreature = (row, col) => {
   return isMonsterAtPosition(tileX, tileY) || isNpcAtPosition(tileX, tileY) || isPlayerAtPosition(tileX, tileY);
 };
 
-const isWalkableTile = (row, col, fromTile = null) => {
-  return isTilePathTraversable(row, col, fromTile) && !isTileOccupiedByCreature(row, col);
-};
-
-const getDistance = (a, b) => {
-  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
-};
-
-const getDistanceToClosestTile = (tile, targetTiles) => {
-  if (
-    !Number.isInteger(tile?.col) ||
-    !Number.isInteger(tile?.row) ||
-    !Array.isArray(targetTiles) ||
-    targetTiles.length === 0
-  ) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  let closestDistance = Number.POSITIVE_INFINITY;
-
-  for (const targetTile of targetTiles) {
-    if (!Number.isInteger(targetTile?.col) || !Number.isInteger(targetTile?.row)) {
-      continue;
-    }
-
-    closestDistance = Math.min(closestDistance, getDistance(tile, targetTile));
-  }
-
-  return closestDistance;
-};
-
-const getNeighborNodes = (tile, targetTiles, avoidCreatures = false) => {
-  const neighborsTile = getNeighbors(tile);
-  const neighborsNodes = [];
-  neighborsTile.forEach((neighbors) => {
-    const canTraverse = avoidCreatures
-      ? isWalkableTile(neighbors.row, neighbors.col, tile)
-      : isTilePathTraversable(neighbors.row, neighbors.col, tile);
-
-    if (canTraverse) {
-      const movementCost = getTileMovementCost(tile, neighbors);
-
-      if (movementCost === null) {
-        return;
-      }
-
-      const g = tile.g + movementCost;
-      const h = getDistanceToClosestTile(neighbors, targetTiles);
-      const node = {
-        row: neighbors.row,
-        col: neighbors.col,
-        g: g,
-        h: h,
-        f: g + h,
-        parent: tile,
-      };
-      neighborsNodes.push(node);
-    }
-  });
-  return neighborsNodes;
-};
-
-/* ---------- PATHFINDING - NODES ET MIN-HEAP ---------- */
-
-const isPathNodeHigherPriority = (nodeA, nodeB) => {
-  if (nodeA.f !== nodeB.f) {
-    return nodeA.f < nodeB.f;
-  }
-  if (nodeA.h !== nodeB.h) {
-    return nodeA.h < nodeB.h;
-  }
-  return nodeA.openOrder < nodeB.openOrder;
-};
-
-const pushPathNodeToMinHeap = (minHeap, node) => {
-  minHeap.push(node);
-  let nodeIndex = minHeap.length - 1;
-
-  while (nodeIndex > 0) {
-    const parentIndex = Math.floor((nodeIndex - 1) / 2);
-    if (!isPathNodeHigherPriority(minHeap[nodeIndex], minHeap[parentIndex])) {
-      break;
-    }
-
-    [minHeap[nodeIndex], minHeap[parentIndex]] = [minHeap[parentIndex], minHeap[nodeIndex]];
-    nodeIndex = parentIndex;
-  }
-};
-
-const popPathNodeFromMinHeap = (minHeap) => {
-  if (minHeap.length === 0) {
-    return null;
-  }
-
-  const smallestNode = minHeap[0];
-  const lastNode = minHeap.pop();
-
-  if (minHeap.length === 0) {
-    return smallestNode;
-  }
-
-  minHeap[0] = lastNode;
-  let nodeIndex = 0;
-
-  while (true) {
-    const leftChildIndex = nodeIndex * 2 + 1;
-    const rightChildIndex = nodeIndex * 2 + 2;
-    let smallestIndex = nodeIndex;
-
-    if (leftChildIndex < minHeap.length && isPathNodeHigherPriority(minHeap[leftChildIndex], minHeap[smallestIndex])) {
-      smallestIndex = leftChildIndex;
-    }
-
-    if (
-      rightChildIndex < minHeap.length &&
-      isPathNodeHigherPriority(minHeap[rightChildIndex], minHeap[smallestIndex])
-    ) {
-      smallestIndex = rightChildIndex;
-    }
-
-    if (smallestIndex === nodeIndex) {
-      break;
-    }
-
-    [minHeap[nodeIndex], minHeap[smallestIndex]] = [minHeap[smallestIndex], minHeap[nodeIndex]];
-    nodeIndex = smallestIndex;
-  }
-
-  return smallestNode;
-};
-
-const buildPath = (currentNode) => {
-  let path = [];
-  while (currentNode.parent) {
-    path.push(currentNode);
-    currentNode = currentNode.parent;
-  }
-  return path.reverse();
-};
-
-/* ---------- PATHFINDING - DESTINATION ET CHEMIN ---------- */
-
-const getPathTraversableAdjacentTiles = (tile) => {
-  if (!Number.isInteger(tile?.col) || !Number.isInteger(tile?.row)) {
-    return [];
-  }
-
-  return getNeighbors(tile).filter((neighbor) => {
-    return isTilePathTraversable(neighbor.row, neighbor.col);
-  });
-};
-
-const findPathToAnyTarget = (
-  startTile,
-  targetTiles,
-  avoidCreatures = false,
-  maxPathCost = Number.POSITIVE_INFINITY,
-) => {
-  if (
-    !Number.isInteger(startTile?.col) ||
-    !Number.isInteger(startTile?.row) ||
-    !Array.isArray(targetTiles) ||
-    targetTiles.length === 0 ||
-    (maxPathCost !== Number.POSITIVE_INFINITY && (!Number.isFinite(maxPathCost) || maxPathCost < 0))
-  ) {
-    return [];
-  }
-
-  const validTargetTiles = targetTiles.filter((targetTile) => {
-    return Number.isInteger(targetTile?.col) && Number.isInteger(targetTile?.row);
-  });
-
-  if (validTargetTiles.length === 0) {
-    return [];
-  }
-
-  const targetKeys = new Set(
-    validTargetTiles.map((targetTile) => {
-      return `${targetTile.col}:${targetTile.row}`;
-    }),
-  );
-  const openHeap = [];
-  const closedTileKeys = new Set();
-  const bestGByTileKey = new Map();
-  let nextOpenOrder = 0;
-  const g = 0;
-  const h = getDistanceToClosestTile(startTile, validTargetTiles);
-  const startNode = {
-    row: startTile.row,
-    col: startTile.col,
-    g: g,
-    h: h,
-    f: g + h,
-    parent: null,
-    openOrder: nextOpenOrder++,
-  };
-  const startNodeKey = `${startNode.col}:${startNode.row}`;
-  bestGByTileKey.set(startNodeKey, startNode.g);
-  pushPathNodeToMinHeap(openHeap, startNode);
-
-  while (openHeap.length > 0) {
-    const currentNode = popPathNodeFromMinHeap(openHeap);
-    if (!currentNode) {
-      break;
-    }
-
-    const currentNodeKey = `${currentNode.col}:${currentNode.row}`;
-
-    if (closedTileKeys.has(currentNodeKey) || currentNode.g !== bestGByTileKey.get(currentNodeKey)) {
-      continue;
-    }
-
-    closedTileKeys.add(currentNodeKey);
-
-    if (targetKeys.has(currentNodeKey)) {
-      return buildPath(currentNode);
-    } else {
-      const neighborsNodes = getNeighborNodes(currentNode, validTargetTiles, avoidCreatures);
-      neighborsNodes.forEach((node) => {
-        if (node.g > maxPathCost) {
-          return;
-        }
-        const nodeKey = `${node.col}:${node.row}`;
-        if (closedTileKeys.has(nodeKey)) {
-          return;
-        }
-
-        const bestKnownG = bestGByTileKey.get(nodeKey);
-        if (bestKnownG !== undefined && node.g >= bestKnownG) {
-          return;
-        }
-
-        bestGByTileKey.set(nodeKey, node.g);
-        node.openOrder = nextOpenOrder++;
-        pushPathNodeToMinHeap(openHeap, node);
-      });
-    }
-  }
-  return [];
-};
-
-const findPath = (startTile, targetTile, avoidCreatures = false, maxPathCost = Number.POSITIVE_INFINITY) => {
-  return findPathToAnyTarget(startTile, [targetTile], avoidCreatures, maxPathCost);
-};
+const { findPath, findPathToAnyTarget, getPathTraversableAdjacentTiles, isWalkableTile } = createPathfinder({
+  isTilePathTraversable,
+  isTileOccupiedByCreature,
+});
 
 /* ---------- PATHFINDING - NAVIGATION JOUEUR ---------- */
 
@@ -13585,7 +8571,7 @@ const finishMinimapPan = (event, shouldNavigate) => {
 };
 
 const startPlayerFollowNavigation = () => {
-  if (!playerNavigationState.followEnabled || selectedMonsterUid === null) {
+  if (!playerNavigationState.followEnabled || combatTargetState.monsterUid === null) {
     return false;
   }
 
@@ -13606,7 +8592,7 @@ const updatePlayerFollowNavigation = (now, forceRefresh = false) => {
     return;
   }
 
-  const monster = findMonsterByUid(selectedMonsterUid);
+  const monster = findMonsterByUid(combatTargetState.monsterUid);
   if (!monster || monster.hp <= 0 || monster.z !== playerState.z) {
     loseSelectedMonsterTarget();
     return;
@@ -13969,114 +8955,6 @@ const handleBlockedPlayerNavigationStep = (now) => {
     refreshPlayerActionNavigationPath(now);
   }
 };
-//#endregion  -----  PATHFINDING A*  -----
-
-/* ==================================================== */
-//#region     -----  NPCS  -----
-/* ==================================================== */
-/* ---------- NPCS - DONNEES ET CREATION ---------- */
-
-const getNpcData = (npcId) => {
-  return npcsDatabase[npcId] ?? null;
-};
-
-const getNpcTextureUrlsById = () => {
-  const textureUrlsById = {};
-  for (const npcData of Object.values(npcsDatabase)) {
-    textureUrlsById[npcData.npcId] = npcData.textureUrl;
-  }
-  return textureUrlsById;
-};
-
-const getNpcTileKey = (x, y, z) => {
-  return getWorldTileStackKey(x, y, z);
-};
-
-const createNpcFromWorldObject = (worldNpcObject) => {
-  const npcId = worldNpcObject?.properties?.npcId;
-  const npcData = getNpcData(npcId);
-  if (!npcData || !Number.isInteger(worldNpcObject?.col) || !Number.isInteger(worldNpcObject?.row)) {
-    return null;
-  }
-
-  const x = worldNpcObject.col * TILE_SIZE;
-  const y = worldNpcObject.row * TILE_SIZE;
-  return {
-    uid: `npc:${worldNpcObject.z}:${worldNpcObject.tiledObjectId}:${npcId}`,
-    npcId,
-    name: npcData.name,
-    x,
-    y,
-    z: worldNpcObject.z,
-    spawnX: x,
-    spawnY: y,
-    oldX: x,
-    oldY: y,
-    renderX: x,
-    renderY: y,
-    moveStartTime: 0,
-    moveDuration: 0,
-    nextWanderAt: Date.now() + getRandomInt(npcData.movement.intervalMinMs, npcData.movement.intervalMaxMs),
-    hp: npcData.maxHp,
-    direction: npcData.direction,
-    walkFrame: 1,
-  };
-};
-
-const createNpcConversationState = () => {
-  return {
-    activePlayerUid: null,
-    waitingPlayerUids: [],
-    queuedReplies: [],
-    pendingAction: null,
-    activeMenu: null,
-    activeShopCategory: null,
-    nextReplyAt: 0,
-    lastInteractionAt: 0,
-  };
-};
-
-const addNpcToState = (npc) => {
-  const tileKey = getNpcTileKey(npc?.x, npc?.y, npc?.z);
-  if (!npc || typeof npc.uid !== "string" || !tileKey || npcsByUid.has(npc.uid) || npcUidByTileKey.has(tileKey)) {
-    return false;
-  }
-  npcsByUid.set(npc.uid, npc);
-  npcUidByTileKey.set(tileKey, npc.uid);
-  npcConversationStatesByUid.set(npc.uid, createNpcConversationState());
-  return true;
-};
-
-const initializeNpcsForWorldMaps = (worldMapsByZ) => {
-  if (!(worldMapsByZ instanceof Map)) {
-    return false;
-  }
-
-  for (const worldMap of worldMapsByZ.values()) {
-    for (const chunk of worldMap.chunksByKey.values()) {
-      if (!Array.isArray(chunk.npcs)) {
-        continue;
-      }
-      for (const worldNpcObject of chunk.npcs) {
-        const npc = createNpcFromWorldObject(worldNpcObject);
-        if (npc) {
-          addNpcToState(npc);
-        }
-      }
-    }
-  }
-  return true;
-};
-
-const findNpcAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
-  const tileKey = getNpcTileKey(x, y, z);
-  const npcUid = tileKey ? npcUidByTileKey.get(tileKey) : null;
-  return npcUid ? (npcsByUid.get(npcUid) ?? null) : null;
-};
-
-const isNpcAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
-  return findNpcAtPosition(x, y, z) !== null;
-};
 
 const findNpcAtClientPosition = (clientX, clientY) => {
   if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
@@ -14188,11 +9066,15 @@ const removeNpcRender = (npcUid) => {
 
 const syncVisibleNpcRendersAroundPlayer = () => {
   const visibleNpcUids = new Set();
-  for (const npc of npcsByUid.values()) {
-    if (isNpcInsideVisibleChunkRange(npc)) {
-      visibleNpcUids.add(npc.uid);
-      renderNpc(npc);
-    }
+  const visibleNpcs = getNpcsInChunkRadius(
+    playerState.x,
+    playerState.y,
+    pixiWorldRenderState.currentZ,
+    pixiWorldRenderState.visibleRadiusChunks,
+  );
+  for (const npc of visibleNpcs) {
+    visibleNpcUids.add(npc.uid);
+    renderNpc(npc);
   }
   for (const npcUid of npcElementsByUid.keys()) {
     if (!visibleNpcUids.has(npcUid)) {
@@ -14230,20 +9112,6 @@ const updateNpcDirectionToPlayer = (npc) => {
 };
 
 /* ---------- NPCS - MOUVEMENT ---------- */
-
-const moveNpcInTileIndex = (npc, nextX, nextY) => {
-  const currentTileKey = getNpcTileKey(npc?.x, npc?.y, npc?.z);
-  const nextTileKey = getNpcTileKey(nextX, nextY, npc?.z);
-  if (!currentTileKey || !nextTileKey || (npcUidByTileKey.has(nextTileKey) && nextTileKey !== currentTileKey)) {
-    return false;
-  }
-
-  if (npcUidByTileKey.get(currentTileKey) === npc.uid) {
-    npcUidByTileKey.delete(currentTileKey);
-  }
-  npcUidByTileKey.set(nextTileKey, npc.uid);
-  return true;
-};
 
 const getRandomNpcWanderTile = (npc) => {
   const npcData = getNpcData(npc?.npcId);
@@ -14297,7 +9165,13 @@ const moveNpcToTile = (npc, tile, now) => {
 };
 
 const updateNpcMovement = (now) => {
-  for (const npc of npcsByUid.values()) {
+  const nearbyNpcs = getNpcsInChunkRadius(
+    playerState.x,
+    playerState.y,
+    playerState.z,
+    pixiWorldRenderState.visibleRadiusChunks,
+  );
+  for (const npc of nearbyNpcs) {
     const npcData = getNpcData(npc.npcId);
     const conversationState = npcConversationStatesByUid.get(npc.uid);
     if (
@@ -14526,7 +9400,8 @@ const startNpcConversation = (npc, player, now) => {
 };
 
 const findNpcTalkingToPlayer = (player) => {
-  for (const npc of npcsByUid.values()) {
+  const nearbyNpcs = getNpcsInChunkRadius(player.x, player.y, player.z, 1);
+  for (const npc of nearbyNpcs) {
     const state = npcConversationStatesByUid.get(npc.uid);
     if (state?.activePlayerUid === player.uid && isPlayerWithinNpcTalkRange(player, npc)) {
       return npc;
@@ -14538,7 +9413,8 @@ const findNpcTalkingToPlayer = (player) => {
 const findNearestNpcInTalkRange = (player) => {
   let nearestNpc = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const npc of npcsByUid.values()) {
+  const nearbyNpcs = getNpcsInChunkRadius(player.x, player.y, player.z, 1);
+  for (const npc of nearbyNpcs) {
     if (!isPlayerWithinNpcTalkRange(player, npc)) {
       continue;
     }
@@ -15319,49 +10195,9 @@ const monsterHpRefresh = (monster) => {
     monsterHp.style.width = `${(monster.hp / monsterData.maxHp) * 100}%`;
     monsterHp.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
   }
-  if (monster?.uid === selectedMonsterUid) {
+  if (monster?.uid === combatTargetState.monsterUid) {
     syncMobileTargetHud();
   }
-};
-
-const createMonster = (monsterId, x, y, z) => {
-  const monsterData = getMonsterData(monsterId);
-  if (!monsterData) {
-    return null;
-  }
-  const monster = {
-    monsterId,
-    x,
-    y,
-    z,
-    oldX: x,
-    oldY: y,
-    renderX: x,
-    renderY: y,
-    moveStartTime: 0,
-    moveDuration: 0,
-    hp: monsterData.maxHp,
-    uid: nextMonsterUid++,
-    nextMoveTime: 0,
-    nextAttackTime: 0,
-    path: [],
-    nextPathRefreshTime: 0,
-    direction: "down",
-    walkFrame: 1,
-    state: MONSTER_AI_STATE.idle,
-    isAwake: false,
-    targetUid: null,
-    roamCenterX: x,
-    roamCenterY: y,
-    badPathStartedAt: null,
-    nextCombatDanceAt: 0,
-    nextBlockedChaseMoveAt: 0,
-    nextDynamicPathRefreshTime: 0,
-    nextAggroCheckAt: 0,
-    nextWanderAt: 0,
-    wanderStepsRemaining: 0,
-  };
-  return monster;
 };
 
 const renderMonsters = (monstersList) => {
@@ -15436,120 +10272,8 @@ const updateMonsterSprite = (monster) => {
     x: monster.renderX + monsterData.drawOffsetX,
     y: monster.renderY + monsterData.drawOffsetY - surfaceOffsetY,
     zIndex: getWorldRenderZIndex(getEntityRenderSortY(monster), WORLD_RENDER_LAYER_CREATURE),
-    selected: monster.uid === selectedMonsterUid,
+    selected: monster.uid === combatTargetState.monsterUid,
   });
-};
-
-/* ---------- MONSTRES - COLLECTE DES DONNEES ---------- */
-
-const getMonsterData = (monsterId) => {
-  if (monstersDatabase[monsterId]) {
-    return monstersDatabase[monsterId];
-  } else {
-    console.error(`monsterId: ${monsterId} n'existe pas dans monstersDatabase`);
-    return null;
-  }
-};
-
-/* ---------- MONSTRES - DETECTION ET DIRECTION ---------- */
-
-const getMonsterTileKey = (x, y, z) => {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isInteger(z)) {
-    return null;
-  }
-
-  return getWorldTileStackKey(x, y, z);
-};
-
-const getMonsterChunkKeyByGridPosition = (chunkX, chunkY, z) => {
-  if (!Number.isInteger(chunkX) || !Number.isInteger(chunkY) || !Number.isInteger(z)) {
-    return null;
-  }
-
-  return `${z}:${chunkX}:${chunkY}`;
-};
-
-const getMonsterChunkKey = (x, y, z) => {
-  if (!Number.isInteger(z)) {
-    return null;
-  }
-
-  const chunkPosition = getChunkPositionFromWorldPosition(x, y);
-  if (!chunkPosition) {
-    return null;
-  }
-
-  return getMonsterChunkKeyByGridPosition(chunkPosition.chunkX, chunkPosition.chunkY, z);
-};
-
-const addMonsterUidToChunkIndex = (monster) => {
-  const chunkKey = getMonsterChunkKey(monster?.x, monster?.y, monster?.z);
-  if (!Number.isInteger(monster?.uid) || !chunkKey) {
-    return false;
-  }
-
-  let monsterUids = monsterUidsByChunkKey.get(chunkKey);
-  if (!monsterUids) {
-    monsterUids = new Set();
-    monsterUidsByChunkKey.set(chunkKey, monsterUids);
-  }
-
-  monsterUids.add(monster.uid);
-  return true;
-};
-
-const removeMonsterUidFromChunkIndex = (monster) => {
-  const chunkKey = getMonsterChunkKey(monster?.x, monster?.y, monster?.z);
-  if (!Number.isInteger(monster?.uid) || !chunkKey) {
-    return false;
-  }
-
-  const monsterUids = monsterUidsByChunkKey.get(chunkKey);
-  if (!monsterUids || !monsterUids.delete(monster.uid)) {
-    return false;
-  }
-
-  if (monsterUids.size === 0) {
-    monsterUidsByChunkKey.delete(chunkKey);
-  }
-
-  return true;
-};
-
-const getMonstersInChunkRadius = (x, y, z, radiusChunks) => {
-  if (!Number.isInteger(z) || !Number.isInteger(radiusChunks) || radiusChunks < 0) {
-    return [];
-  }
-
-  const centerChunk = getChunkPositionFromWorldPosition(x, y);
-  if (!centerChunk) {
-    return [];
-  }
-
-  const nearbyMonsters = [];
-
-  for (let chunkY = centerChunk.chunkY - radiusChunks; chunkY <= centerChunk.chunkY + radiusChunks; chunkY++) {
-    for (let chunkX = centerChunk.chunkX - radiusChunks; chunkX <= centerChunk.chunkX + radiusChunks; chunkX++) {
-      const chunkKey = getMonsterChunkKeyByGridPosition(chunkX, chunkY, z);
-      const monsterUids = monsterUidsByChunkKey.get(chunkKey);
-      if (!monsterUids) {
-        continue;
-      }
-
-      for (const monsterUid of monsterUids) {
-        const monster = monstersByUid.get(monsterUid);
-        if (monster) {
-          nearbyMonsters.push(monster);
-        }
-      }
-    }
-  }
-
-  return nearbyMonsters;
-};
-
-const getActiveMonstersAroundPlayer = () => {
-  return getMonstersInChunkRadius(playerState.x, playerState.y, playerState.z, MONSTER_AI_CHUNK_RADIUS);
 };
 
 const isMonsterInsideVisibleChunkRange = (monster) => {
@@ -15600,91 +10324,21 @@ const syncVisibleMonsterRendersAroundPlayer = () => {
   renderMonsters(visibleMonsters);
 };
 
-const addMonsterToState = (monster) => {
-  const tileKey = getMonsterTileKey(monster?.x, monster?.y, monster?.z);
-  const chunkKey = getMonsterChunkKey(monster?.x, monster?.y, monster?.z);
-
-  if (
-    !Number.isInteger(monster?.uid) ||
-    !tileKey ||
-    !chunkKey ||
-    monstersByUid.has(monster.uid) ||
-    monsterUidByTileKey.has(tileKey)
-  ) {
-    return false;
-  }
-
-  monstersByUid.set(monster.uid, monster);
-  monsterUidByTileKey.set(tileKey, monster.uid);
-  addMonsterUidToChunkIndex(monster);
-  return true;
-};
-
-const moveMonsterInTileIndex = (monster, nextX, nextY) => {
-  const currentTileKey = getMonsterTileKey(monster?.x, monster?.y, monster?.z);
-  const nextTileKey = getMonsterTileKey(nextX, nextY, monster?.z);
-  const currentChunkKey = getMonsterChunkKey(monster?.x, monster?.y, monster?.z);
-  const nextChunkKey = getMonsterChunkKey(nextX, nextY, monster?.z);
-
-  if (!currentTileKey || !nextTileKey || !currentChunkKey || !nextChunkKey) {
-    return false;
-  }
-
-  const occupyingMonsterUid = monsterUidByTileKey.get(nextTileKey);
-  if (occupyingMonsterUid !== undefined && occupyingMonsterUid !== monster.uid) {
-    return false;
-  }
-
-  if (monsterUidByTileKey.get(currentTileKey) === monster.uid) {
-    monsterUidByTileKey.delete(currentTileKey);
-  }
-
-  monsterUidByTileKey.set(nextTileKey, monster.uid);
-
-  if (currentChunkKey !== nextChunkKey) {
-    removeMonsterUidFromChunkIndex(monster);
-
-    let nextChunkMonsterUids = monsterUidsByChunkKey.get(nextChunkKey);
-    if (!nextChunkMonsterUids) {
-      nextChunkMonsterUids = new Set();
-      monsterUidsByChunkKey.set(nextChunkKey, nextChunkMonsterUids);
-    }
-    nextChunkMonsterUids.add(monster.uid);
-  }
-
-  return true;
-};
-
-const isMonsterAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
-  const tileKey = getMonsterTileKey(x, y, z);
-  return tileKey ? monsterUidByTileKey.has(tileKey) : false;
-};
-
-const findMonsterAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
-  const tileKey = getMonsterTileKey(x, y, z);
-  if (!tileKey) {
-    return null;
-  }
-
-  const monsterUid = monsterUidByTileKey.get(tileKey);
-  return monsterUid === undefined ? null : (monstersByUid.get(monsterUid) ?? null);
-};
-
 const selectMonster = (monster) => {
   if (!monster) {
     return;
   }
   clearMonsterSelection();
-  if (monster.uid === selectedMonsterUid) {
-    selectedMonsterUid = null;
+  if (monster.uid === combatTargetState.monsterUid) {
+    combatTargetState.monsterUid = null;
     if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
       stopPlayerNavigation();
     }
     syncMobileTargetHud();
     return;
   }
-  selectedMonsterUid = monster.uid;
-  selectMonsterElement(selectedMonsterUid);
+  combatTargetState.monsterUid = monster.uid;
+  selectMonsterElement(combatTargetState.monsterUid);
   syncMobileTargetHud();
   if (playerNavigationState.followEnabled) {
     startPlayerFollowNavigation();
@@ -15692,11 +10346,11 @@ const selectMonster = (monster) => {
 };
 
 const loseSelectedMonsterTarget = () => {
-  if (selectedMonsterUid === null) {
+  if (combatTargetState.monsterUid === null) {
     return false;
   }
 
-  selectedMonsterUid = null;
+  combatTargetState.monsterUid = null;
   clearMonsterSelection();
   syncMobileTargetHud();
 
@@ -15716,43 +10370,6 @@ const loseSelectedMonsterTarget = () => {
 
 const isPlayerAtPosition = (x, y, z = pixiWorldRenderState.currentZ) => {
   return playerState.z === z && playerState.x === x && playerState.y === y;
-};
-
-const updateMonsterDirectionToPlayer = (monster) => {
-  const monsterTile = getTilePosition(monster);
-  const playerTile = getTilePosition(playerState);
-  const diffCol = playerTile.col - monsterTile.col;
-  const diffRow = playerTile.row - monsterTile.row;
-  if (Math.abs(diffCol) > Math.abs(diffRow)) {
-    if (diffCol > 0) {
-      monster.direction = "right";
-    } else if (diffCol < 0) {
-      monster.direction = "left";
-    }
-  } else {
-    if (diffRow > 0) {
-      monster.direction = "down";
-    } else if (diffRow < 0) {
-      monster.direction = "up";
-    }
-  }
-};
-
-const removeMonsterFromState = (monsterUid) => {
-  const monster = monstersByUid.get(monsterUid);
-  if (!monster) {
-    return false;
-  }
-
-  const tileKey = getMonsterTileKey(monster.x, monster.y, monster.z);
-  if (tileKey && monsterUidByTileKey.get(tileKey) === monsterUid) {
-    monsterUidByTileKey.delete(tileKey);
-  }
-
-  removeMonsterUidFromChunkIndex(monster);
-  monstersByUid.delete(monsterUid);
-
-  return true;
 };
 
 const removeMonsterRender = (monsterUid) => {
@@ -15813,11 +10430,11 @@ const isMonsterDead = (monster) => {
   return monster.hp <= 0;
 };
 const clearSelectedMonsterIfNeeded = (monster) => {
-  if (!monster || selectedMonsterUid === null) {
+  if (!monster || combatTargetState.monsterUid === null) {
     return;
   }
-  if (selectedMonsterUid === monster.uid) {
-    selectedMonsterUid = null;
+  if (combatTargetState.monsterUid === monster.uid) {
+    combatTargetState.monsterUid = null;
     if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
       stopPlayerNavigation();
     }
@@ -15870,13 +10487,6 @@ const setMonsterDeadState = (monster) => {
   monster.hp = 0;
 };
 
-const findNearMonster = (monsterList) => {
-  const nearMonsterIndex = monsterList.findIndex((monster) => {
-    return isNearPlayer(monster);
-  });
-  return nearMonsterIndex;
-};
-
 const findMonsterByUid = (monsterUid) => {
   return monstersByUid.get(monsterUid) ?? null;
 };
@@ -15894,11 +10504,6 @@ const findMonsterElement = (monsterUid) => {
 const findMonsterHpElement = (monsterUid) => {
   const refs = monsterElementsByUid.get(monsterUid) ?? null;
   return refs?.hp ?? null;
-};
-
-const findMonsterFloatingTextElement = (monsterUid) => {
-  const refs = monsterElementsByUid.get(monsterUid) ?? null;
-  return refs?.floatingText ?? null;
 };
 
 const generateMonsterLoot = (monsterData) => {
@@ -16559,7 +11164,7 @@ const getMonsterChaseRepositionTile = (monster) => {
   const closestTiles = [];
 
   for (const tile of preferredTiles) {
-    const distance = getDistance(tile, targetTile);
+    const distance = getManhattanDistance(tile, targetTile);
 
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -16833,7 +11438,7 @@ const updateRenderWorldItems = () => {
 const updateRenderCreatures = () => {
   updateMonsterPosition();
   updateNpcPosition();
-  updatePlayerPosition();
+  updatePlayerPosition(camera);
 };
 
 const updateRenderLight = () => {
@@ -16882,37 +11487,6 @@ const updateWorldRender = () => {
   }
   updateRenderLight();
 };
-//#endregion  -----  RENDER - POSITIONS VISUELLES ET UPDATE MONDE  -----
-
-/* ==================================================== */
-//#region     -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
-/* ==================================================== */
-/* ---------- COMBAT - STATS ET FORMULES ---------- */
-const getCombatModeData = () => {
-  const combatMode = playerState.combatMode;
-  if (combatMode === "fullAttack") {
-    return {
-      attackMultiplier: 1.15,
-      defenseMultiplier: 0.8,
-      blockChanceMultiplier: 0.8,
-      armorMultiplier: 0.95,
-    };
-  } else if (combatMode === "fullDefense") {
-    return {
-      attackMultiplier: 0.85,
-      defenseMultiplier: 1.35,
-      blockChanceMultiplier: 1.3,
-      armorMultiplier: 1.1,
-    };
-  } else {
-    return {
-      attackMultiplier: 1,
-      defenseMultiplier: 1,
-      blockChanceMultiplier: 1,
-      armorMultiplier: 1,
-    };
-  }
-};
 
 const getSkillExperienceGainFromAttack = (attackResult, skillKey, now) => {
   if (!skillKey || !(skillKey in playerState.skills) || !attackResult || !attackResult.didHit) {
@@ -16940,42 +11514,6 @@ const applySkillExperienceFromAttack = (attackResult, skillKey, now) => {
   }
   applyExperienceToPlayerSkill(skillKey, finalExp);
   return true;
-};
-
-const getEquippedWeapon = () => {
-  if (!playerState.equipment.weapon) {
-    return null;
-  }
-  const weapon = playerState.equipment.weapon;
-  return weapon;
-};
-
-const getEquippedWeaponCombatData = () => {
-  const weapon = getEquippedWeapon();
-  if (!weapon) {
-    return null;
-  }
-  const weaponData = getItemData(weapon.itemId);
-  if (!weaponData || !weaponData.combat) {
-    return null;
-  }
-  return weaponData.combat;
-};
-
-const getPlayerWeaponAttack = () => {
-  const weaponCombatData = getEquippedWeaponCombatData();
-  if (!weaponCombatData || !Number.isFinite(weaponCombatData.attack)) {
-    return playerState.damage;
-  }
-  return weaponCombatData.attack;
-};
-
-const getPlayerAttackRange = () => {
-  const weaponCombatData = getEquippedWeaponCombatData();
-  if (!Number.isFinite(weaponCombatData?.range) || weaponCombatData.range < 1) {
-    return 1;
-  }
-  return weaponCombatData.range;
 };
 
 const consumePlayerWeaponAmmunition = () => {
@@ -17029,179 +11567,6 @@ const playPlayerWeaponProjectile = (target) => {
     rotationOffset: Math.PI / 4,
     speedPixelsPerSecond: 1000,
   });
-};
-
-const getPlayerAttackSkillKey = () => {
-  const combatData = getEquippedWeaponCombatData();
-
-  if (combatData && combatData.skillName) {
-    return combatData.skillName;
-  } else {
-    return "fist";
-  }
-};
-
-const getPlayerAttackSkill = () => {
-  const skillKey = getPlayerAttackSkillKey();
-  if (!(skillKey in playerState.skills)) {
-    return 1;
-  }
-  return playerState.skills[skillKey].level;
-};
-
-const getPlayerTotalArmor = () => {
-  let totalArmor = 0;
-  for (const equipment of Object.values(playerState.equipment)) {
-    if (!equipment) {
-      continue;
-    }
-    const itemData = getItemData(equipment.itemId);
-    if (!itemData || !itemData.combat || !Number.isFinite(itemData.combat.armor)) {
-      continue;
-    }
-    totalArmor += itemData.combat.armor;
-  }
-  return totalArmor;
-};
-
-const getPlayerShieldDefense = () => {
-  if (playerState.equipment.shield) {
-    const shield = playerState.equipment.shield;
-    const shieldData = getItemData(shield.itemId);
-    if (shieldData && shieldData.combat && Number.isFinite(shieldData.combat.shieldDefense)) {
-      return shieldData.combat.shieldDefense;
-    }
-  } else {
-    if (playerState.equipment.weapon) {
-      const weaponCombatData = getEquippedWeaponCombatData();
-      if (weaponCombatData && Number.isFinite(weaponCombatData.defense)) {
-        return weaponCombatData.defense;
-      }
-    }
-  }
-  return 0;
-};
-
-const getTargetCombatData = (target) => {
-  if (!target || !target.monsterId) {
-    return {
-      attack: 0,
-      armor: 0,
-      defense: 0,
-      blockChance: 0,
-      hitChance: 0,
-    };
-  }
-  const monsterData = getMonsterData(target.monsterId);
-  if (!monsterData || !monsterData.combat) {
-    return {
-      attack: 0,
-      armor: 0,
-      defense: 0,
-      blockChance: 0,
-      hitChance: 0,
-    };
-  }
-  const targetCombatData = monsterData.combat;
-  return targetCombatData;
-};
-
-const calculatePlayerAttackResult = (target) => {
-  const combatModeData = getCombatModeData();
-  const targetCombatData = getTargetCombatData(target);
-  const weaponCombatData = getEquippedWeaponCombatData();
-  const weaponAttack = getPlayerWeaponAttack();
-  const attackSkill = getPlayerAttackSkill();
-  const hitChanceModifier = Number.isFinite(weaponCombatData?.hitChanceModifier)
-    ? weaponCombatData.hitChanceModifier
-    : 0;
-  const baseHitChance = 65;
-  //!!!!! HIT CHANCE !!!!
-  let hitChance =
-    baseHitChance +
-    attackSkill * 1.2 +
-    weaponAttack * 1.5 -
-    targetCombatData.defense * 2 -
-    targetCombatData.blockChance * 0.5;
-  hitChance *= combatModeData.attackMultiplier;
-  hitChance += hitChanceModifier;
-  hitChance = clamp(hitChance, 35, 95);
-  //!!!!! ROLL POUR MISS !!!!
-  const roll = getRandomInt(1, 100);
-  if (roll > hitChance)
-    return {
-      didHit: false,
-      wasBlocked: false,
-      finalDamage: 0,
-      text: "miss",
-      textType: "miss",
-    };
-  //!!!!! RAW DAMAGE !!!!
-  const levelBonus = playerState.level * 0.2;
-  let minDamage = levelBonus + attackSkill * 0.25 + weaponAttack * 0.4;
-  let maxDamage = levelBonus + attackSkill * 0.6 + weaponAttack * 1.1;
-  minDamage = minDamage * combatModeData.attackMultiplier;
-  maxDamage = maxDamage * combatModeData.attackMultiplier;
-  const rawDamage = getRandomFloat(minDamage, maxDamage);
-  //!!!!! BLOCK CHANCE && DAMAGE REDUCTION !!!!
-  let wasBlocked = false;
-  let blockChance = targetCombatData.blockChance;
-  blockChance = clamp(blockChance, 0, 60);
-  let defenseReduction = 0;
-  const rollBlock = getRandomInt(1, 100);
-  if (rollBlock <= blockChance) {
-    wasBlocked = true;
-    defenseReduction = targetCombatData.defense * getRandomFloat(0.6, 1.2);
-  }
-  const damageAfterDefense = rawDamage - defenseReduction;
-  if (damageAfterDefense <= 0) {
-    return {
-      didHit: true,
-      wasBlocked,
-      finalDamage: 0,
-      text: "block",
-      textType: "block",
-    };
-  }
-  //!!!!! ARMOR REDUCTION !!!!
-  const armorReductionMin = targetCombatData.armor * 0.45;
-  const armorReductionMax = targetCombatData.armor * 0.9;
-  const armorReduction = getRandomFloat(armorReductionMin, armorReductionMax);
-  const damageAfterArmor = damageAfterDefense - armorReduction;
-  const finalDamage = Math.max(0, Math.floor(damageAfterArmor));
-  if (finalDamage <= 0) {
-    return {
-      didHit: true,
-      wasBlocked,
-      finalDamage: 0,
-      text: "0",
-      textType: "absorb",
-    };
-  } else {
-    return {
-      didHit: true,
-      wasBlocked,
-      rawDamage,
-      defenseReduction,
-      armorReduction,
-      finalDamage,
-      text: finalDamage,
-      textType: "damage",
-    };
-  }
-};
-
-const hasPlayerBlockSource = () => {
-  const shield = playerState.equipment.shield;
-  const shieldData = shield ? getItemData(shield.itemId) : null;
-  if (Number.isFinite(shieldData?.combat?.shieldDefense)) {
-    return true;
-  }
-  const weaponCombatData = getEquippedWeaponCombatData();
-  if (weaponCombatData && Number.isFinite(weaponCombatData.defense)) {
-    return true;
-  }
-  return false;
 };
 
 const calculateDamageTakenByPlayer = (attackerCombatData, now) => {
@@ -17285,20 +11650,6 @@ const calculateDamageTakenByPlayer = (attackerCombatData, now) => {
       textType: "damage",
     };
   }
-};
-
-const calculateRuneAttackResult = (useData) => {
-  const runeDamage = useData.damage;
-  const magicLevel = playerState.skills.magic.level;
-  const level = playerState.level;
-  const minDamage = runeDamage + magicLevel * 0.35 + level * 0.1;
-  const maxDamage = runeDamage + magicLevel * 0.85 + level * 0.25;
-  const finalDamage = Math.floor(getRandomFloat(minDamage, maxDamage));
-  return {
-    finalDamage,
-    text: finalDamage,
-    textType: "fire",
-  };
 };
 
 /* ---------- COMBAT - SORTS ---------- */
@@ -17599,7 +11950,7 @@ const playPlayerAttackResultSfx = (attackResult) => {
 const attackMonster = (monster, now) => {
   if (
     playerNavigationState.followEnabled &&
-    selectedMonsterUid === monster.uid &&
+    combatTargetState.monsterUid === monster.uid &&
     playerNavigationState.mode !== PLAYER_NAVIGATION_MODE.follow
   ) {
     startPlayerFollowNavigation();
@@ -17624,10 +11975,10 @@ const attackMonster = (monster, now) => {
 };
 
 const updateCombat = (now) => {
-  if (selectedMonsterUid === null) {
+  if (combatTargetState.monsterUid === null) {
     return;
   }
-  const monster = findMonsterByUid(selectedMonsterUid);
+  const monster = findMonsterByUid(combatTargetState.monsterUid);
   if (!monster) {
     loseSelectedMonsterTarget();
     return;
@@ -17635,7 +11986,7 @@ const updateCombat = (now) => {
   if (!isNearPlayer(monster, getPlayerAttackRange())) {
     return;
   }
-  if (now < nextPlayerAttackTime) {
+  if (now < gameplayTimingState.nextPlayerAttackTime) {
     return;
   }
   const weaponCombatData = getEquippedWeaponCombatData();
@@ -17643,7 +11994,7 @@ const updateCombat = (now) => {
     return;
   }
   attackMonster(monster, now);
-  nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+  gameplayTimingState.nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
 
@@ -18195,28 +12546,6 @@ document.addEventListener("mouseup", (e) => {
 
   cancelItemDrag();
 });
-//#endregion  -----  EVENEMENTS DU JEU  -----
-
-/* ==================================================== */
-//#region     -----  BOUCLE DE JEU  -----
-/* ==================================================== */
-/* ---------- BOUCLE DE JEU - UPDATE PRINCIPAL ---------- */
-const updateFpsCounter = (frameTime) => {
-  if (!fpsCounter) {
-    return;
-  }
-  fpsFrameCount++;
-  if (fpsLastUpdateTime === 0) {
-    fpsLastUpdateTime = frameTime;
-  }
-  const elapsed = frameTime - fpsLastUpdateTime;
-  if (elapsed >= 1000) {
-    currentFps = Math.round((fpsFrameCount * 1000) / elapsed);
-    fpsCounter.textContent = `FPS: ${currentFps}`;
-    fpsFrameCount = 0;
-    fpsLastUpdateTime = frameTime;
-  }
-};
 
 const updateGameLogic = (now) => {
   updatePlayerFollowNavigation(now);
@@ -18240,32 +12569,6 @@ const renderGameFrame = (now) => {
   updateRenderPositions(now);
   updateWorldRender();
   updateItemCooldownOverlays(now);
-};
-
-const gameLoop = (frameTime) => {
-  if (previousFrameTime === null) {
-    previousFrameTime = frameTime;
-    requestAnimationFrame(gameLoop);
-    return;
-  }
-  const frameDelta = Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS);
-  previousFrameTime = frameTime;
-  accumulatedLogicTime += frameDelta;
-  const logicNow = Date.now();
-  let logicSteps = 0;
-  while (accumulatedLogicTime >= GAME_LOGIC_STEP_MS && logicSteps < MAX_LOGIC_STEPS_PER_FRAME) {
-    updateGameLogic(logicNow);
-    accumulatedLogicTime -= GAME_LOGIC_STEP_MS;
-    logicSteps++;
-  }
-  if (logicSteps >= MAX_LOGIC_STEPS_PER_FRAME) {
-    accumulatedLogicTime = 0;
-  }
-  const renderNow = Date.now();
-  renderGameFrame(renderNow);
-  renderPixiFrame(frameTime);
-  updateFpsCounter(frameTime);
-  requestAnimationFrame(gameLoop);
 };
 
 //#endregion  -----  BOUCLE DE JEU  -----
@@ -18362,8 +12665,12 @@ const startGame = async () => {
     startGameMusic();
     startCharacterAutosave();
     if (!gameRuntimeState.isLoopRunning) {
-      gameRuntimeState.isLoopRunning = true;
-      requestAnimationFrame(gameLoop);
+      gameRuntimeState.isLoopRunning = startFixedStepGameLoop({
+        updateGameLogic,
+        renderGameFrame,
+        renderPixiFrame,
+        fpsCounter,
+      });
     }
     return true;
   } finally {
@@ -18378,9 +12685,3 @@ if (shouldEnterGameImmediately) {
 
 //#endregion  -----  INITIALISATION DU JEU  -----
 
-/* ==================================================== */
-//#region     -----  DEBUG CONSOLE  -----
-/* ==================================================== */
-/* ---------- DEBUG - LOGS TEMPORAIRES ---------- */
-
-//#endregion  -----  DEBUG CONSOLE  -----

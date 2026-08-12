@@ -2,19 +2,17 @@
 //#region     -----  IMPORTS  -----
 /* ==================================================== */
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
 //#region     -----  CONFIG  -----
 /* ==================================================== */
-const CHUNK_SIZE_TILES = 16;
-const TILE_SIZE = 64;
 const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MAP_TOP_LAYER_NAME = "top";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
-const PLAYER_APPEARANCE_LAYER_ORDER = ["legs", "boots", "body", "head"];
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, -1],
   [0, -1],
