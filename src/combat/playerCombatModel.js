@@ -32,43 +32,45 @@ const EMPTY_TARGET_COMBAT_DATA = Object.freeze({
   hitChance: 0,
 });
 
-export const getCombatModeData = () => {
-  return COMBAT_MODE_DATA[playerState.combatMode] ?? COMBAT_MODE_DATA.balanced;
+const DEFAULT_COMBAT_RANDOM = Object.freeze({ getFloat: getRandomFloat, getInt: getRandomInt });
+
+export const getCombatModeData = (player = playerState) => {
+  return COMBAT_MODE_DATA[player?.combatMode] ?? COMBAT_MODE_DATA.balanced;
 };
 
-export const getEquippedWeapon = () => {
-  return playerState.equipment.weapon ?? null;
+export const getEquippedWeapon = (player = playerState) => {
+  return player?.equipment?.weapon ?? null;
 };
 
-export const getEquippedWeaponCombatData = () => {
-  const weapon = getEquippedWeapon();
+export const getEquippedWeaponCombatData = (player = playerState) => {
+  const weapon = getEquippedWeapon(player);
   if (!weapon) {
     return null;
   }
   return getItemData(weapon.itemId)?.combat ?? null;
 };
 
-export const getPlayerWeaponAttack = () => {
-  const weaponCombatData = getEquippedWeaponCombatData();
-  return Number.isFinite(weaponCombatData?.attack) ? weaponCombatData.attack : playerState.damage;
+export const getPlayerWeaponAttack = (player = playerState) => {
+  const weaponCombatData = getEquippedWeaponCombatData(player);
+  return Number.isFinite(weaponCombatData?.attack) ? weaponCombatData.attack : player?.damage ?? 0;
 };
 
-export const getPlayerAttackRange = () => {
-  const range = getEquippedWeaponCombatData()?.range;
+export const getPlayerAttackRange = (player = playerState) => {
+  const range = getEquippedWeaponCombatData(player)?.range;
   return Number.isFinite(range) && range >= 1 ? range : 1;
 };
 
-export const getPlayerAttackSkillKey = () => {
-  return getEquippedWeaponCombatData()?.skillName ?? "fist";
+export const getPlayerAttackSkillKey = (player = playerState) => {
+  return getEquippedWeaponCombatData(player)?.skillName ?? "fist";
 };
 
-export const getPlayerAttackSkill = () => {
-  return playerState.skills[getPlayerAttackSkillKey()]?.level ?? 1;
+export const getPlayerAttackSkill = (player = playerState) => {
+  return player?.skills?.[getPlayerAttackSkillKey(player)]?.level ?? 1;
 };
 
-export const getPlayerTotalArmor = () => {
+export const getPlayerTotalArmor = (player = playerState) => {
   let totalArmor = 0;
-  for (const equipment of Object.values(playerState.equipment)) {
+  for (const equipment of Object.values(player?.equipment ?? {})) {
     const armor = equipment ? getItemData(equipment.itemId)?.combat?.armor : null;
     if (Number.isFinite(armor)) {
       totalArmor += armor;
@@ -77,13 +79,13 @@ export const getPlayerTotalArmor = () => {
   return totalArmor;
 };
 
-export const getPlayerShieldDefense = () => {
-  const shield = playerState.equipment.shield;
+export const getPlayerShieldDefense = (player = playerState) => {
+  const shield = player?.equipment?.shield;
   const shieldDefense = shield ? getItemData(shield.itemId)?.combat?.shieldDefense : null;
   if (Number.isFinite(shieldDefense)) {
     return shieldDefense;
   }
-  const weaponDefense = getEquippedWeaponCombatData()?.defense;
+  const weaponDefense = getEquippedWeaponCombatData(player)?.defense;
   return !shield && Number.isFinite(weaponDefense) ? weaponDefense : 0;
 };
 
@@ -94,12 +96,14 @@ export const getTargetCombatData = (target) => {
   return getMonsterData(target.monsterId)?.combat ?? EMPTY_TARGET_COMBAT_DATA;
 };
 
-export const calculatePlayerAttackResult = (target) => {
-  const combatModeData = getCombatModeData();
+export const calculatePlayerAttackResult = (target, player = playerState, random = DEFAULT_COMBAT_RANDOM) => {
+  const randomInt = typeof random?.getInt === "function" ? random.getInt : getRandomInt;
+  const randomFloat = typeof random?.getFloat === "function" ? random.getFloat : getRandomFloat;
+  const combatModeData = getCombatModeData(player);
   const targetCombatData = getTargetCombatData(target);
-  const weaponCombatData = getEquippedWeaponCombatData();
-  const weaponAttack = getPlayerWeaponAttack();
-  const attackSkill = getPlayerAttackSkill();
+  const weaponCombatData = getEquippedWeaponCombatData(player);
+  const weaponAttack = getPlayerWeaponAttack(player);
+  const attackSkill = getPlayerAttackSkill(player);
   const hitChanceModifier = Number.isFinite(weaponCombatData?.hitChanceModifier)
     ? weaponCombatData.hitChanceModifier
     : 0;
@@ -111,23 +115,23 @@ export const calculatePlayerAttackResult = (target) => {
     targetCombatData.blockChance * 0.5;
   hitChance = clamp(hitChance * combatModeData.attackMultiplier + hitChanceModifier, 35, 95);
 
-  if (getRandomInt(1, 100) > hitChance) {
+  if (randomInt(1, 100) > hitChance) {
     return { didHit: false, wasBlocked: false, finalDamage: 0, text: "miss", textType: "miss" };
   }
 
-  const levelBonus = playerState.level * 0.2;
+  const levelBonus = (player?.level ?? 0) * 0.2;
   const minDamage = (levelBonus + attackSkill * 0.25 + weaponAttack * 0.4) * combatModeData.attackMultiplier;
   const maxDamage = (levelBonus + attackSkill * 0.6 + weaponAttack * 1.1) * combatModeData.attackMultiplier;
-  const rawDamage = getRandomFloat(minDamage, maxDamage);
+  const rawDamage = randomFloat(minDamage, maxDamage);
   const blockChance = clamp(targetCombatData.blockChance, 0, 60);
-  const wasBlocked = getRandomInt(1, 100) <= blockChance;
-  const defenseReduction = wasBlocked ? targetCombatData.defense * getRandomFloat(0.6, 1.2) : 0;
+  const wasBlocked = randomInt(1, 100) <= blockChance;
+  const defenseReduction = wasBlocked ? targetCombatData.defense * randomFloat(0.6, 1.2) : 0;
   const damageAfterDefense = rawDamage - defenseReduction;
   if (damageAfterDefense <= 0) {
     return { didHit: true, wasBlocked, finalDamage: 0, text: "block", textType: "block" };
   }
 
-  const armorReduction = getRandomFloat(targetCombatData.armor * 0.45, targetCombatData.armor * 0.9);
+  const armorReduction = randomFloat(targetCombatData.armor * 0.45, targetCombatData.armor * 0.9);
   const finalDamage = Math.max(0, Math.floor(damageAfterDefense - armorReduction));
   if (finalDamage <= 0) {
     return { didHit: true, wasBlocked, finalDamage: 0, text: "0", textType: "absorb" };
@@ -144,20 +148,68 @@ export const calculatePlayerAttackResult = (target) => {
   };
 };
 
-export const hasPlayerBlockSource = () => {
-  const shield = playerState.equipment.shield;
+export const hasPlayerBlockSource = (player = playerState) => {
+  const shield = player?.equipment?.shield;
   if (Number.isFinite(shield ? getItemData(shield.itemId)?.combat?.shieldDefense : null)) {
     return true;
   }
-  return Number.isFinite(getEquippedWeaponCombatData()?.defense);
+  return Number.isFinite(getEquippedWeaponCombatData(player)?.defense);
 };
 
-export const calculateRuneAttackResult = (useData) => {
+export const calculateRuneAttackResult = (useData, player = playerState, random = DEFAULT_COMBAT_RANDOM) => {
   const runeDamage = useData.damage;
-  const magicLevel = playerState.skills.magic.level;
-  const level = playerState.level;
+  const magicLevel = player?.skills?.magic?.level ?? 0;
+  const level = player?.level ?? 0;
   const minDamage = runeDamage + magicLevel * 0.35 + level * 0.1;
   const maxDamage = runeDamage + magicLevel * 0.85 + level * 0.25;
-  const finalDamage = Math.floor(getRandomFloat(minDamage, maxDamage));
+  const randomFloat = typeof random?.getFloat === "function" ? random.getFloat : getRandomFloat;
+  const finalDamage = Math.floor(randomFloat(minDamage, maxDamage));
   return { finalDamage, text: finalDamage, textType: "fire" };
+};
+
+export const calculateMonsterAttackResult = (attackerCombatData, player = playerState, random = DEFAULT_COMBAT_RANDOM) => {
+  const randomInt = typeof random?.getInt === "function" ? random.getInt : getRandomInt;
+  const randomFloat = typeof random?.getFloat === "function" ? random.getFloat : getRandomFloat;
+  const combatModeData = getCombatModeData(player);
+  const playerArmor = getPlayerTotalArmor(player);
+  const playerShieldDefense = getPlayerShieldDefense(player);
+  const shielding = player?.skills?.shielding?.level ?? 0;
+  const hitChance = clamp((attackerCombatData?.hitChance ?? 0) - shielding * 0.4, 35, 95);
+  if (randomInt(1, 100) > hitChance) {
+    return { didHit: false, wasBlocked: false, finalDamage: 0, text: "miss", textType: "miss" };
+  }
+
+  const rawDamage = randomFloat(1, Math.max(attackerCombatData?.attack ?? 1, 1));
+  const blockChance = clamp(
+    (10 + shielding * 0.8 + playerShieldDefense * 0.8) * combatModeData.blockChanceMultiplier,
+    5,
+    70,
+  );
+  const hasBlockSource = hasPlayerBlockSource(player);
+  const wasBlocked = hasBlockSource && randomInt(1, 100) <= blockChance;
+  const defensePower = wasBlocked
+    ? (playerShieldDefense * 0.25 + shielding * 0.1) * combatModeData.defenseMultiplier
+    : 0;
+  const defenseReduction = wasBlocked ? randomFloat(defensePower * 0.6, defensePower * 1.2) : 0;
+  const damageAfterDefense = rawDamage - defenseReduction;
+  if (damageAfterDefense <= 0) {
+    return { didHit: true, wasBlocked, finalDamage: 0, text: "block", textType: "block" };
+  }
+
+  const armorPower = playerArmor * combatModeData.armorMultiplier;
+  const armorReduction = randomFloat(armorPower * 0.2, armorPower * 0.45);
+  const finalDamage = Math.max(0, Math.floor(damageAfterDefense - armorReduction));
+  if (finalDamage <= 0) {
+    return { didHit: true, wasBlocked, finalDamage: 0, text: "0", textType: "absorb" };
+  }
+  return {
+    didHit: true,
+    wasBlocked,
+    rawDamage,
+    defenseReduction,
+    armorReduction,
+    finalDamage,
+    text: finalDamage,
+    textType: "damage",
+  };
 };

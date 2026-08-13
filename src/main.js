@@ -106,15 +106,22 @@ import {
 import { createGameSimulation } from "./simulation/gameSimulation.js";
 import { createLocalGameTransport } from "./simulation/localGameTransport.js";
 import { createGameActionEffectRouter } from "./simulation/gameActionEffectRouter.js";
+import { createWebSocketGameTransport } from "./network/webSocketGameTransport.js";
+import { createRemoteGameStateBridge } from "./network/remoteGameStateBridge.js";
+import { createUseItemAction } from "./items/itemUseActions.js";
 import { applyDamageToPlayer } from "./combat/playerHealth.js";
+import { applyDamageToMonsterHealth } from "./combat/monsterHealth.js";
+import { applyPlayerDeathState } from "./player/playerDeath.js";
 import { createInventoryDragController } from "./inventory/inventoryDragController.js";
 import {
   createItemLocationController,
   isValidContainerSlotParent as isValidContainerSlotParentRule,
 } from "./inventory/itemLocationController.js";
+import { createInventoryMoveService } from "./inventory/inventoryMoveService.js";
 import {
   activeLitTorchesByUid,
   decayingItems,
+  groundEffectsByUid,
   monsterElementsByUid,
   monstersByUid,
   monsterSpawnDefinitionsById,
@@ -123,6 +130,7 @@ import {
   npcElementsByUid,
   npcsByUid,
   openedContainers,
+  playersByUid,
   worldItemElementsByUid,
   worldItemsByUid,
 } from "./state/worldState.js";
@@ -176,6 +184,7 @@ import {
   getWorldTileStack,
   isWorldItemTopOfTileStack,
   removeItemUidFromWorldTileStack,
+  rebuildWorldTileStacks,
 } from "./world/worldItemStacks.js";
 import { getEntityRenderSortY, getWorldRenderZIndex } from "./render/renderOrder.js";
 import { applyItemRenderPartPosition, getAtlasPath, getHpColor } from "./render/domRenderUtils.js";
@@ -238,8 +247,9 @@ import {
   getLocalizedSkillName,
 } from "./localization/gameLocalization.js";
 import {
-  addOrRefreshGroundEffect,
+  addOrRefreshGroundEffectState,
   getGroundEffectData,
+  renderGroundEffect,
   syncGroundEffectRenderForCurrentZ,
   updateGroundEffectDecay,
 } from "./world/groundEffects.js";
@@ -270,25 +280,13 @@ import { createMobileJoystickController } from "./ui/mobileJoystickController.js
 import { createQuestWindowController } from "./ui/questWindowController.js";
 import { getCurrentWorldMap } from "./world/worldRuntime.js";
 import { createMinimapController } from "./minimap/minimapController.js";
-import {
-  commitPlayerBackpackItemRemovalPlan,
-  commitPlayerCurrencyValuePlan,
-  createPlayerBackpackItemRemovalPlan,
-  createPlayerCurrencyValuePlan,
-  createPlayerGoldPaymentPlan,
-  getPlayerBankGoldAmount,
-  getPlayerCurrencyValuePlanWeightDifference,
-  getPlayerGoldAmount,
-  getRewardTableData,
-  rollbackPlayerBackpackItemRemovalPlan,
-  rollbackPlayerCurrencyValuePlan,
-  spendPlayerGold,
-} from "./inventory/inventoryTransactions.js";
+import { getRewardTableData } from "./inventory/inventoryTransactions.js";
 import {
   applyPlayerCurrentVitalLevelUpGains,
   canUseShieldingBlock,
   getLevelFromExperience,
   getPlayerClassData,
+  getPlayerClassRegenerationData,
   getPlayerExperienceProgressData,
   getSkillExperienceGainMultiplier,
   getSkillLevelFromExperience,
@@ -326,6 +324,12 @@ import {
 } from "./world/worldCoordinates.js";
 import { canStepFromTileToTile } from "./world/worldMovement.js";
 import {
+  findInteractableAtTile,
+  findTransitionAtTile,
+  isPlayerNearTiledObject as isPlayerNearTiledObjectState,
+} from "./world/tiledWorldObjects.js";
+import { applyPlayerWorldTransitionState, setPlayerWorldPositionState } from "./world/worldTransitions.js";
+import {
   createPathfinder,
   getCardinalDirectionFromTileDelta,
   getDistanceToClosestTile,
@@ -355,16 +359,32 @@ let GAME_SCALE = 1;
 const itemCooldownOverlayElements = new Set();
 let gameSimulation = null;
 let gameTransport = null;
+let gameActionEffectRouter = null;
+let remoteGameStateBridge = null;
+let unsubscribeGameTransportEffects = null;
 
 /* ---------- BASE - ETAT DRAG ---------- */
 /* ---------- BASE - SPAWN JOUEUR ---------- */
 
 /* ---------- BASE - CAMERA ET SOURIS ---------- */
 const minChatHeight = 120;
+
+const handleGameActionResult = (resultOrPromise, handler) => {
+  if (resultOrPromise && typeof resultOrPromise.then === "function") {
+    resultOrPromise.then(handler).catch(() => {
+      showGameStatusMessage("Connection unavailable.");
+    });
+    return null;
+  }
+  handler(resultOrPromise);
+  return resultOrPromise;
+};
 /* ---------- BASE - ETAT ITEM USE ---------- */
 
 
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
+const REMOTE_GAME_SERVER_URL = import.meta.env.VITE_GAME_SERVER_URL?.trim() ?? "";
+const REMOTE_GAME_AUTH_TOKEN = import.meta.env.VITE_GAME_AUTH_TOKEN?.trim() ?? "";
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 
@@ -415,72 +435,67 @@ const applyShieldingExperienceFromBlockAttempt = (now) => {
 
 /* ---------- JOUEUR - VIE ET MORT ---------- */
 
-const resetPlayerPositionToSpawn = () => {
-  if (!(pixiWorldRenderState?.worldMapsByZ instanceof Map) || !playerState?.spawn) {
-    return;
-  }
-
-  if (
-    !Number.isInteger(playerState.spawn.z) ||
-    typeof playerState.spawn.spawnId !== "string" ||
-    playerState.spawn.spawnId === ""
-  ) {
-    return;
-  }
-  const worldMap = pixiWorldRenderState.worldMapsByZ.get(playerState.spawn.z);
-  if (!worldMap) {
-    return;
-  }
-  const playerSpawn = findPlayerSpawnInWorldMap(worldMap, playerState.spawn.spawnId);
-  if (!playerSpawn) {
-    return;
-  }
-  playerState.z = playerState.spawn.z;
-  pixiWorldRenderState.currentZ = playerState.z;
-  applyPlayerSpawn(playerSpawn);
-};
-
 const updatePlayerRegeneration = (now) => {
-  if (advancePlayerRegeneration(now)) {
+  if (advancePlayerRegeneration(playerState, getPlayerClassRegenerationData(), now)) {
     refreshPlayerVitalsUi();
   }
 };
 
-const applyPlayerDeathExperiencePenalty = () => {
-  playerState.experience = Math.floor(playerState.experience * 0.9);
-  if (playerState.experience < 0) {
-    playerState.experience = 0;
-  }
-};
-
-const dropPlayerCorpse = () => {
+const createPlayerCorpse = () => {
   const bag = getEquipmentSlotItem("backpack");
-  if (bag) {
-    closeContainerAndChildren(bag);
-    playerState.equipment.backpack = null;
-    addGroundItem(createGroundItem("playerCorpse", 1, playerState.x, playerState.y, playerState.z, [bag]));
-  } else {
-    addGroundItem(createGroundItem("playerCorpse", 1, playerState.x, playerState.y, playerState.z));
+  const corpse = createGroundItem(
+    "playerCorpse",
+    1,
+    playerState.x,
+    playerState.y,
+    playerState.z,
+    bag ? [bag] : [],
+  );
+  if (!corpse || !addWorldItemToState(corpse)) {
+    return null;
   }
+  playerState.equipment.backpack = null;
+  return { corpse, droppedBackpackUid: bag?.uid ?? null };
 };
 
-const restoreHp = (creature) => {
-  if (!creature || !("hp" in creature) || !("maxHp" in creature)) {
-    return;
+const resolvePlayerDeath = () => {
+  const worldMap = pixiWorldRenderState.worldMapsByZ?.get(playerState.spawn?.z) ?? null;
+  const spawn = findPlayerSpawnInWorldMap(worldMap, playerState.spawn?.spawnId);
+  if (!spawn) {
+    return { success: false, reason: "spawn-not-found" };
   }
-  creature.hp = creature.maxHp;
+  const corpseResult = createPlayerCorpse();
+  const deathResult = applyPlayerDeathState(playerState, {
+    x: spawn.col * TILE_SIZE,
+    y: spawn.row * TILE_SIZE,
+    z: playerState.spawn.z,
+  });
+  if (!deathResult.success) {
+    return deathResult;
+  }
+  return {
+    ...deathResult,
+    events: [
+      {
+        type: "player-death-resolved",
+        corpseUid: corpseResult?.corpse.uid ?? null,
+        droppedBackpackUid: corpseResult?.droppedBackpackUid ?? null,
+      },
+    ],
+  };
 };
 
-const playerDead = () => {
-  dropPlayerCorpse();
+const handlePlayerDeathResolvedEffect = (event) => {
+  const droppedBackpack = findItemByUid(event.droppedBackpackUid);
+  if (droppedBackpack) {
+    closeContainerAndChildren(droppedBackpack);
+  }
+  const corpse = worldItemsByUid.get(event.corpseUid) ?? null;
+  if (corpse) {
+    renderGroundItems([corpse]);
+  }
   refreshItemUiAfterDrag();
-  applyPlayerDeathExperiencePenalty();
-  restoreHp(playerState);
-  resetPlayerPositionToSpawn();
-  resetAfterDeath();
-};
-
-const resetAfterDeath = () => {
+  pixiWorldRenderState.currentZ = playerState.z;
   combatTargetState.monsterUid = null;
   stopPlayerNavigation();
   cancelItemDrag();
@@ -498,6 +513,17 @@ const resetAfterDeath = () => {
   updatePlayerExperience();
   refreshPlayerVitalsUi();
   closeAllContainer();
+};
+
+const playerDead = () => {
+  const result = resolvePlayerDeath();
+  if (!result.success) {
+    return false;
+  }
+  for (const event of result.events) {
+    handlePlayerDeathResolvedEffect(event);
+  }
+  return true;
 };
 
 //#endregion  -----  PLAYER  -----
@@ -570,9 +596,11 @@ const handleTransitionContextMenu = (target) => {
     requestedAt: Date.now(),
   });
   const result = gameTransport.send(action);
-  if (result?.success) {
-    playGameSfx(GAME_SFX.ropeUse);
-  }
+  handleGameActionResult(result, (resolvedResult) => {
+    if (resolvedResult?.success) {
+      playGameSfx(GAME_SFX.ropeUse);
+    }
+  });
   return true;
 };
 
@@ -592,50 +620,6 @@ const getTransitionFromPointerTarget = (target) => {
   }
 
   return transition;
-};
-
-const findInteractableAtTile = (worldMap, col, row) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return null;
-  }
-
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  if (!chunk || !Array.isArray(chunk.interactables)) {
-    return null;
-  }
-
-  for (const interactable of chunk.interactables) {
-    if (isTileInsideTiledObject(col, row, interactable)) {
-      return interactable;
-    }
-  }
-
-  return null;
-};
-
-const isPlayerNearTiledObject = (tiledObject, range = 1) => {
-  if (
-    !tiledObject ||
-    tiledObject.z !== playerState.z ||
-    !Number.isFinite(playerState.x) ||
-    !Number.isFinite(playerState.y) ||
-    !Number.isInteger(range) ||
-    range < 0 ||
-    !Number.isInteger(tiledObject.col) ||
-    !Number.isInteger(tiledObject.row) ||
-    !Number.isFinite(tiledObject.width) ||
-    !Number.isFinite(tiledObject.height)
-  ) {
-    return false;
-  }
-
-  const widthTiles = Math.max(Math.ceil(tiledObject.width / TILE_SIZE), 1);
-  const heightTiles = Math.max(Math.ceil(tiledObject.height / TILE_SIZE), 1);
-  const playerCol = playerState.x / TILE_SIZE;
-  const playerRow = playerState.y / TILE_SIZE;
-  const nearestCol = clamp(playerCol, tiledObject.col, tiledObject.col + widthTiles - 1);
-  const nearestRow = clamp(playerRow, tiledObject.row, tiledObject.row + heightTiles - 1);
-  return Math.abs(playerCol - nearestCol) <= range && Math.abs(playerRow - nearestRow) <= range;
 };
 
 const formatRewardItemsText = (rewardItems) => {
@@ -703,8 +687,8 @@ const addRewardChestCompletionEffect = (interactable) => {
   });
 };
 
-const executeRewardChestInteraction = (interactable) => {
-  if (!interactable?.properties || !isPlayerNearTiledObject(interactable, 1)) {
+const executeRewardChestInteraction = (interactable, requestedAt) => {
+  if (!interactable?.properties || !isPlayerNearTiledObjectState(playerState, interactable, 1)) {
     return { success: false, reason: "out-of-range" };
   }
 
@@ -715,7 +699,7 @@ const executeRewardChestInteraction = (interactable) => {
     return { success: false, reason: "configuration" };
   }
 
-  if (hasPlayerClaimedInteractableReward(interactableId)) {
+  if (hasPlayerClaimedInteractableReward(playerState, interactableId)) {
     return { success: false, reason: "already-claimed", changes: { questId } };
   }
 
@@ -724,12 +708,11 @@ const executeRewardChestInteraction = (interactable) => {
     return { success: false, reason: grantResult.reason };
   }
 
-  const now = Date.now();
-  recordPlayerInteractableRewardClaim(interactableId, now);
-  setPlayerQuestStatus(questId, QUEST_STATUS.completed, now);
+  recordPlayerInteractableRewardClaim(playerState, interactableId, requestedAt);
+  setPlayerQuestStatus(playerState, questId, QUEST_STATUS.completed, requestedAt);
   return {
     success: true,
-    changes: { interactableId, questId, claimedAt: now },
+    changes: { interactableId, questId, claimedAt: requestedAt },
     events: [
       {
         type: "reward-chest-completed",
@@ -761,19 +744,21 @@ const handleRewardChestInteraction = (interactable) => {
     requestedAt: Date.now(),
   });
   const result = gameTransport.send(action);
-  if (!result?.success) {
-    if (result?.reason === "already-claimed") {
-      const questId = interactable?.properties?.questId;
-      const questData = getQuestData(questId);
-      const localizedQuestData = getLocalizedQuestData(questId) ?? questData;
-      if (localizedQuestData) {
-        addLogMessage(getGameUiText("questAlreadyCompleted")(localizedQuestData.name), "system");
+  handleGameActionResult(result, (resolvedResult) => {
+    if (!resolvedResult?.success) {
+      if (resolvedResult?.reason === "already-claimed") {
+        const questId = interactable?.properties?.questId;
+        const questData = getQuestData(questId);
+        const localizedQuestData = getLocalizedQuestData(questId) ?? questData;
+        if (localizedQuestData) {
+          addLogMessage(getGameUiText("questAlreadyCompleted")(localizedQuestData.name), "system");
+        }
+      } else {
+        addRewardChestFailureFeedback(resolvedResult?.reason);
       }
-    } else {
-      addRewardChestFailureFeedback(result?.reason);
     }
-  }
-  return result?.success === true;
+  });
+  return true;
 };
 
 const interactableContextMenuHandlers = {
@@ -829,85 +814,12 @@ const handleInteractableContextMenu = (target) => {
   return false;
 };
 
-const findTransitionAtTile = (worldMap, col, row) => {
-  if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
-    return null;
-  }
-
-  const chunk = getWorldChunkForTilePosition(worldMap, col, row);
-  if (!chunk || !Array.isArray(chunk.transitions)) {
-    return null;
-  }
-
-  for (const transition of chunk.transitions) {
-    if (isTileInsideTiledObject(col, row, transition)) {
-      return transition;
-    }
-  }
-
-  return null;
-};
-
 const setPlayerWorldPosition = (x, y) => {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return false;
-  }
-
-  playerState.x = x;
-  playerState.y = y;
-  playerState.oldX = x;
-  playerState.oldY = y;
-  playerState.renderX = x;
-  playerState.renderY = y;
-  playerState.moveStartTime = 0;
-  playerState.moveDuration = 0;
-
-  return true;
+  return setPlayerWorldPositionState(playerState, x, y);
 };
 
 const executePlayerWorldTransition = (transition) => {
-  const targetZ = transition?.properties?.targetZ;
-  const targetCol = transition?.properties?.targetCol;
-  const targetRow = transition?.properties?.targetRow;
-
-  if (!Number.isInteger(targetZ) || !Number.isInteger(targetCol) || !Number.isInteger(targetRow)) {
-    return { success: false, reason: "invalid-transition" };
-  }
-
-  if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-    return { success: false, reason: "world-not-loaded" };
-  }
-
-  const targetWorldMap = pixiWorldRenderState.worldMapsByZ.get(targetZ);
-  if (!targetWorldMap) {
-    return { success: false, reason: "target-floor-not-found" };
-  }
-
-  const targetX = targetCol * TILE_SIZE;
-  const targetY = targetRow * TILE_SIZE;
-
-  const previousZ = playerState.z;
-  playerState.z = targetZ;
-
-  if (!setPlayerWorldPosition(targetX, targetY)) {
-    playerState.z = previousZ;
-    return { success: false, reason: "invalid-target-position" };
-  }
-
-  return {
-    success: true,
-    changes: { x: targetX, y: targetY, z: targetZ, previousZ },
-    events: [
-      {
-        type: "player-world-transitioned",
-        playerUid: playerState.uid,
-        x: targetX,
-        y: targetY,
-        z: targetZ,
-        previousZ,
-      },
-    ],
-  };
+  return applyPlayerWorldTransitionState(playerState, transition, pixiWorldRenderState.worldMapsByZ);
 };
 
 const presentPlayerWorldTransition = () => {
@@ -955,33 +867,6 @@ const applyPlayerSpawn = (spawn) => {
   const spawnY = spawn.row * TILE_SIZE;
 
   return setPlayerWorldPosition(spawnX, spawnY);
-};
-
-const isTileInsideTiledObject = (tileCol, tileRow, tiledObject) => {
-  if (
-    !Number.isInteger(tileCol) ||
-    !Number.isInteger(tileRow) ||
-    !Number.isInteger(tiledObject?.col) ||
-    !Number.isInteger(tiledObject?.row) ||
-    !Number.isFinite(tiledObject?.width) ||
-    !Number.isFinite(tiledObject?.height)
-  ) {
-    return false;
-  }
-
-  const widthTiles = Math.ceil(tiledObject.width / TILE_SIZE);
-  const heightTiles = Math.ceil(tiledObject.height / TILE_SIZE);
-
-  if (widthTiles <= 0 || heightTiles <= 0) {
-    return false;
-  }
-
-  return (
-    tileCol >= tiledObject.col &&
-    tileCol < tiledObject.col + widthTiles &&
-    tileRow >= tiledObject.row &&
-    tileRow < tiledObject.row + heightTiles
-  );
 };
 
 /* ---------- OUTILS - SOURIS ---------- */
@@ -1391,6 +1276,7 @@ const grantRewardItemsToPlayer = (rewardItems) => {
 
 let inventoryDragController = null;
 let itemLocationController = null;
+let inventoryMoveService = null;
 const resetDragState = () => inventoryDragController.reset();
 const cancelItemDrag = () => inventoryDragController.cancel();
 const resetDragStatePending = () => inventoryDragController.resetPending();
@@ -1481,7 +1367,7 @@ const setWorldItemPosition = (destination, item) => {
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const refreshInventoryUi = () => {
-  updatePlayerCarriedWeight();
+  updatePlayerCarriedWeight(playerState);
   updatePlayerInventory();
   renderContainerDock();
 };
@@ -1674,7 +1560,7 @@ const tryStackItemsDuringDrag = (source, sourceItem, destination, destinationIte
       const freeStackSpace = 100 - destinationItem.quantity;
       let quantityAllowed = freeStackSpace;
       if (!isItemLocationCarriedByPlayer(source) && isItemLocationCarriedByPlayer(destination)) {
-        const freeCapSpace = playerState.capacity - calculatePlayerCarriedWeight();
+        const freeCapSpace = playerState.capacity - calculatePlayerCarriedWeight(playerState);
         const maxQuantityByCapacity = Math.floor(freeCapSpace / itemData.weight);
         quantityAllowed = Math.min(freeStackSpace, maxQuantityByCapacity);
         const remainingQuantityAfterStack = Math.max(sourceItem.quantity - quantityAllowed, 0);
@@ -1776,7 +1662,7 @@ const tryMoveItemOnContainerItemDuringDrag = (source, sourceItem, destinationIte
     }
 
     if (!isItemCarriedByPlayer(sourceItem.uid) && isItemCarriedByPlayer(destinationItem.uid)) {
-      if (getItemTotalWeight(sourceItem) > getPlayerRemainingCapacity()) {
+      if (getItemTotalWeight(sourceItem) > getPlayerRemainingCapacity(playerState)) {
         cancelItemDrag();
         return true;
       }
@@ -2410,89 +2296,30 @@ const createInventoryMoveExecutionResult = (dragSfxSnapshot) => {
 
 const executeInventoryMoveRequest = ({ source, destination, itemUid }) => {
   const sourceItem = getDragSourceItem(source);
-  if (!sourceItem || sourceItem.uid !== itemUid) {
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.itemChanged };
-  }
-  if (source.locationType === "worldItem" && !isWorldItemAvailableForInteraction(sourceItem)) {
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
-  }
-
-  if (source.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
-  }
-
   const destinationItem = getDragSourceItem(destination);
-  const dragSfxSnapshot = createItemDragSfxSnapshot(source, sourceItem, destination, destinationItem);
+  const dragSfxSnapshot = sourceItem
+    ? createItemDragSfxSnapshot(source, sourceItem, destination, destinationItem)
+    : null;
+  const result = inventoryMoveService.execute({ source, destination, itemUid });
 
-  if (tryMoveItemToWorldDuringDrag(source, sourceItem, destination)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
+  if (result.success) {
+    refreshItemUiAfterDrag();
+    const sfx = dragSfxSnapshot ? getCompletedItemDragSfx(dragSfxSnapshot) : null;
+    return {
+      ...result,
+      events: sfx ? [{ type: "inventory-move-completed", sfx }] : [],
+    };
   }
-
-  if (!isDropStackToStack(sourceItem, destinationItem)) {
-    if (isExceedCapacity(source, destination, sourceItem)) {
-      showGameStatusMessage(getGameUiText("notEnoughCapacity"));
-      cancelItemDrag();
-      return { success: false, reason: INVENTORY_ACTION_REASON.capacityExceeded };
-    }
-  }
-
-  if (isSameDragSourceAndDestination(source, destination)) {
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
-  }
-
-  let destinationContainer = null;
-  if (destination.locationType === "containerSlot") {
-    destinationContainer = getParentContainerFromContainerSlotLocation(destination);
-
-    if (!isValidContainerSlotParent(destinationContainer)) {
-      cancelItemDrag();
-      return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
-    }
-  }
-
-  if (isContainerMoveIntoItself(sourceItem, destinationContainer)) {
+  if (result.reason === INVENTORY_ACTION_REASON.capacityExceeded) {
+    showGameStatusMessage(getGameUiText("notEnoughCapacity"));
+  } else if (
+    result.reason === INVENTORY_ACTION_REASON.invalidDestination ||
+    result.reason === INVENTORY_ACTION_REASON.moveRejected
+  ) {
     showGameStatusMessage(getGameUiText("cannotPlaceItem"));
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
   }
-
-  if (tryStackItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  if (isContainerMoveIntoContainerItemItself(sourceItem, destinationItem)) {
-    showGameStatusMessage(getGameUiText("cannotPlaceItem"));
-    cancelItemDrag();
-    return { success: false, reason: INVENTORY_ACTION_REASON.invalidDestination };
-  }
-
-  if (tryMoveItemOnContainerItemDuringDrag(source, sourceItem, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  if (tryMoveItemToFreeContainerSlotInsteadOfSwapDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  if (tryMoveItemToEmptySlotDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  if (tryMoveEquipmentItemToContainerWhenSwapInvalidDuringDrag(source, destination, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  if (trySwapItemsDuringDrag(source, sourceItem, destination, destinationItem)) {
-    return createInventoryMoveExecutionResult(dragSfxSnapshot);
-  }
-
-  showGameStatusMessage(getGameUiText("cannotPlaceItem"));
   cancelItemDrag();
-  return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
+  return result;
 };
 
 const completeItemDrag = (destination) => {
@@ -2511,7 +2338,20 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     return null;
   }
-  return gameTransport.send(action);
+  const result = gameTransport.send(action);
+  if (result && typeof result.then === "function") {
+    cancelItemDrag();
+    handleGameActionResult(result, (resolvedResult) => {
+      if (!resolvedResult?.success) {
+        showGameStatusMessage(
+          resolvedResult?.reason === INVENTORY_ACTION_REASON.capacityExceeded
+            ? getGameUiText("notEnoughCapacity")
+            : getGameUiText("cannotPlaceItem"),
+        );
+      }
+    });
+  }
+  return result;
 };
 
 const renderItemIcon = (parentElement, item, slotSize) => {
@@ -3026,7 +2866,7 @@ const updatePlayerInventory = () => {
                       <div class="equipment-slot" data-equipment-slot="backpack"></div>
                       <div class="equipment-slot" data-equipment-slot="shield"></div>
                       <div class="equipment-slot" data-equipment-slot="ammo"></div>
-                      <div class="equipment-small-slot equipment-cap-slot">${getGameUiText("capacityShort")}:<br />${getPlayerRemainingCapacity()}</div>
+                      <div class="equipment-small-slot equipment-cap-slot">${getGameUiText("capacityShort")}:<br />${getPlayerRemainingCapacity(playerState)}</div>
                     </div>
                   </div>
 
@@ -3113,15 +2953,7 @@ const consumeOneChargeFromRune = (item, source) => {
       return false;
     }
   }
-  refreshItemUiAfterDrag();
   return true;
-};
-
-const startUseCooldown = (cooldownGroup) => {
-  if (!beginUseCooldown(cooldownGroup)) {
-    return;
-  }
-  updateItemCooldownOverlays(Date.now());
 };
 
 const updateItemCooldownOverlayElement = (element, now) => {
@@ -3405,7 +3237,6 @@ const replacePotionWithEmptyBottle = (item, emptyItemId) => {
   }
 
   item.itemId = emptyItemId;
-  refreshAllByUid(item.uid);
   return true;
 };
 
@@ -3431,61 +3262,88 @@ const createFluidPuddle = (groundEffectId, x, y, z, decayStage = 0) => {
     return null;
   }
 
-  return addOrRefreshGroundEffect(groundEffectId, x, y, z, decayStage);
+  return addOrRefreshGroundEffectState(groundEffectId, x, y, z, decayStage);
 };
 
 const restorePlayerVitalFromPotion = (item, useData) => {
   const restoreData = potionRestoreStats[useData?.restoreStat] ?? null;
   if (!restoreData || !Number.isFinite(useData.restoreAmount) || useData.restoreAmount <= 0) {
-    return false;
+    return { success: false, reason: "invalid-potion" };
   }
 
   const currentAmount = playerState[useData.restoreStat];
   const maximumAmount = playerState[restoreData.maxStat];
   if (!Number.isFinite(currentAmount) || !Number.isFinite(maximumAmount)) {
-    return false;
+    return { success: false, reason: "invalid-player-vital" };
   }
   if (currentAmount >= maximumAmount) {
-    showGameStatusMessage(getGameUiText(restoreData.fullMessageKey));
-    return false;
+    return { success: false, reason: restoreData.fullMessageKey };
   }
 
   const restoredAmount = Math.min(useData.restoreAmount, maximumAmount - currentAmount);
   if (!replacePotionWithEmptyBottle(item, useData.emptyItemId)) {
-    return false;
+    return { success: false, reason: "invalid-empty-bottle" };
   }
 
   playerState[useData.restoreStat] += restoredAmount;
-  showFloatingTextAbovePlayer(restoredAmount, restoreData.floatingTextType);
-  refreshPlayerVitalsUi();
-  return true;
+  return {
+    success: true,
+    restoredAmount,
+    restoreStat: useData.restoreStat,
+    floatingTextType: restoreData.floatingTextType,
+  };
 };
 
 const pourPotionOnTile = (item, useData, tile) => {
   const fluidPuddle = createFluidPuddle(useData?.groundEffectId, tile?.x, tile?.y, playerState.z);
   if (!fluidPuddle) {
-    showGameStatusMessage(getGameUiText("cannotPourPotion"));
-    return false;
+    return { success: false, reason: "cannot-pour-potion" };
   }
 
   if (!replacePotionWithEmptyBottle(item, useData.emptyItemId)) {
-    return false;
+    return { success: false, reason: "invalid-empty-bottle" };
   }
-  return true;
+  return { success: true, groundEffectUid: fluidPuddle.uid };
+};
+
+const dispatchItemUseAction = (source, item, target = null) => {
+  const action = createUseItemAction({
+    source,
+    itemUid: item?.uid,
+    target,
+    requestedAt: Date.now(),
+  });
+  return action ? gameTransport.send(action) : null;
+};
+
+const presentItemUseFailure = (result) => {
+  if (result?.success !== false) {
+    return;
+  }
+  const messageKeyByReason = {
+    cooldown: "exhausted",
+    fullHealth: "fullHealth",
+    fullMana: "fullMana",
+    "cannot-pour-potion": "cannotPourPotion",
+    "target-out-of-range": "targetOutOfRange",
+    "line-of-sight-blocked": "runeBlockedByWall",
+    "torch-burned-out": "torchBurnedOut",
+    "torch-needs-placement": "torchNeedsPlacement",
+    "sanity-full": "alreadyFull",
+  };
+  const messageKey = messageKeyByReason[result?.reason];
+  if (messageKey) {
+    showGameStatusMessage(getGameUiText(messageKey));
+  }
 };
 
 const handleDrinkPotionUse = (source, item, useData, target) => {
-  const cooldownGroup = getUseCooldownGroup(useData);
-  if (!isUseCooldownReady(cooldownGroup)) {
-    showGameStatusMessage(getGameUiText("exhausted"));
-    cancelItemUse();
-    return;
-  }
+  let result = null;
   if (target.player) {
-    if (restorePlayerVitalFromPotion(item, useData)) {
-      playGameSfx(GAME_SFX.drinkPotion);
-      startUseCooldown(cooldownGroup);
-    }
+    result = dispatchItemUseAction(source, item, {
+      targetType: "self",
+      playerUid: playerState.uid,
+    });
   } else if (target.tile) {
     if (!isNearPlayer(target.tile, useData.range)) {
       startPlayerActionNavigation({
@@ -3494,21 +3352,22 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
         targetType: "tile",
         targetTile: { ...target.tile, z: playerState.z },
       });
-    } else if (pourPotionOnTile(item, useData, target.tile)) {
-      startUseCooldown(cooldownGroup);
+    } else {
+      result = dispatchItemUseAction(source, item, {
+        targetType: "tile",
+        x: target.tile.x,
+        y: target.tile.y,
+        z: playerState.z,
+      });
     }
   }
 
+  handleGameActionResult(result, presentItemUseFailure);
   cancelItemUse();
 };
 
 const handleRuneUse = (source, item, useData, target) => {
-  const cooldownGroup = getUseCooldownGroup(useData);
-  if (!isUseCooldownReady(cooldownGroup)) {
-    showGameStatusMessage(getGameUiText("exhausted"));
-    cancelItemUse();
-    return;
-  }
+  let result = null;
   if (
     target.monster?.hp > 0 &&
     target.monster.z === playerState.z &&
@@ -3520,23 +3379,13 @@ const handleRuneUse = (source, item, useData, target) => {
       targetType: "monster",
       targetUid: target.monster.uid,
     });
-  } else if (target.monster && isMonsterValidRuneTarget(target.monster, useData)) {
-    if (!hasPlayerLineOfSightToEntity(target.monster)) {
-      showGameStatusMessage(getGameUiText("runeBlockedByWall"));
-      cancelItemUse();
-      return;
-    }
-    if (!consumeOneChargeFromRune(item, source)) {
-      cancelItemUse();
-      return;
-    }
-    const attackResult = calculateRuneAttackResult(useData);
-    applyDamageToMonster(target.monster, attackResult);
-    playGameSfx(GAME_SFX.runeUse);
-    startUseCooldown(cooldownGroup);
   } else if (target.monster) {
-    showGameStatusMessage(getGameUiText("targetOutOfRange"));
+    result = dispatchItemUseAction(source, item, {
+      targetType: "monster",
+      monsterUid: target.monster.uid,
+    });
   }
+  handleGameActionResult(result, presentItemUseFailure);
   cancelItemUse();
 };
 
@@ -3572,11 +3421,9 @@ const consumeOneItemFromSource = (source, item) => {
     if (!removedItem) {
       return false;
     }
-    refreshItemUiAfterDrag();
     return true;
   } else if (item.quantity > 1) {
     item.quantity -= 1;
-    refreshItemUiAfterDrag();
     return true;
   }
   return false;
@@ -3710,66 +3557,70 @@ stackSplitMenu?.addEventListener("contextmenu", (event) => {
   event.stopPropagation();
 });
 
-const handleEatFoodUse = (item, source, useData) => {
+const executeEatFoodUse = (item, source, useData, requestedAt) => {
   if (!item || !source || !Number.isFinite(useData?.sanity) || useData.sanity <= 0) {
-    return false;
+    return { success: false, reason: "invalid-food" };
   }
 
   const nextSanity = playerState.sanity + useData.sanity;
   if (nextSanity > playerState.maxSanity) {
-    showGameStatusMessage(getGameUiText("alreadyFull"));
-    return false;
+    return { success: false, reason: "sanity-full" };
   }
 
   if (!consumeOneItemFromSource(source, item)) {
-    return false;
+    return { success: false, reason: "item-consume-failed" };
   }
 
   const wasRegenerationInactive = playerState.sanity <= 0 || playerState.regeneration.nextHealthRegenAt === 0;
   playerState.sanity = nextSanity;
   if (wasRegenerationInactive) {
-    startPlayerRegenerationTimers(Date.now());
+    startPlayerRegenerationTimers(playerState, getPlayerClassRegenerationData(), requestedAt);
   }
 
-  refreshPlayerVitalsUi();
-  playGameSfx(GAME_SFX.eat);
-  return true;
+  return {
+    success: true,
+    changes: { itemUid: item.uid, sanity: playerState.sanity },
+    events: [{ type: "item-use-resolved", action: "eat", itemUid: item.uid, sfx: GAME_SFX.eat }],
+  };
 };
 
 const canLightTorchFromSource = (source) => {
   return ["worldItem", "equipmentSlot", "containerSlot"].includes(source?.locationType);
 };
 
-const handleToggleTorchUse = (item, source) => {
+const executeToggleTorchUse = (item, source, requestedAt) => {
   const itemData = getItemData(item?.itemId);
   if (!itemData?.lightSource || !Number.isFinite(item.fuelRemainingMs)) {
-    return false;
+    return { success: false, reason: "invalid-torch" };
   }
 
   if (item.isLit) {
-    syncTorchFuel(item, Date.now());
+    syncTorchFuel(item, requestedAt);
     item.isLit = false;
     item.lastFuelUpdateAt = 0;
     activeLitTorchesByUid.delete(item.uid);
-    refreshAllByUid(item.uid);
-    return true;
+    return {
+      success: true,
+      changes: { itemUid: item.uid, isLit: false, fuelRemainingMs: item.fuelRemainingMs },
+      events: [{ type: "item-use-resolved", action: "toggleTorch", itemUid: item.uid }],
+    };
   }
 
   if (item.fuelRemainingMs <= 0) {
-    showGameStatusMessage(getGameUiText("torchBurnedOut"));
-    return false;
+    return { success: false, reason: "torch-burned-out" };
   }
   if (!canLightTorchFromSource(source)) {
-    showGameStatusMessage(getGameUiText("torchNeedsPlacement"));
-    return false;
+    return { success: false, reason: "torch-needs-placement" };
   }
 
   item.isLit = true;
-  item.lastFuelUpdateAt = Date.now();
+  item.lastFuelUpdateAt = requestedAt;
   activeLitTorchesByUid.set(item.uid, item);
-  refreshAllByUid(item.uid);
-  playGameSfx(GAME_SFX.torchOn);
-  return true;
+  return {
+    success: true,
+    changes: { itemUid: item.uid, isLit: true, fuelRemainingMs: item.fuelRemainingMs },
+    events: [{ type: "item-use-resolved", action: "toggleTorch", itemUid: item.uid, sfx: GAME_SFX.torchOn }],
+  };
 };
 
 const executeDirectItemUse = (item, source) => {
@@ -3780,13 +3631,12 @@ const executeDirectItemUse = (item, source) => {
   if (!useData || !useData.action) {
     return;
   }
-  if (useData.action === "eat") {
-    handleEatFoodUse(item, source, useData);
-  } else if (useData.action === "toggleTorch") {
-    handleToggleTorchUse(item, source);
-  } else if (useData.action === "splitCurrencyStack") {
+  if (useData.action === "splitCurrencyStack") {
     openStackSplitMenu(item, source);
+    return;
   }
+  const result = dispatchItemUseAction(source, item);
+  handleGameActionResult(result, presentItemUseFailure);
 };
 //#endregion  -----  ITEMS - UTILISATION ET COOLDOWNS  -----
 
@@ -4968,14 +4818,26 @@ const updateMovement = (now) => {
     requestedAt: now,
   });
   const moveResult = gameTransport.send(moveAction);
+  const isPendingRemoteMove = moveResult && typeof moveResult.then === "function";
+  const didSubmitMove = isPendingRemoteMove || moveResult?.success;
 
-  if (moveResult?.success) {
+  if (isPendingRemoteMove) {
+    const moveTiming = getSimulationPlayerMoveTiming(moveAction.payload);
+    gameplayTimingState.nextPlayerMoveTime = now + (moveTiming?.cooldown ?? getPlayerMoveCooldown());
+    handleGameActionResult(moveResult, (resolvedResult) => {
+      if (!resolvedResult?.success && isNavigationMovement) {
+        handleBlockedPlayerNavigationStep(Date.now());
+      }
+    });
+  }
+
+  if (didSubmitMove) {
 
     if (isNavigationMovement) {
       completePlayerNavigationStep();
     }
 
-    if (moveResult.events.some((event) => event.type === "player-world-transitioned")) {
+    if (moveResult?.events?.some((event) => event.type === "player-world-transitioned")) {
       resetMovementKeys();
       updatePlayerSprite();
       return;
@@ -6203,7 +6065,25 @@ const getNpcReplySuggestions = (suggestions) => npcConversationSystem.getReplySu
 const handleNpcPlayerSpeech = (text, player, now) => {
   const action = createSpeakToNpcAction(text, player?.uid, now);
   const result = gameTransport.send(action);
+  if (result && typeof result.then === "function") {
+    handleGameActionResult(result, (resolvedResult) => {
+      if (!resolvedResult?.success && resolvedResult?.reason !== "npc-not-in-range") {
+        showGameStatusMessage(resolvedResult?.reason ?? "NPC interaction failed.");
+      }
+    });
+    return true;
+  }
   return result?.success === true;
+};
+
+const handleRemoteNpcSpeechEffect = (event) => {
+  if (event.playerUid !== playerState.uid) {
+    return;
+  }
+  const npc = npcsByUid.get(event.npcUid) ?? null;
+  if (npc) {
+    npcConversationSystem.presentSpeech(npc, event.text, event.suggestions ?? []);
+  }
 };
 const updateNpcConversations = (now) => npcConversationSystem.updateConversations(now);
 
@@ -6406,10 +6286,6 @@ const removeMonsterRender = (monsterUid) => {
   removePixiMonsterVisual(monsterUid);
   monsterElementsByUid.delete(monsterUid);
 };
-const removeMonster = (monsterUid) => {
-  removeMonsterFromState(monsterUid);
-  removeMonsterRender(monsterUid);
-};
 const clearMonsters = () => {
   for (const refs of monsterElementsByUid.values()) {
     refs?.root?.remove();
@@ -6439,22 +6315,16 @@ const clearMonsterSelection = () => {
 const createMonsterCorpse = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
   if (!monsterData || !monsterData.corpseItemId) {
-    return;
+    return null;
   }
   const lootContent = generateMonsterLoot(monsterData);
-  const localizedMonsterData = getLocalizedMonsterData(monster.monsterId) ?? monsterData;
-  addLootLogMessage(lootContent, localizedMonsterData.name);
-
   const corpse = createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, monster.z, lootContent);
-  if (!corpse) {
-    return;
+  if (!corpse || !addWorldItemToState(corpse)) {
+    return null;
   }
-  addGroundItem(corpse);
+  return { corpse, lootContent };
 };
 
-const isMonsterDead = (monster) => {
-  return monster.hp <= 0;
-};
 const clearSelectedMonsterIfNeeded = (monster) => {
   if (!monster || combatTargetState.monsterUid === null) {
     return;
@@ -6468,14 +6338,17 @@ const clearSelectedMonsterIfNeeded = (monster) => {
   }
 };
 
-const handleMonsterDeath = (monster) => {
+const handleMonsterDeath = (monster, now) => {
   setMonsterDeadState(monster);
-  createMonsterCorpse(monster);
+  const corpseResult = createMonsterCorpse(monster);
   if (decreaseMonsterSpawnAliveCount(monster)) {
-    scheduleMonsterRespawn(monster.spawnId, Date.now());
+    scheduleMonsterRespawn(monster.spawnId, now);
   }
-  removeMonster(monster.uid);
-  clearSelectedMonsterIfNeeded(monster);
+  removeMonsterFromState(monster.uid);
+  return {
+    corpseUid: corpseResult?.corpse.uid ?? null,
+    lootContent: corpseResult?.lootContent ?? [],
+  };
 };
 
 const spawnInitialMonstersForWorldMap = (worldMap) => {
@@ -6970,6 +6843,10 @@ const getSpellFromChatText = (text) => playerSpellSystem.getFromChatText(text);
 const castLearnedPlayerSpellById = (spellId) => {
   const action = createCastSpellAction(spellId, Date.now());
   const result = gameTransport.send(action);
+  if (result && typeof result.then === "function") {
+    handleGameActionResult(result, (resolvedResult) => playerSpellSystem.presentCastResult(spellId, resolvedResult));
+    return true;
+  }
   return playerSpellSystem.presentCastResult(spellId, result);
 };
 const castPlayerSpellFromHotkeyKey = (key) => {
@@ -7013,29 +6890,13 @@ const applyExperienceToPlayer = (experience) => {
 
 const applyExperienceToPlayerFromMonster = (monster) => {
   if (!monster) {
-    return false;
-  }
-  const monsterData = getMonsterData(monster.monsterId);
-  if (!monsterData) {
-    return false;
+    return 0;
   }
   const monsterExperienceReward = getExperienceRewardFromMonster(monster);
   if (monsterExperienceReward <= 0) {
-    return false;
-  }
-  if (applyExperienceToPlayer(monsterExperienceReward)) {
-    const localizedMonsterData = getLocalizedMonsterData(monster.monsterId) ?? monsterData;
-    addExperienceGainFeedback(monsterExperienceReward, localizedMonsterData.name);
-    return true;
-  }
-  return false;
-};
-
-const getDamageAppliedToMonster = (monster, attackResult) => {
-  if (!monster || !attackResult) {
     return 0;
   }
-  return clamp(attackResult.finalDamage, 0, monster.hp);
+  return applyExperienceToPlayer(monsterExperienceReward) ? monsterExperienceReward : 0;
 };
 
 const createMonsterBloodPuddle = (monster, monsterData, decayStage) => {
@@ -7045,48 +6906,63 @@ const createMonsterBloodPuddle = (monster, monsterData, decayStage) => {
   return createFluidPuddle(monsterData.bloodEffectId, monster.x, monster.y, monster.z, decayStage);
 };
 
-const applyDamageToMonster = (monster, attackResult) => {
+const applyDamageToMonster = (monster, attackResult, now) => {
   if (!monster || monster.hp <= 0) {
-    return;
+    return { success: false, reason: "target-lost" };
   }
   const monsterData = getMonsterData(monster.monsterId);
   if (!monsterData) {
-    return;
+    return { success: false, reason: "monster-data-not-found" };
   }
-  const damageAmount = getDamageAppliedToMonster(monster, attackResult);
-
-  if (Number.isFinite(damageAmount) && damageAmount > 0) {
-    const bloodDecayStage = damageAmount >= monster.hp ? 0 : 1;
-    createMonsterBloodPuddle(monster, monsterData, bloodDecayStage);
-    monster.hp -= damageAmount;
-
-    const localizedMonsterData = getLocalizedMonsterData(monster.monsterId) ?? monsterData;
-    const logMessage = getGameUiText("damageDealt")(damageAmount, localizedMonsterData.name);
-    addLogMessage(logMessage, "combat");
-    showFloatingTextAboveMonster(monster, damageAmount, attackResult.textType);
-    monsterHpRefresh(monster);
-    if (isMonsterDead(monster)) {
-      handleMonsterKilledByPlayer(monster);
-    }
-  }
-};
-
-const handleMonsterKilledByPlayer = (monster) => {
-  if (!monster) {
-    return;
-  }
-  const deathSfxByMonsterId = {
-    rat: GAME_SFX.ratDeath,
-    spider: GAME_SFX.spiderDeath,
+  const targetRenderSnapshot = {
+    uid: monster.uid,
+    monsterId: monster.monsterId,
+    x: monster.x,
+    y: monster.y,
+    z: monster.z,
+    renderX: monster.renderX,
+    renderY: monster.renderY,
   };
-  const deathSfx = deathSfxByMonsterId[monster.monsterId];
-  if (deathSfx) {
-    playGameSfx(deathSfx);
+  const healthBeforeDamage = monster.hp;
+  const healthResult = applyDamageToMonsterHealth(monster, attackResult?.finalDamage);
+  if (!healthResult.success) {
+    return { success: false, reason: "no-damage" };
   }
-  handleMonsterDeath(monster);
-  if (applyExperienceToPlayerFromMonster(monster)) {
-    updatePlayerExperience();
+  const bloodDecayStage = healthResult.damageApplied >= healthBeforeDamage ? 0 : 1;
+  const bloodPuddle = createMonsterBloodPuddle(monster, monsterData, bloodDecayStage);
+  let deathResult = null;
+  let experienceReward = 0;
+  if (healthResult.didDie) {
+    deathResult = handleMonsterDeath(monster, now);
+    experienceReward = applyExperienceToPlayerFromMonster(monster);
   }
+
+  return {
+    success: true,
+    changes: {
+      monsterUid: monster.uid,
+      damageApplied: healthResult.damageApplied,
+      hp: healthResult.hp,
+      didDie: healthResult.didDie,
+      experienceReward,
+      corpseUid: deathResult?.corpseUid ?? null,
+    },
+    events: [
+      {
+        type: "monster-damage-resolved",
+        monsterUid: monster.uid,
+        monsterId: monster.monsterId,
+        damageApplied: healthResult.damageApplied,
+        textType: attackResult.textType,
+        didDie: healthResult.didDie,
+        groundEffectUid: bloodPuddle?.uid ?? null,
+        corpseUid: deathResult?.corpseUid ?? null,
+        lootContent: deathResult?.lootContent ?? [],
+        experienceReward,
+        targetRenderSnapshot,
+      },
+    ],
+  };
 };
 
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
@@ -7143,9 +7019,8 @@ const attackMonster = (monster, now) => {
     renderY: monster.renderY,
   };
 
-  if (attackResult.finalDamage > 0) {
-    applyDamageToMonster(monster, attackResult);
-  }
+  const damageResult =
+    attackResult.finalDamage > 0 ? applyDamageToMonster(monster, attackResult, now) : null;
   return {
     success: true,
     changes: {
@@ -7160,6 +7035,7 @@ const attackMonster = (monster, now) => {
         attackResult,
         targetRenderSnapshot,
       },
+      ...(damageResult?.events ?? []),
     ],
   };
 };
@@ -7454,15 +7330,15 @@ gameSystemsOrchestrator = createGameSystemsOrchestrator({
     ({ now }) => updatePlayerActionNavigation(now),
     ({ now }) => updateMovement(now),
     ({ now }) => updateCombat(now),
-    ({ now }) => updatePlayerRegeneration(now),
-    ({ now }) => updateNpcConversations(now),
-    ({ now }) => updateNpcMovement(now),
-    ({ now, activeMonsters }) => updateMonsterMovement(now, activeMonsters),
-    ({ now, activeMonsters }) => updateMonsterCombat(now, activeMonsters),
-    ({ now }) => updateMonsterRespawns(now),
-    ({ now }) => updateCorpseDecay(now),
-    ({ now }) => updateGroundEffectDecay(now),
-    ({ now }) => updateTorchFuel(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updatePlayerRegeneration(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateNpcConversations(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateNpcMovement(now),
+    ({ now, activeMonsters }) => !gameRuntimeState.isRemoteSession && updateMonsterMovement(now, activeMonsters),
+    ({ now, activeMonsters }) => !gameRuntimeState.isRemoteSession && updateMonsterCombat(now, activeMonsters),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateMonsterRespawns(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateCorpseDecay(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateGroundEffectDecay(now),
+    ({ now }) => !gameRuntimeState.isRemoteSession && updateTorchFuel(now),
   ],
   renderSystems: [
     ({ now }) => updateRenderPositions(now),
@@ -7550,6 +7426,7 @@ playerNavigationController = createPlayerNavigationController({
   isTilePathTraversable,
   isWorldItemAvailableForInteraction,
   loseSelectedMonsterTarget,
+  sayGreetingToNpc,
   showGameStatusMessage,
   startItemDrag,
   updatePlayerInventory,
@@ -7568,6 +7445,7 @@ npcConversationSystem = createNpcConversationSystem({
   refreshInventoryUi,
   renderActiveChatMessages,
   renderSpellWindow,
+  sendPlayerSpeech: handleNpcPlayerSpeech,
   showFloatingTextAboveTarget,
   showGameStatusMessage,
   startPlayerActionNavigation,
@@ -7644,6 +7522,39 @@ itemLocationController = createItemLocationController({
   positionWorldItem: setWorldItemPosition,
   canEquipItem: canPlaceItemInEquipmentSlot,
   setEquipmentItem: setEquipmentSlotItem,
+});
+
+inventoryMoveService = createInventoryMoveService({
+  getItem: itemLocationController.getItem,
+  getParentContainer: itemLocationController.getParentContainer,
+  removeItem: itemLocationController.removeItem,
+  placeItem: itemLocationController.placeItem,
+  findItemLocationByUid,
+  isLocationCarriedByPlayer: isItemLocationCarriedByPlayer,
+  getRemainingCapacity: () => getPlayerRemainingCapacity(playerState),
+  getItemTotalWeight,
+  canEquipItem: canPlaceItemInEquipmentSlot,
+  canInteractWithWorldItem: (_source, item) =>
+    isWorldItemAvailableForInteraction(item) && isNearPlayer(item, 1),
+  canPlaceWorldItem: (_source, _item, destination) =>
+    isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) && hasPlayerLineOfSightToWorldPosition(destination),
+  onItemLocationChanged: (item, destination) => {
+    if (!isContainerItem(item)) {
+      return;
+    }
+    const sourceTypeByLocationType = {
+      containerSlot: "container",
+      equipmentSlot: "equipment",
+      worldTile: "world",
+    };
+    const sourceType = sourceTypeByLocationType[destination.locationType];
+    if (sourceType) {
+      updateOpenedContainerSourceType(item, sourceType);
+    }
+    if (sourceType === "world") {
+      closeFarOpenedContainers();
+    }
+  },
 });
 
 inventoryDragController = createInventoryDragController({
@@ -7729,9 +7640,107 @@ const findSimulationWorldTransition = (payload) => {
 
 const executeSimulationWorldInteraction = (interactable, payload) => {
   if (payload.interactionType === "rewardChest") {
-    return executeRewardChestInteraction(interactable);
+    return executeRewardChestInteraction(interactable, payload.requestedAt);
   }
   return { success: false, reason: "unsupported-interaction" };
+};
+
+const executeSimulationItemUse = (item, useData, payload) => {
+  const cooldownGroup = getUseCooldownGroup(useData);
+  if (cooldownGroup && !isUseCooldownReady(cooldownGroup, payload.requestedAt)) {
+    return { success: false, reason: "cooldown" };
+  }
+
+  if (useData.action === "eat" && payload.target === null) {
+    return executeEatFoodUse(item, payload.source, useData, payload.requestedAt);
+  }
+  if (useData.action === "toggleTorch" && payload.target === null) {
+    return executeToggleTorchUse(item, payload.source, payload.requestedAt);
+  }
+
+  if (useData.action === "drinkPotion") {
+    let useResult = null;
+    if (payload.target?.targetType === "self" && payload.target.playerUid === playerState.uid) {
+      useResult = restorePlayerVitalFromPotion(item, useData);
+    } else if (payload.target?.targetType === "tile") {
+      const targetTile = payload.target;
+      if (targetTile.z !== playerState.z || !isNearPlayer(targetTile, useData.range)) {
+        return { success: false, reason: "target-out-of-range" };
+      }
+      useResult = pourPotionOnTile(item, useData, targetTile);
+    } else {
+      return { success: false, reason: "invalid-target" };
+    }
+    if (!useResult?.success) {
+      return useResult;
+    }
+    if (!beginUseCooldown(cooldownGroup, payload.requestedAt)) {
+      return { success: false, reason: "invalid-cooldown" };
+    }
+    return {
+      success: true,
+      changes: {
+        itemUid: item.uid,
+        itemId: item.itemId,
+        restoredAmount: useResult.restoredAmount ?? 0,
+        restoreStat: useResult.restoreStat ?? null,
+      },
+      events: [
+        {
+          type: "item-use-resolved",
+          action: "drinkPotion",
+          itemUid: item.uid,
+          restoredAmount: useResult.restoredAmount ?? 0,
+          floatingTextType: useResult.floatingTextType ?? null,
+          groundEffectUid: useResult.groundEffectUid ?? null,
+          cooldownGroup,
+          sfx: payload.target.targetType === "self" ? GAME_SFX.drinkPotion : null,
+        },
+      ],
+    };
+  }
+
+  if (useData.action === "attackRune") {
+    const monster = monstersByUid.get(payload.target?.monsterUid) ?? null;
+    if (!monster || payload.target?.targetType !== "monster" || !isMonsterValidRuneTarget(monster, useData)) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    if (!hasPlayerLineOfSightToEntity(monster)) {
+      return { success: false, reason: "line-of-sight-blocked" };
+    }
+    if (!consumeOneChargeFromRune(item, payload.source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    const attackResult = calculateRuneAttackResult(useData);
+    const damageResult = applyDamageToMonster(monster, attackResult, payload.requestedAt);
+    if (!damageResult?.success) {
+      return damageResult ?? { success: false, reason: "damage-failed" };
+    }
+    if (!beginUseCooldown(cooldownGroup, payload.requestedAt)) {
+      return { success: false, reason: "invalid-cooldown" };
+    }
+    return {
+      success: true,
+      changes: {
+        itemUid: item.uid,
+        charges: item.charges ?? 0,
+        monsterUid: monster.uid,
+        finalDamage: attackResult.finalDamage,
+      },
+      events: [
+        {
+          type: "item-use-resolved",
+          action: "attackRune",
+          itemUid: item.uid,
+          cooldownGroup,
+          sfx: GAME_SFX.runeUse,
+        },
+        ...(damageResult.events ?? []),
+      ],
+    };
+  }
+
+  return { success: false, reason: "unsupported-item-action" };
 };
 
 const handlePlayerAttackResolvedEffect = (event) => {
@@ -7741,6 +7750,49 @@ const handlePlayerAttackResolvedEffect = (event) => {
     showFloatingTextAboveMonster(monster, event.attackResult.text, event.attackResult.textType);
   }
   playPlayerAttackResultSfx(event.attackResult);
+};
+
+const handleMonsterDamageResolvedEffect = (event) => {
+  const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
+  if (groundEffect) {
+    renderGroundEffect(groundEffect);
+  }
+
+  const monsterData = getMonsterData(event.monsterId);
+  const localizedMonsterData = getLocalizedMonsterData(event.monsterId) ?? monsterData;
+  if (localizedMonsterData) {
+    addLogMessage(getGameUiText("damageDealt")(event.damageApplied, localizedMonsterData.name), "combat");
+  }
+  showFloatingTextAboveMonster(event.targetRenderSnapshot, event.damageApplied, event.textType);
+
+  if (!event.didDie) {
+    const monster = findMonsterByUid(event.monsterUid);
+    if (monster) {
+      monsterHpRefresh(monster);
+    }
+    return;
+  }
+
+  const corpse = worldItemsByUid.get(event.corpseUid) ?? null;
+  if (corpse) {
+    renderGroundItems([corpse]);
+  }
+  removeMonsterRender(event.monsterUid);
+  clearSelectedMonsterIfNeeded(event.targetRenderSnapshot);
+  addLootLogMessage(event.lootContent, localizedMonsterData?.name ?? null);
+  if (event.experienceReward > 0) {
+    addExperienceGainFeedback(event.experienceReward, localizedMonsterData?.name ?? null);
+    updatePlayerExperience();
+  }
+
+  const deathSfxByMonsterId = {
+    rat: GAME_SFX.ratDeath,
+    spider: GAME_SFX.spiderDeath,
+  };
+  const deathSfx = deathSfxByMonsterId[event.monsterId];
+  if (deathSfx) {
+    playGameSfx(deathSfx);
+  }
 };
 
 const handleRewardChestCompletedEffect = (event) => {
@@ -7755,6 +7807,23 @@ const handleRewardChestCompletedEffect = (event) => {
   setTimeout(() => playGameSfx(GAME_SFX.questDone), 180);
 };
 
+const handleItemUseResolvedEffect = (event) => {
+  const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
+  if (groundEffect) {
+    renderGroundEffect(groundEffect);
+  }
+  refreshAllByUid(event.itemUid);
+  refreshInventoryUi();
+  if (event.restoredAmount > 0 && event.floatingTextType) {
+    showFloatingTextAbovePlayer(event.restoredAmount, event.floatingTextType);
+  }
+  refreshPlayerVitalsUi();
+  if (event.sfx) {
+    playGameSfx(event.sfx);
+  }
+  updateItemCooldownOverlays(Date.now());
+};
+
 gameSimulation = createGameSimulation({
   state: {
     player: playerState,
@@ -7765,11 +7834,13 @@ gameSimulation = createGameSimulation({
     canPlayerAttackMonster: canSimulationPlayerAttackMonster,
     canPlayerMove: canSimulationPlayerMove,
     canPlayerUseWorldTransition: (movingPlayer, transition) => isNearPlayer(transition, 1),
+    canUseWorldItemSource: (source) => canInteractWithWorldItemSource(source),
     getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
     getPlayerMoveTiming: getSimulationPlayerMoveTiming,
   },
   commands: {
     executeAttackMonster: (monster, payload) => attackMonster(monster, payload.requestedAt),
+    executeItemUse: executeSimulationItemUse,
     executeMoveItem: executeInventoryMoveRequest,
     executeNpcSpeech: (payload, speakingPlayer) =>
       npcConversationSystem.handlePlayerSpeech(payload.text, speakingPlayer, payload.requestedAt),
@@ -7781,22 +7852,107 @@ gameSimulation = createGameSimulation({
     findWorldInteractable: findSimulationWorldInteractable,
     findWorldTransition: findSimulationWorldTransition,
     getPlayerByUid: getPlayerEntityByUid,
-    getRemainingCapacity: () => playerState.capacity - calculatePlayerCarriedWeight(),
+    getItemFromLocation,
+    getItemUseData,
+    getRemainingCapacity: () => playerState.capacity - calculatePlayerCarriedWeight(playerState),
     getSpellById: (spellId) => spellsDatabase[spellId] ?? null,
   },
   onListenerError: (error) => console.error("Game action effect failed:", error),
 });
 
-gameTransport = createLocalGameTransport({ simulation: gameSimulation });
-gameTransport.subscribe(
-  createGameActionEffectRouter({
-    "inventory-items-inserted": () => refreshInventoryUi(),
-    "inventory-move-completed": (event) => playGameSfx(event.sfx),
-    "player-attack-resolved": handlePlayerAttackResolvedEffect,
-    "player-world-transitioned": () => presentPlayerWorldTransition(),
-    "reward-chest-completed": handleRewardChestCompletedEffect,
-  }),
-);
+gameActionEffectRouter = createGameActionEffectRouter({
+  "inventory-items-inserted": () => refreshInventoryUi(),
+  "inventory-move-completed": (event) => playGameSfx(event.sfx),
+  "item-use-resolved": handleItemUseResolvedEffect,
+  "monster-damage-resolved": handleMonsterDamageResolvedEffect,
+  "npc-spoke": handleRemoteNpcSpeechEffect,
+  "player-attack-resolved": handlePlayerAttackResolvedEffect,
+  "player-world-transitioned": () => presentPlayerWorldTransition(),
+  "reward-chest-completed": handleRewardChestCompletedEffect,
+});
+
+const setGameTransport = (nextTransport, subscribeToActionResults) => {
+  unsubscribeGameTransportEffects?.();
+  gameTransport = nextTransport;
+  unsubscribeGameTransportEffects = subscribeToActionResults ? gameTransport.subscribe(gameActionEffectRouter) : null;
+};
+
+const synchronizeRemoteWorldRender = (event) => {
+  rebuildWorldTileStacks();
+  const previousZ = pixiWorldRenderState.currentZ;
+  pixiWorldRenderState.currentZ = playerState.z;
+  if (!gameRuntimeState.isStarted) {
+    return;
+  }
+  if (previousZ !== playerState.z) {
+    clearGroundItemRender();
+    clearMonsters();
+    for (const npcUid of [...npcElementsByUid.keys()]) {
+      removeNpcRender(npcUid);
+    }
+    updatePixiVisibleChunksAroundPlayer();
+  }
+  for (const itemUid of [...worldItemElementsByUid.keys()]) {
+    const item = worldItemsByUid.get(itemUid);
+    if (!item || item.z !== playerState.z) {
+      removeGroundItemRender(itemUid);
+    }
+  }
+  renderGroundItems([...worldItemsByUid.values()].filter((item) => item.z === playerState.z));
+  syncGroundEffectRenderForCurrentZ();
+  syncVisibleMonsterRendersAroundPlayer();
+  syncVisibleNpcRendersAroundPlayer();
+  if (event.type === "server.snapshot" || event.payload?.upserts?.self) {
+    refreshInventoryUi();
+    refreshPlayerVitalsUi();
+    updatePlayerExperience();
+  }
+};
+
+const initializeRemoteGameSession = async () => {
+  if (REMOTE_GAME_SERVER_URL === "") {
+    gameRuntimeState.isRemoteSession = false;
+    return { remoteSession: false };
+  }
+  if (REMOTE_GAME_AUTH_TOKEN === "") {
+    throw new Error("VITE_GAME_AUTH_TOKEN is required when VITE_GAME_SERVER_URL is configured.");
+  }
+
+  gameRuntimeState.isRemoteSession = true;
+  const remoteTransport = createWebSocketGameTransport({
+    url: REMOTE_GAME_SERVER_URL,
+    socketFactory: (url) => new WebSocket(url),
+  });
+  setGameTransport(remoteTransport, false);
+  remoteGameStateBridge?.disconnect();
+  remoteGameStateBridge = createRemoteGameStateBridge({
+    transport: remoteTransport,
+    playerState,
+    entityMaps: {
+      players: playersByUid,
+      monsters: monstersByUid,
+      npcs: npcsByUid,
+      worldItems: worldItemsByUid,
+      groundEffects: groundEffectsByUid,
+    },
+    onStateApplied: ({ event }) => synchronizeRemoteWorldRender(event),
+    onEvents: (events) => gameActionEffectRouter({ events }),
+    onConnectionStateChanged: ({ state }) => {
+      if (gameRuntimeState.isStarted && state === "reconnecting") {
+        showGameStatusMessage("Connection lost. Reconnecting...");
+      }
+    },
+  });
+  await remoteTransport.connect({
+    authToken: REMOTE_GAME_AUTH_TOKEN,
+    characterId: playerState.uid,
+    name: playerState.name,
+    language: gameOptionsUiState.values.language,
+  });
+  return { remoteSession: true };
+};
+
+setGameTransport(createLocalGameTransport({ simulation: gameSimulation }), true);
 
 const initializePlayerUi = () => {
   initializePlayerRenderRefs();
@@ -7813,10 +7969,12 @@ const initializePlayerUi = () => {
 /* ---------- INITIALISATION - DEMARRAGE ---------- */
 const prepareGameData = () => {
   const loadedCharacterSnapshot = loadInitialCharacterSnapshot();
-  if (!loadedCharacterSnapshot) {
+  if (!loadedCharacterSnapshot && REMOTE_GAME_SERVER_URL === "") {
     setupTestPlayerInventory();
   }
-  setupTestWorld();
+  if (REMOTE_GAME_SERVER_URL === "") {
+    setupTestWorld();
+  }
   return {
     loadedCharacterSnapshot,
     worldMapsByZ: loadWorldMaps(),
@@ -7843,6 +8001,11 @@ const initializeGameRenderer = async () => {
 
 const initializeGameWorld = async ({ loadedCharacterSnapshot, worldMapsByZ }) => {
   pixiWorldRenderState.worldMapsByZ = worldMapsByZ;
+  if (gameRuntimeState.isRemoteSession) {
+    pixiWorldRenderState.currentZ = playerState.z;
+    await updatePixiVisibleChunksAroundPlayer();
+    return;
+  }
   const didRestoreSavedPosition =
     loadedCharacterSnapshot && applyCharacterSavePosition(loadedCharacterSnapshot, worldMapsByZ);
   if (!didRestoreSavedPosition) {
@@ -7858,7 +8021,7 @@ const initializeGameWorld = async ({ loadedCharacterSnapshot, worldMapsByZ }) =>
 
 const initializeGameInterface = ({ loadedCharacterSnapshot }) => {
   initializePlayerUi();
-  if (!loadedCharacterSnapshot) {
+  if (!loadedCharacterSnapshot && !gameRuntimeState.isRemoteSession) {
     saveCharacterSnapshot(createCharacterSaveSnapshot());
   }
   renderInitialWorld();
@@ -7869,13 +8032,16 @@ clientBootstrap = createClientBootstrap({
   phases: [
     { name: "data", run: prepareGameData },
     { name: "renderer", run: initializeGameRenderer },
+    { name: "network", run: initializeRemoteGameSession },
     { name: "world", run: initializeGameWorld },
     { name: "interface", run: initializeGameInterface },
   ],
   onStarted: () => {
     preloadGameSfx();
     startGameMusic();
-    startCharacterAutosave();
+    if (!gameRuntimeState.isRemoteSession) {
+      startCharacterAutosave();
+    }
     if (!gameRuntimeState.isLoopRunning) {
       gameRuntimeState.isLoopRunning = startFixedStepGameLoop({
         updateGameLogic,

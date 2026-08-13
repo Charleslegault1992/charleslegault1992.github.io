@@ -1,6 +1,7 @@
 import { createGameActionDispatcher } from "../actions/gameActionDispatcher.js";
 import { registerGameplayActionHandlers } from "../actions/gameplayActions.js";
 import { registerInventoryActionHandlers } from "../inventory/inventoryActions.js";
+import { registerItemUseActionHandlers } from "../items/itemUseActions.js";
 
 const rejectCommand = (reason) => ({ success: false, reason });
 
@@ -12,6 +13,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
   const dispatcher = createGameActionDispatcher();
   registerInventoryActionHandlers(dispatcher);
   registerGameplayActionHandlers(dispatcher);
+  registerItemUseActionHandlers(dispatcher);
   const listeners = new Set();
 
   const executeMovePlayer = (payload) => {
@@ -150,12 +152,28 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     return commands.executeWorldTransition?.(transition, payload) ?? rejectCommand("missing-executor");
   };
 
+  const executeUseItem = (payload) => {
+    const item = commands.getItemFromLocation?.(payload.source) ?? null;
+    if (!item || item.uid !== payload.itemUid) {
+      return rejectCommand("item-changed");
+    }
+    if (payload.source.locationType === "worldItem" && rules.canUseWorldItemSource?.(payload.source, item) !== true) {
+      return rejectCommand("invalid-source");
+    }
+    const useData = commands.getItemUseData?.(item) ?? null;
+    if (!useData?.action) {
+      return rejectCommand("item-not-usable");
+    }
+    return commands.executeItemUse?.(item, useData, payload) ?? rejectCommand("missing-executor");
+  };
+
   const context = Object.freeze({
     executeAttackMonster,
     executeCastSpell,
     executeMove: commands.executeMoveItem,
     executeMovePlayer,
     executeSpeakToNpc,
+    executeUseItem,
     executeWorldInteraction,
     executeWorldTransition,
     findContainerByUid: commands.findContainerByUid,

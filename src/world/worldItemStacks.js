@@ -61,6 +61,13 @@ export const addItemUidToWorldTileStack = (item) => {
   return true;
 };
 
+export const rebuildWorldTileStacks = () => {
+  worldTileStacksByKey.clear();
+  for (const item of worldItemsByUid.values()) {
+    addItemUidToWorldTileStack(item);
+  }
+};
+
 export const removeItemUidFromWorldTileStack = (item) => {
   if (!isValidWorldItem(item)) {
     return false;

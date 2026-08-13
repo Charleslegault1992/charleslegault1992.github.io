@@ -130,8 +130,8 @@ export const createCharacterSessionController = ({
     playerState.hp = clamp(characterSnapshot.vitals?.hp ?? playerState.maxHp, 0, playerState.maxHp);
     playerState.mana = clamp(characterSnapshot.vitals?.mana ?? playerState.maxMana, 0, playerState.maxMana);
     playerState.sanity = clamp(characterSnapshot.vitals?.sanity ?? 0, 0, playerState.maxSanity);
-    resetPlayerRegenerationTimers();
-    updatePlayerCarriedWeight();
+    resetPlayerRegenerationTimers(playerState);
+    updatePlayerCarriedWeight(playerState);
     return true;
   };
 

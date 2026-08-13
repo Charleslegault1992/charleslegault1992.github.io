@@ -3,6 +3,8 @@ export const monstersByUid = new Map();
 export const monsterUidByTileKey = new Map();
 export const monsterUidsByChunkKey = new Map();
 
+export const playersByUid = new Map();
+
 export const npcElementsByUid = new Map();
 export const npcsByUid = new Map();
 export const npcUidByTileKey = new Map();

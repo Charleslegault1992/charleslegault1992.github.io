@@ -1,4 +1,3 @@
-import { playerState } from "../state/playerState.js";
 import { getItemData, isContainerItem } from "../items/itemModel.js";
 
 export const getItemTotalWeight = (item) => {
@@ -18,9 +17,12 @@ export const getItemTotalWeight = (item) => {
   return totalWeight;
 };
 
-export const calculatePlayerCarriedWeight = () => {
+export const calculatePlayerCarriedWeight = (player) => {
+  if (!player?.equipment) {
+    return 0;
+  }
   let totalWeight = 0;
-  for (const equipment of Object.values(playerState.equipment)) {
+  for (const equipment of Object.values(player.equipment)) {
     if (equipment) {
       totalWeight += getItemTotalWeight(equipment);
     }
@@ -28,10 +30,17 @@ export const calculatePlayerCarriedWeight = () => {
   return totalWeight;
 };
 
-export const getPlayerRemainingCapacity = () => {
-  return Number((playerState.capacity - playerState.carriedWeight).toFixed(1));
+export const getPlayerRemainingCapacity = (player) => {
+  if (!Number.isFinite(player?.capacity) || !Number.isFinite(player?.carriedWeight)) {
+    return 0;
+  }
+  return Number((player.capacity - player.carriedWeight).toFixed(1));
 };
 
-export const updatePlayerCarriedWeight = () => {
-  playerState.carriedWeight = Number(calculatePlayerCarriedWeight().toFixed(2));
+export const updatePlayerCarriedWeight = (player) => {
+  if (!player) {
+    return false;
+  }
+  player.carriedWeight = Number(calculatePlayerCarriedWeight(player).toFixed(2));
+  return true;
 };

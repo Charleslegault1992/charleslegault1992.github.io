@@ -4,8 +4,6 @@ import { rewardTablesDatabase } from "../data/questsDatabase.js";
 import { createItemInstance } from "../items/itemFactory.js";
 import { getItemData } from "../items/itemModel.js";
 import { getItemTotalWeight } from "./inventoryWeight.js";
-import { getEquipmentSlotItem } from "../player/playerEquipment.js";
-import { playerState } from "../state/playerState.js";
 
 export const visitContainerItems = (containerItem, visitor) => {
   if (!Array.isArray(containerItem?.content) || typeof visitor !== "function") {
@@ -37,8 +35,8 @@ export const visitContainerSlots = (containerItem, visitor) => {
   }
 };
 
-export const getPlayerGoldAmount = () => {
-  const backpack = getEquipmentSlotItem("backpack");
+export const getPlayerGoldAmount = (player) => {
+  const backpack = player?.equipment?.backpack ?? null;
   if (!backpack) {
     return 0;
   }
@@ -52,9 +50,9 @@ export const getPlayerGoldAmount = () => {
   return goldAmount;
 };
 
-export const getPlayerBankGoldAmount = () => {
-  return Number.isSafeInteger(playerState.bank?.goldBalance) && playerState.bank.goldBalance >= 0
-    ? playerState.bank.goldBalance
+export const getPlayerBankGoldAmount = (player) => {
+  return Number.isSafeInteger(player?.bank?.goldBalance) && player.bank.goldBalance >= 0
+    ? player.bank.goldBalance
     : 0;
 };
 
@@ -86,8 +84,8 @@ export const createCurrencyItemsForGoldAmount = (goldAmount) => {
   return remainingGold === 0 ? currencyItems : null;
 };
 
-export const createPlayerCurrencyValuePlan = (goldAmount) => {
-  const backpack = getEquipmentSlotItem("backpack");
+export const createPlayerCurrencyValuePlan = (player, goldAmount) => {
+  const backpack = player?.equipment?.backpack ?? null;
   const currencyItems = createCurrencyItemsForGoldAmount(goldAmount);
   if (!backpack || !currencyItems) {
     return { success: false };
@@ -149,19 +147,19 @@ export const getPlayerCurrencyValuePlanWeightDifference = (currencyPlan) => {
   return nextWeight - previousWeight;
 };
 
-export const createPlayerGoldPaymentPlan = (goldAmount) => {
+export const createPlayerGoldPaymentPlan = (player, goldAmount) => {
   if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
     return { success: false };
   }
-  const remainingGold = getPlayerGoldAmount() - goldAmount;
+  const remainingGold = getPlayerGoldAmount(player) - goldAmount;
   if (remainingGold < 0) {
     return { success: false };
   }
-  return createPlayerCurrencyValuePlan(remainingGold);
+  return createPlayerCurrencyValuePlan(player, remainingGold);
 };
 
-export const createPlayerBackpackItemRemovalPlan = (itemId, quantity) => {
-  const backpack = getEquipmentSlotItem("backpack");
+export const createPlayerBackpackItemRemovalPlan = (player, itemId, quantity) => {
+  const backpack = player?.equipment?.backpack ?? null;
   if (!backpack || typeof itemId !== "string" || !Number.isInteger(quantity) || quantity <= 0) {
     return { success: false, reason: "configuration" };
   }
@@ -212,8 +210,8 @@ export const rollbackPlayerBackpackItemRemovalPlan = (removalPlan) => {
   return true;
 };
 
-export const spendPlayerGold = (goldAmount) => {
-  const paymentPlan = createPlayerGoldPaymentPlan(goldAmount);
+export const spendPlayerGold = (player, goldAmount) => {
+  const paymentPlan = createPlayerGoldPaymentPlan(player, goldAmount);
   if (!paymentPlan.success) {
     return false;
   }

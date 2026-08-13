@@ -25,6 +25,12 @@ export const createMonsterRespawnSystem = ({
   isPlayerAtPosition,
   refreshMonsterHp,
   renderMonsters,
+  spawnDefinitionsById = monsterSpawnDefinitionsById,
+  spawnStateById = monsterSpawnStateById,
+  eventOrderState = respawnTimingState,
+  getPlayers = () => [playerState],
+  randomInt = getRandomInt,
+  onMonsterSpawned = () => {},
 }) => {
   const eventQueue = new MinHeap(compareRespawnEvents);
 
@@ -32,10 +38,10 @@ export const createMonsterRespawnSystem = ({
     if (typeof spawnId !== "string" || spawnId === "") {
       return null;
     }
-    if (!monsterSpawnStateById.has(spawnId)) {
-      monsterSpawnStateById.set(spawnId, { aliveCount: 0, pendingRespawnCount: 0 });
+    if (!spawnStateById.has(spawnId)) {
+      spawnStateById.set(spawnId, { aliveCount: 0, pendingRespawnCount: 0 });
     }
-    return monsterSpawnStateById.get(spawnId);
+    return spawnStateById.get(spawnId);
   };
 
   const getRandomTileInZone = (spawnZone) => {
@@ -45,8 +51,8 @@ export const createMonsterRespawnSystem = ({
     const widthTiles = Math.max(Math.ceil((spawnZone.width || TILE_SIZE) / TILE_SIZE), 1);
     const heightTiles = Math.max(Math.ceil((spawnZone.height || TILE_SIZE) / TILE_SIZE), 1);
     return {
-      col: spawnZone.col + getRandomInt(0, widthTiles - 1),
-      row: spawnZone.row + getRandomInt(0, heightTiles - 1),
+      col: spawnZone.col + randomInt(0, widthTiles - 1),
+      row: spawnZone.row + randomInt(0, heightTiles - 1),
     };
   };
 
@@ -79,7 +85,7 @@ export const createMonsterRespawnSystem = ({
     ) {
       return false;
     }
-    return !blockNearPlayers || !isPlayerBlockingAtTile(playerState, worldMap, col, row);
+    return !blockNearPlayers || !(getPlayers()?.some((player) => isPlayerBlockingAtTile(player, worldMap, col, row)) ?? false);
   };
 
   const getRandomSpawnTile = (worldMap, spawnZone, maxAttempts = 20, blockNearPlayers = false) => {
@@ -132,11 +138,12 @@ export const createMonsterRespawnSystem = ({
     spawnState.aliveCount++;
     refreshMonsterHp(monster);
     renderMonsters([monster]);
+    onMonsterSpawned(monster);
     return monster;
   };
 
   const decreaseAliveCount = (monster) => {
-    const state = monsterSpawnStateById.get(monster?.spawnId);
+    const state = spawnStateById.get(monster?.spawnId);
     if (!state) {
       return false;
     }
@@ -162,7 +169,7 @@ export const createMonsterRespawnSystem = ({
     ) {
       return null;
     }
-    const existing = monsterSpawnDefinitionsById.get(spawnId);
+    const existing = spawnDefinitionsById.get(spawnId);
     if (existing) {
       if (existing.z !== worldMap.z || existing.monsterId !== monsterId) {
         console.error(`Duplicate monster spawnId with conflicting data: ${spawnId}`);
@@ -171,13 +178,13 @@ export const createMonsterRespawnSystem = ({
       return existing;
     }
     const definition = { spawnId, monsterId, maxCount, respawnMs, z: worldMap.z, worldMap, spawnZone };
-    monsterSpawnDefinitionsById.set(spawnId, definition);
+    spawnDefinitionsById.set(spawnId, definition);
     getOrCreateSpawnState(spawnId);
     return definition;
   };
 
   const scheduleAt = (spawnId, dueAt) => {
-    const definition = monsterSpawnDefinitionsById.get(spawnId);
+    const definition = spawnDefinitionsById.get(spawnId);
     const state = getOrCreateSpawnState(spawnId);
     if (!definition || !state || !Number.isFinite(dueAt)) {
       return false;
@@ -186,18 +193,18 @@ export const createMonsterRespawnSystem = ({
       return false;
     }
     state.pendingRespawnCount++;
-    eventQueue.push({ spawnId, dueAt, order: respawnTimingState.nextEventOrder++ });
+    eventQueue.push({ spawnId, dueAt, order: eventOrderState.nextEventOrder++ });
     return true;
   };
 
   const schedule = (spawnId, now) => {
-    const definition = monsterSpawnDefinitionsById.get(spawnId);
+    const definition = spawnDefinitionsById.get(spawnId);
     return definition && Number.isFinite(now) ? scheduleAt(spawnId, now + definition.respawnMs) : false;
   };
 
   const processEvent = (event, now) => {
-    const definition = monsterSpawnDefinitionsById.get(event?.spawnId);
-    const state = monsterSpawnStateById.get(event?.spawnId);
+    const definition = spawnDefinitionsById.get(event?.spawnId);
+    const state = spawnStateById.get(event?.spawnId);
     if (!definition || !state) {
       return false;
     }
@@ -211,7 +218,7 @@ export const createMonsterRespawnSystem = ({
       return true;
     }
     event.dueAt = now + MONSTER_RESPAWN_CONFIG.blockedRetryMs;
-    event.order = respawnTimingState.nextEventOrder++;
+    event.order = eventOrderState.nextEventOrder++;
     eventQueue.push(event);
     return false;
   };

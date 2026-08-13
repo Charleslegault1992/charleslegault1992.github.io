@@ -1,5 +1,4 @@
 import { QUEST_STATUS, questsDatabase } from "../data/questsDatabase.js";
-import { playerState } from "../state/playerState.js";
 
 export const getQuestData = (questId) => {
   if (typeof questId !== "string" || !(questId in questsDatabase)) {
@@ -8,19 +7,19 @@ export const getQuestData = (questId) => {
   return questsDatabase[questId];
 };
 
-export const getPlayerQuestState = (questId) => {
-  if (typeof questId !== "string" || !playerState.progress?.questsById) {
+export const getPlayerQuestState = (player, questId) => {
+  if (typeof questId !== "string" || !player?.progress?.questsById) {
     return null;
   }
-  return playerState.progress.questsById[questId] ?? null;
+  return player.progress.questsById[questId] ?? null;
 };
 
-export const setPlayerQuestStatus = (questId, status, now = Date.now()) => {
+export const setPlayerQuestStatus = (player, questId, status, now) => {
   if (!getQuestData(questId) || !Object.values(QUEST_STATUS).includes(status) || !Number.isFinite(now)) {
     return false;
   }
-  const currentQuestState = getPlayerQuestState(questId);
-  playerState.progress.questsById[questId] = {
+  const currentQuestState = getPlayerQuestState(player, questId);
+  player.progress.questsById[questId] = {
     questId,
     status,
     startedAt: currentQuestState?.startedAt ?? now,
@@ -29,23 +28,23 @@ export const setPlayerQuestStatus = (questId, status, now = Date.now()) => {
   return true;
 };
 
-export const hasPlayerClaimedInteractableReward = (interactableId) => {
-  if (typeof interactableId !== "string" || !playerState.progress?.rewardClaimsByInteractableId) {
+export const hasPlayerClaimedInteractableReward = (player, interactableId) => {
+  if (typeof interactableId !== "string" || !player?.progress?.rewardClaimsByInteractableId) {
     return false;
   }
-  return interactableId in playerState.progress.rewardClaimsByInteractableId;
+  return interactableId in player.progress.rewardClaimsByInteractableId;
 };
 
-export const recordPlayerInteractableRewardClaim = (interactableId, now = Date.now()) => {
+export const recordPlayerInteractableRewardClaim = (player, interactableId, now) => {
   if (
     typeof interactableId !== "string" ||
     interactableId === "" ||
     !Number.isFinite(now) ||
-    !playerState.progress?.rewardClaimsByInteractableId
+    !player?.progress?.rewardClaimsByInteractableId
   ) {
     return false;
   }
-  playerState.progress.rewardClaimsByInteractableId[interactableId] = {
+  player.progress.rewardClaimsByInteractableId[interactableId] = {
     interactableId,
     claimedAt: now,
   };

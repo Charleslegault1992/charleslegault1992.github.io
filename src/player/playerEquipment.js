@@ -17,7 +17,7 @@ export const setEquipmentSlotItem = (itemLocation, item) => {
   return true;
 };
 
-export const canEquipItemInSlot = (item, slotName) => {
+export const canPlayerEquipItemInSlot = (player, item, slotName) => {
   if (!item || typeof slotName !== "string") {
     return false;
   }
@@ -27,21 +27,21 @@ export const canEquipItemInSlot = (item, slotName) => {
   }
 
   if (slotName === "weapon" && itemData.combat?.ammunitionItemId) {
-    const offhandItem = playerState.equipment.shield;
+    const offhandItem = player?.equipment?.shield;
     if (offhandItem && offhandItem.itemId !== itemData.combat.ammunitionItemId) {
       return false;
     }
   }
 
   if (slotName === "shield" && Number.isFinite(itemData.combat?.shieldDefense)) {
-    const equippedWeaponData = getItemData(playerState.equipment.weapon?.itemId);
+    const equippedWeaponData = getItemData(player?.equipment?.weapon?.itemId);
     if (equippedWeaponData?.combat?.ammunitionItemId) {
       return false;
     }
   }
 
   if (slotName === "shield" && itemData.type === "ammunition") {
-    const equippedWeaponData = getItemData(playerState.equipment.weapon?.itemId);
+    const equippedWeaponData = getItemData(player?.equipment?.weapon?.itemId);
     if (equippedWeaponData?.combat?.ammunitionItemId !== item.itemId) {
       return false;
     }
@@ -49,3 +49,5 @@ export const canEquipItemInSlot = (item, slotName) => {
 
   return true;
 };
+
+export const canEquipItemInSlot = (item, slotName) => canPlayerEquipItemInSlot(playerState, item, slotName);

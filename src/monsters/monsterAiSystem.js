@@ -19,7 +19,6 @@ export const createMonsterAiSystem = ({
   getTilePosition,
   getWorldPosition,
   hasLineOfSightBetweenTiles,
-  isNearPlayer,
   isTileOccupiedByCreature,
   isTilePathTraversable,
   isWalkableTile,
@@ -27,6 +26,8 @@ export const createMonsterAiSystem = ({
   syncMonsterRenderVisibility,
   updateMonsterDirection,
   updateMonsterSprite,
+  getPlayers = () => [playerState],
+  getWorldMap = (z) => pixiWorldRenderState.worldMapsByZ?.get(z) ?? null,
 }) => {
   const isEntityInsideMonsterRange = (monster, entity, rangeX, rangeY) => {
     if (
@@ -49,8 +50,12 @@ export const createMonsterAiSystem = ({
     return distanceX <= rangeX && distanceY <= rangeY;
   };
 
+  const getEligiblePlayers = (monster) => {
+    return (getPlayers() ?? []).filter((player) => player?.hp > 0 && player.z === monster?.z);
+  };
+
   const isPlayerInsideMonsterRange = (monster, rangeX, rangeY) => {
-    return isEntityInsideMonsterRange(monster, playerState, rangeX, rangeY);
+    return getEligiblePlayers(monster).some((player) => isEntityInsideMonsterRange(monster, player, rangeX, rangeY));
   };
 
   const isPlayerInsideMonsterWakeRange = (monster) => {
@@ -77,7 +82,7 @@ export const createMonsterAiSystem = ({
   };
 
   const updateMonsterActivityState = (monster) => {
-    if (!monster || monster.z !== playerState.z) {
+    if (!monster || getEligiblePlayers(monster).length === 0) {
       return false;
     }
 
@@ -98,34 +103,30 @@ export const createMonsterAiSystem = ({
     return true;
   };
 
-  const canMonsterSeePlayer = (monster) => {
-    if (!isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.visionX, MONSTER_AI_CONFIG.visionY)) {
+  const canMonsterSeePlayer = (monster, player) => {
+    if (!isEntityInsideMonsterRange(monster, player, MONSTER_AI_CONFIG.visionX, MONSTER_AI_CONFIG.visionY)) {
       return false;
     }
 
-    if (!(pixiWorldRenderState.worldMapsByZ instanceof Map)) {
-      return false;
-    }
-
-    const worldMap = pixiWorldRenderState.worldMapsByZ.get(monster.z);
+    const worldMap = getWorldMap(monster.z);
     if (!worldMap) {
       return false;
     }
 
-    return hasLineOfSightBetweenTiles(worldMap, getTilePosition(monster), getTilePosition(playerState));
+    return hasLineOfSightBetweenTiles(worldMap, getTilePosition(monster), getTilePosition(player));
   };
 
-  const getMonsterPathToPlayerAdjacentTile = (monster) => {
-    if (!monster || monster.z !== playerState.z) {
+  const getMonsterPathToPlayerAdjacentTile = (monster, player) => {
+    if (!monster || !player || monster.z !== player.z) {
       return null;
     }
 
-    if (isNearPlayer(monster, 1)) {
+    if (isEntityInsideMonsterRange(monster, player, 1, 1)) {
       return [];
     }
 
     const monsterTile = getTilePosition(monster);
-    const playerTile = getTilePosition(playerState);
+    const playerTile = getTilePosition(player);
     const targetTiles = getPathTraversableAdjacentTiles(playerTile);
 
     if (targetTiles.length === 0) {
@@ -141,12 +142,12 @@ export const createMonsterAiSystem = ({
     return path;
   };
 
-  const getMonsterHearingPathToPlayer = (monster) => {
-    if (!isPlayerInsideMonsterRange(monster, MONSTER_AI_CONFIG.hearingScanRange, MONSTER_AI_CONFIG.hearingScanRange)) {
+  const getMonsterHearingPathToPlayer = (monster, player) => {
+    if (!isEntityInsideMonsterRange(monster, player, MONSTER_AI_CONFIG.hearingScanRange, MONSTER_AI_CONFIG.hearingScanRange)) {
       return null;
     }
 
-    const path = getMonsterPathToPlayerAdjacentTile(monster);
+    const path = getMonsterPathToPlayerAdjacentTile(monster, player);
 
     const pathCost = getPathMovementCost(getTilePosition(monster), path);
 
@@ -162,11 +163,7 @@ export const createMonsterAiSystem = ({
       return null;
     }
 
-    if (monster.targetUid === playerState.uid) {
-      return playerState;
-    }
-
-    return null;
+    return getEligiblePlayers(monster).find((player) => player.uid === monster.targetUid) ?? null;
   };
 
   const setMonsterTarget = (monster, target) => {
@@ -233,21 +230,22 @@ export const createMonsterAiSystem = ({
     monster.nextAggroCheckAt =
       now + getRandomInt(MONSTER_AI_CONFIG.aggroCheckCooldownMinMs, MONSTER_AI_CONFIG.aggroCheckCooldownMaxMs);
 
-    if (canMonsterSeePlayer(monster)) {
-      return setMonsterTarget(monster, playerState);
+    const candidates = getEligiblePlayers(monster).sort((first, second) => {
+      const firstDistance = Math.abs(first.x - monster.x) + Math.abs(first.y - monster.y);
+      const secondDistance = Math.abs(second.x - monster.x) + Math.abs(second.y - monster.y);
+      return firstDistance - secondDistance;
+    });
+    for (const player of candidates) {
+      if (canMonsterSeePlayer(monster, player)) {
+        return setMonsterTarget(monster, player);
+      }
+      const hearingPath = getMonsterHearingPathToPlayer(monster, player);
+      if (hearingPath !== null && setMonsterTarget(monster, player)) {
+        monster.path = hearingPath;
+        return true;
+      }
     }
-
-    const hearingPath = getMonsterHearingPathToPlayer(monster);
-    if (hearingPath === null) {
-      return false;
-    }
-
-    if (!setMonsterTarget(monster, playerState)) {
-      return false;
-    }
-
-    monster.path = hearingPath;
-    return true;
+    return false;
   };
 
   const hasMonsterBadPathTimedOut = (monster, now) => {
@@ -305,7 +303,7 @@ export const createMonsterAiSystem = ({
       return false;
     }
 
-    if (isNearPlayer(monster, 1)) {
+    if (isEntityInsideMonsterRange(monster, target, 1, 1)) {
       monster.path = [];
       monster.badPathStartedAt = null;
       return true;
@@ -411,12 +409,13 @@ export const createMonsterAiSystem = ({
   };
 
   const getRandomMonsterCombatDanceTile = (monster) => {
-    if (!monster || monster.targetUid !== playerState.uid || monster.z !== playerState.z) {
+    const target = getMonsterTarget(monster);
+    if (!monster || !target || monster.z !== target.z) {
       return null;
     }
 
     const monsterTile = getTilePosition(monster);
-    const playerTile = getTilePosition(playerState);
+    const playerTile = getTilePosition(target);
 
     const possibleTiles = getNeighbors(monsterTile).filter((tile) => {
       const distanceCol = Math.abs(tile.col - playerTile.col);
@@ -465,6 +464,8 @@ export const createMonsterAiSystem = ({
     const finalMoveDuration = moveDuration * animationMultiplier;
     const finalMoveCooldown = moveDuration * movementCost;
     const { tileX, tileY } = getWorldPosition(tile);
+    const previousX = monster.x;
+    const previousY = monster.y;
 
     if (!moveMonsterInTileIndex(monster, tileX, tileY)) {
       return false;
@@ -480,8 +481,8 @@ export const createMonsterAiSystem = ({
 
     updateMonsterSprite(monster);
 
-    monster.oldX = monster.x;
-    monster.oldY = monster.y;
+    monster.oldX = previousX;
+    monster.oldY = previousY;
     monster.moveStartTime = now;
     monster.moveDuration = finalMoveDuration;
     monster.nextMoveTime = now + finalMoveCooldown;
@@ -497,7 +498,7 @@ export const createMonsterAiSystem = ({
       !monster ||
       !Number.isFinite(now) ||
       monster.state !== MONSTER_AI_STATE.combat ||
-      monster.targetUid !== playerState.uid
+      !getMonsterTarget(monster)
     ) {
       return false;
     }
@@ -671,7 +672,7 @@ export const createMonsterAiSystem = ({
         updateMonsterWanderMovement(monster, now);
         return;
       }
-      if (isNearPlayer(monster, 1)) {
+      if (isEntityInsideMonsterRange(monster, getMonsterTarget(monster), 1, 1)) {
         monster.state = MONSTER_AI_STATE.combat;
         monster.path = [];
         monster.badPathStartedAt = null;

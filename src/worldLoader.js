@@ -4,6 +4,7 @@
 import worldZMinus1Raw from "./assets/maps/tiled/world_z-1.tmj?raw";
 import worldZ0Raw from "./assets/maps/tiled/world_z0.tmj?raw";
 import { importTiledMapIntoWorldMaps } from "./tiledWorldImporter.js";
+import { getFileNameFromPath, hydrateTiledMapTilesets } from "./world/tiledMapHydration.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
@@ -15,17 +16,6 @@ const tilesetRawModulesByPath = import.meta.glob("./assets/tilesets/*.tsj", {
   eager: true,
 });
 //#endregion  -----  ASSETS - MODULES VITE  -----
-
-/* ==================================================== */
-//#region     -----  OUTILS - PATHS  -----
-/* ==================================================== */
-const getFileNameFromPath = (path) => {
-  if (typeof path !== "string" || path === "") {
-    return null;
-  }
-  return path.split("/").at(-1);
-};
-//#endregion  -----  OUTILS - PATHS  -----
 
 /* ==================================================== */
 //#region     -----  TILESETS - HYDRATATION  -----
@@ -41,36 +31,6 @@ const createTilesetRawByFileName = () => {
   return tilesetRawByFileName;
 };
 
-const hydrateTiledMapTilesets = (tiledMap, tilesetRawByFileName) => {
-  if (!Array.isArray(tiledMap?.tilesets) || !(tilesetRawByFileName instanceof Map)) {
-    return null;
-  }
-  const hydratedTilesets = [];
-
-  for (const tilesetRef of tiledMap.tilesets) {
-    const path = tilesetRef.source;
-    const fileName = getFileNameFromPath(path);
-    if (!fileName) {
-      return null;
-    }
-    const rawData = tilesetRawByFileName.get(fileName);
-    if (!rawData) {
-      return null;
-    }
-    const tilesetData = JSON.parse(rawData);
-    const fullTileset = {
-      ...tilesetData,
-      ...tilesetRef,
-    };
-
-    hydratedTilesets.push(fullTileset);
-  }
-
-  return {
-    ...tiledMap,
-    tilesets: hydratedTilesets,
-  };
-};
 //#endregion  -----  TILESETS - HYDRATATION  -----
 
 /* ==================================================== */

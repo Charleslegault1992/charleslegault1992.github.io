@@ -43,6 +43,7 @@ export const createNpcConversationSystem = ({
   renderSpellWindow,
   showFloatingTextAboveTarget,
   showGameStatusMessage,
+  sendPlayerSpeech = null,
   startPlayerActionNavigation,
   playerActionType,
   updateNpcDirectionToPlayer,
@@ -68,6 +69,9 @@ export const createNpcConversationSystem = ({
     showFloatingTextAboveTarget(greeting, 70, player, "speech", 4000);
     if (getActiveChatChannelId() === "local") {
       renderActiveChatMessages();
+    }
+    if (typeof sendPlayerSpeech === "function") {
+      return sendPlayerSpeech(greeting, player, now);
     }
     startNpcConversation(npc, player, now);
     return true;
@@ -130,8 +134,8 @@ export const createNpcConversationSystem = ({
   const formatNpcDialogueText = (text, player, replacements = {}) => {
     let formattedText = text.replaceAll("{playerName}", player.name);
     const dialogueReplacements = {
-      bankBalance: getPlayerBankGoldAmount(),
-      cashBalance: getPlayerGoldAmount(),
+      bankBalance: getPlayerBankGoldAmount(player),
+      cashBalance: getPlayerGoldAmount(player),
       ...replacements,
     };
     for (const [placeholder, value] of Object.entries(dialogueReplacements)) {
@@ -353,11 +357,11 @@ export const createNpcConversationSystem = ({
       return queueNpcReply(npc, player, dialogue.unavailable, now);
     }
     const totalPrice = offer.buyPrice * quantity;
-    if (getPlayerGoldAmount() < totalPrice) {
+    if (getPlayerGoldAmount(player) < totalPrice) {
       return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
     }
 
-    const paymentPlan = createPlayerGoldPaymentPlan(totalPrice);
+    const paymentPlan = createPlayerGoldPaymentPlan(player, totalPrice);
     if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
       return queueNpcReply(npc, player, dialogue.notEnoughGold, now);
     }
@@ -388,7 +392,7 @@ export const createNpcConversationSystem = ({
     if (!Number.isInteger(offer?.sellPrice) || offer.sellPrice <= 0) {
       return queueNpcReply(npc, player, dialogue.unavailable, now);
     }
-    const itemRemovalPlan = createPlayerBackpackItemRemovalPlan(offer.itemId, quantity);
+    const itemRemovalPlan = createPlayerBackpackItemRemovalPlan(player, offer.itemId, quantity);
     if (!itemRemovalPlan.success || !commitPlayerBackpackItemRemovalPlan(itemRemovalPlan)) {
       return queueNpcReply(npc, player, dialogue.missingItem, now);
     }
@@ -514,14 +518,14 @@ export const createNpcConversationSystem = ({
     return null;
   };
 
-  const learnPlayerSpell = (spellId) => {
+  const learnPlayerSpell = (player, spellId) => {
     if (!(spellId in spellsDatabase) || isPlayerSpellLearned(spellId)) {
       return false;
     }
-    playerState.spellbook.learnedSpellIds.push(spellId);
-    const emptyHotkeyIndex = playerState.spellbook.hotkeySpellIds.indexOf(null);
+    player.spellbook.learnedSpellIds.push(spellId);
+    const emptyHotkeyIndex = player.spellbook.hotkeySpellIds.indexOf(null);
     if (emptyHotkeyIndex !== -1) {
-      playerState.spellbook.hotkeySpellIds[emptyHotkeyIndex] = spellId;
+      player.spellbook.hotkeySpellIds[emptyHotkeyIndex] = spellId;
     }
     autosaveCurrentCharacter();
     renderSpellWindow();
@@ -532,10 +536,10 @@ export const createNpcConversationSystem = ({
     if (!spellData || isPlayerSpellLearned(spellData.spellId)) {
       return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
     }
-    if (getPlayerGoldAmount() < spellData.learnPrice) {
+    if (getPlayerGoldAmount(player) < spellData.learnPrice) {
       return queueNpcReply(npc, player, dialogue.notEnoughGold, now, false, { price: spellData.learnPrice });
     }
-    if (!spendPlayerGold(spellData.learnPrice) || !learnPlayerSpell(spellData.spellId)) {
+    if (!spendPlayerGold(player, spellData.learnPrice) || !learnPlayerSpell(player, spellData.spellId)) {
       return queueNpcReply(npc, player, dialogue.unavailable, now);
     }
 
@@ -680,20 +684,20 @@ export const createNpcConversationSystem = ({
   };
 
   const depositPlayerGoldInBank = (npc, player, dialogue, amount, now) => {
-    const bankBalance = getPlayerBankGoldAmount();
+    const bankBalance = getPlayerBankGoldAmount(player);
     if (
       !Number.isSafeInteger(amount) ||
       amount <= 0 ||
-      amount > getPlayerGoldAmount() ||
+      amount > getPlayerGoldAmount(player) ||
       bankBalance > Number.MAX_SAFE_INTEGER - amount
     ) {
       return queueNpcReply(npc, player, dialogue.notEnoughCash, now, false, {}, dialogue.greetingSuggestions);
     }
-    const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() - amount);
+    const currencyPlan = createPlayerCurrencyValuePlan(player, getPlayerGoldAmount(player) - amount);
     if (!currencyPlan.success || !commitPlayerCurrencyValuePlan(currencyPlan)) {
       return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
     }
-    playerState.bank.goldBalance += amount;
+    player.bank.goldBalance += amount;
     refreshInventoryUi();
     autosaveCurrentCharacter();
     return queueNpcReply(
@@ -702,27 +706,27 @@ export const createNpcConversationSystem = ({
       dialogue.deposited,
       now,
       false,
-      { amount, bankBalance: getPlayerBankGoldAmount() },
+      { amount, bankBalance: getPlayerBankGoldAmount(player) },
       dialogue.greetingSuggestions,
     );
   };
 
   const withdrawPlayerGoldFromBank = (npc, player, dialogue, amount, now) => {
-    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getPlayerBankGoldAmount()) {
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > getPlayerBankGoldAmount(player)) {
       return queueNpcReply(npc, player, dialogue.notEnoughBankGold, now, false, {}, dialogue.greetingSuggestions);
     }
-    const currencyPlan = createPlayerCurrencyValuePlan(getPlayerGoldAmount() + amount);
+    const currencyPlan = createPlayerCurrencyValuePlan(player, getPlayerGoldAmount(player) + amount);
     if (!currencyPlan.success) {
       return queueNpcReply(npc, player, dialogue.noRoom, now, false, {}, dialogue.greetingSuggestions);
     }
     const weightDifference = getPlayerCurrencyValuePlanWeightDifference(currencyPlan);
-    if (!Number.isFinite(weightDifference) || weightDifference > getPlayerRemainingCapacity()) {
+    if (!Number.isFinite(weightDifference) || weightDifference > getPlayerRemainingCapacity(player)) {
       return queueNpcReply(npc, player, dialogue.notEnoughCapacity, now, false, {}, dialogue.greetingSuggestions);
     }
     if (!commitPlayerCurrencyValuePlan(currencyPlan)) {
       return queueNpcReply(npc, player, dialogue.unavailable, now, false, {}, dialogue.greetingSuggestions);
     }
-    playerState.bank.goldBalance -= amount;
+    player.bank.goldBalance -= amount;
     refreshInventoryUi();
     autosaveCurrentCharacter();
     return queueNpcReply(
@@ -731,13 +735,13 @@ export const createNpcConversationSystem = ({
       dialogue.withdrawn,
       now,
       false,
-      { amount, bankBalance: getPlayerBankGoldAmount() },
+      { amount, bankBalance: getPlayerBankGoldAmount(player) },
       dialogue.greetingSuggestions,
     );
   };
 
   const exchangePlayerCurrencyAtBank = (npc, player, dialogue, recipe, now) => {
-    const removalPlan = createPlayerBackpackItemRemovalPlan(recipe?.sourceItemId, recipe?.sourceQuantity);
+    const removalPlan = createPlayerBackpackItemRemovalPlan(player, recipe?.sourceItemId, recipe?.sourceQuantity);
     if (!removalPlan.success || !commitPlayerBackpackItemRemovalPlan(removalPlan)) {
       return queueNpcReply(npc, player, dialogue.missingCoins, now, false, {}, dialogue.exchangeSuggestions);
     }
@@ -781,7 +785,7 @@ export const createNpcConversationSystem = ({
       return queueNpcReply(npc, player, dialogue.balance, now, false, {}, dialogue.greetingSuggestions);
     }
     if (wantsDeposit || state.activeMenu === "bankDeposit") {
-      const amount = getNpcBankAmount(text, getPlayerGoldAmount());
+      const amount = getNpcBankAmount(text, getPlayerGoldAmount(player));
       if (amount === null) {
         state.activeMenu = "bankDeposit";
         return queueNpcReply(npc, player, dialogue.depositPrompt, now, false, {}, dialogue.depositSuggestions);
@@ -789,7 +793,7 @@ export const createNpcConversationSystem = ({
       return setNpcBankAmountPendingAction(npc, player, dialogue, "bankDeposit", amount, now);
     }
     if (wantsWithdraw || state.activeMenu === "bankWithdraw") {
-      const amount = getNpcBankAmount(text, getPlayerBankGoldAmount());
+      const amount = getNpcBankAmount(text, getPlayerBankGoldAmount(player));
       if (amount === null) {
         state.activeMenu = "bankWithdraw";
         return queueNpcReply(npc, player, dialogue.withdrawPrompt, now, false, {}, dialogue.withdrawSuggestions);
@@ -1039,6 +1043,7 @@ export const createNpcConversationSystem = ({
     handleGreetingFromPointerTarget: handleNpcGreetingFromPointerTarget,
     handlePlayerSpeech: handleNpcPlayerSpeech,
     isPlayerWithinTalkRange: isPlayerWithinNpcTalkRange,
+    presentSpeech: showNpcSpeech,
     sayGreeting: sayGreetingToNpc,
     updateConversations: updateNpcConversations,
   };

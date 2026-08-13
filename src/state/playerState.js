@@ -41,7 +41,7 @@ export const normalizePlayerSpellbook = (spellbook) => {
   };
 };
 
-export const playerState = {
+export const createPlayerState = () => ({
   uid: "local-player",
   x: null,
   y: null,
@@ -89,6 +89,11 @@ export const playerState = {
       radius: 0,
       expiresAt: 0,
     },
+  },
+  cooldowns: {
+    item: 0,
+    rune: 0,
+    spell: 0,
   },
   spellbook: createDefaultPlayerSpellbook(),
   progress: {
@@ -145,4 +150,6 @@ export const playerState = {
     boots: null,
     backpack: null,
   },
-};
+});
+
+export const playerState = createPlayerState();

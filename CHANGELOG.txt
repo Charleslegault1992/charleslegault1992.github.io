@@ -1,3 +1,40 @@
+0.329 - Client distant, reconnexion et verification online
+    - Ajout du transport WebSocket dans le demarrage du client avec activation par configuration.
+    - Ajout de la prediction du mouvement et de la reconciliation avec les snapshots du serveur.
+    - Ajout de la reconnexion automatique avec delai progressif et resynchronisation complete.
+    - Ajout du pont qui applique les joueurs, monstres, NPC, items et effets recus au runtime du client.
+    - Ajout des protections contre les actions rejouees, les UID falsifies et les courses entre joueurs.
+    - Validation avec 88 tests, 20 clients simultanes, le build Vite et l'audit des dependances.
+
+0.328 - Replication, sauvegarde et cycle de vie serveur
+    - Ajout des snapshots complets et des deltas ordonnes avec revisions.
+    - Separation des donnees publiques et privees pour proteger inventaire, banque, skills et progression.
+    - Ajout du filtrage des entites, chunks et evenements selon la zone visible du joueur.
+    - Ajout de la regeneration, de la sanity, de la mort, du corpse et du retour au spawn cote serveur.
+    - Ajout de la sauvegarde SQLite a la creation, aux 30 secondes et a la deconnexion.
+    - Ajout du decay serveur pour les corpses et les effets au sol.
+
+0.327 - Monstres, NPC et quetes autoritaires
+    - Deplacement de l'IA, du pathfinding, du mouvement et du combat des monstres dans le tick serveur.
+    - Ajout du loot, de l'experience, de la mort et du respawn des monstres cote serveur.
+    - Ajout des conversations NPC serveur avec distance, file d'attente et timeout.
+    - Ajout des achats de base, de l'apprentissage des sorts et de la consultation bancaire serveur.
+    - Ajout des coffres de recompense atomiques avec progression de quete et ouverture unique.
+
+0.326 - Items, sorts et cooldowns serveur
+    - Ajout de l'utilisation autoritaire des potions, nourritures, torches et runes.
+    - Les items sont retrouves par leur UID et leur emplacement courant avant chaque utilisation.
+    - Ajout des cooldowns d'items, de runes et de sorts separes pour chaque joueur.
+    - Ajout des sorts serveur avec validation du mana, du magic level, de la classe et du spellbook.
+    - Ajout des effets de sol et des dommages de runes dans l'etat partage du serveur.
+
+0.325 - Inventaire multijoueur autoritaire
+    - Ajout d'une transaction de deplacement d'items reutilisable par le client local et le serveur.
+    - Chaque joueur possede maintenant son propre inventaire, equipement et calcul de capacite serveur.
+    - Ajout des deplacements atomiques entre le monde, les containers et l'equipement avec rollback.
+    - Ajout des validations de distance, line of sight, collision, surface et top item.
+    - Ajout des tests de concurrence pour empecher deux joueurs de prendre le meme item.
+
 0.324 - Simulation locale autoritaire
     - Ajout d'un transport local unique pour les actions de gameplay et d'inventaire.
     - Le mouvement, le combat, les sorts, les NPC, les coffres et les transitions passent maintenant par la simulation.

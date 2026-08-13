@@ -11,6 +11,7 @@ import {
 } from "../src/actions/gameplayActions.js";
 import { createInsertItemsAction, createMoveItemAction } from "../src/inventory/inventoryActions.js";
 import { createItemInstance } from "../src/items/itemFactory.js";
+import { createUseItemAction } from "../src/items/itemUseActions.js";
 import { createGameSimulation } from "../src/simulation/gameSimulation.js";
 import { createLocalGameTransport } from "../src/simulation/localGameTransport.js";
 
@@ -234,4 +235,35 @@ test("client effect failures cannot reject an authoritative action", () => {
 
   assert.equal(result.success, true);
   assert.equal(reportedErrors.length, 1);
+});
+
+test("item use resolves the current source again inside the simulation", () => {
+  const item = { uid: 15, itemId: "apple", quantity: 1 };
+  const source = { locationType: "containerSlot", parentContainerUid: 2, slotIndex: 0 };
+  const player = { uid: "player-1", x: 0, y: 0, z: 0, hp: 100 };
+  const simulation = createGameSimulation({
+    state: {
+      player,
+      monstersByUid: new Map(),
+      timing: { nextPlayerMoveTime: 0, nextPlayerAttackTime: 0 },
+    },
+    rules: {},
+    commands: {
+      getItemFromLocation: () => item,
+      getItemUseData: () => ({ action: "eat" }),
+      executeItemUse: (resolvedItem) => ({
+        success: true,
+        changes: { itemUid: resolvedItem.uid },
+        events: [{ type: "item-use-resolved", itemUid: resolvedItem.uid }],
+      }),
+    },
+  });
+  const transport = createLocalGameTransport({ simulation });
+
+  const accepted = transport.send(createUseItemAction({ source, itemUid: item.uid, requestedAt: 100 }));
+  const stale = transport.send(createUseItemAction({ source, itemUid: 99, requestedAt: 101 }));
+
+  assert.equal(accepted.success, true);
+  assert.equal(accepted.events[0].type, "item-use-resolved");
+  assert.equal(stale.reason, "item-changed");
 });

@@ -54,7 +54,7 @@ export const removeGroundEffect = (groundEffectUid) => {
   return true;
 };
 
-export const addOrRefreshGroundEffect = (groundEffectId, x, y, z, decayStage = 0, now = Date.now()) => {
+export const addOrRefreshGroundEffectState = (groundEffectId, x, y, z, decayStage = 0, now = Date.now()) => {
   if (
     !getGroundEffectData(groundEffectId) ||
     !Number.isInteger(x) ||
@@ -90,7 +90,6 @@ export const addOrRefreshGroundEffect = (groundEffectId, x, y, z, decayStage = 0
     groundEffect.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
   }
 
-  renderGroundEffect(groundEffect);
   return groundEffect;
 };
 

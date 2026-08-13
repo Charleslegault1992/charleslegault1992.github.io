@@ -1,0 +1,300 @@
+import {
+  CLIENT_MESSAGE_TYPE,
+  createNetworkMessage,
+  decodeNetworkMessage,
+  encodeNetworkMessage,
+  SERVER_MESSAGE_TYPE,
+} from "./networkProtocol.js";
+import { createClientReplicationStore } from "./clientReplicationStore.js";
+import { createPlayerMovementPrediction } from "./playerMovementPrediction.js";
+
+const getMessageText = async (data) => {
+  if (typeof data === "string") {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder().decode(data);
+  }
+  if (typeof data?.text === "function") {
+    return data.text();
+  }
+  return data?.toString?.() ?? "";
+};
+
+export const createWebSocketGameTransport = ({
+  url,
+  socketFactory,
+  replicationStore = createClientReplicationStore(),
+  reconnectDelayMs = 250,
+  maxReconnectDelayMs = 5000,
+}) => {
+  if (typeof url !== "string" || url === "" || typeof socketFactory !== "function") {
+    throw new TypeError("The WebSocket transport requires a URL and a socket factory.");
+  }
+  if (
+    !Number.isFinite(reconnectDelayMs) ||
+    !Number.isFinite(maxReconnectDelayMs) ||
+    reconnectDelayMs < 0 ||
+    maxReconnectDelayMs < reconnectDelayMs
+  ) {
+    throw new TypeError("Invalid WebSocket reconnect timing.");
+  }
+
+  const listeners = new Set();
+  const pendingActionsByRequestId = new Map();
+  const movementPrediction = createPlayerMovementPrediction();
+  let socket = null;
+  let nextSequence = 0;
+  let playerUid = null;
+  let connectPromise = null;
+  let resolveConnection = null;
+  let rejectConnection = null;
+  let helloPayload = null;
+  let reconnectTimeoutId = null;
+  let reconnectAttempt = 0;
+  let connectionState = "disconnected";
+  let shouldReconnect = false;
+  let socketGeneration = 0;
+
+  const publish = (event) => {
+    for (const listener of listeners) {
+      listener(structuredClone(event));
+    }
+  };
+
+  const setConnectionState = (state, details = {}) => {
+    connectionState = state;
+    publish({ type: "connection-state", state, ...details });
+  };
+
+  const sendMessage = (type, payload) => {
+    if (socket?.readyState !== 1) {
+      return false;
+    }
+    const encoded = encodeNetworkMessage(createNetworkMessage(type, payload, nextSequence++));
+    if (!encoded) {
+      return false;
+    }
+    socket.send(encoded);
+    return true;
+  };
+
+  const acknowledgeRevision = () => {
+    const revision = replicationStore.getRevision();
+    if (Number.isSafeInteger(revision)) {
+      sendMessage(CLIENT_MESSAGE_TYPE.acknowledge, { revision });
+    }
+  };
+
+  const handleReplicationMessage = (message) => {
+    const result =
+      message.type === SERVER_MESSAGE_TYPE.snapshot
+        ? replicationStore.applySnapshot(message.payload)
+        : replicationStore.applyDelta(message.payload);
+    if (!result.success) {
+      if (result.reason === "revision-gap" || result.reason === "snapshot-required") {
+        sendMessage(CLIENT_MESSAGE_TYPE.requestSnapshot, { knownRevision: replicationStore.getRevision() });
+      }
+      publish({ type: "replication-rejected", result });
+      return;
+    }
+    acknowledgeRevision();
+    const predictedSelf = movementPrediction.reconcile(
+      replicationStore.getSelf(),
+      replicationStore.getAcknowledgedActionRequestId(),
+    );
+    publish({ type: message.type, payload: message.payload, result, predictedSelf });
+    if (message.type === SERVER_MESSAGE_TYPE.snapshot) {
+      reconnectAttempt = 0;
+      setConnectionState("ready", { playerUid });
+    }
+    if (message.type === SERVER_MESSAGE_TYPE.snapshot && resolveConnection) {
+      resolveConnection({ playerUid, snapshot: structuredClone(message.payload) });
+      resolveConnection = null;
+      rejectConnection = null;
+      connectPromise = null;
+    }
+  };
+
+  const handleMessage = async (event) => {
+    const message = decodeNetworkMessage(await getMessageText(event.data));
+    if (!message) {
+      publish({ type: "protocol-error", reason: "invalid-server-message" });
+      return;
+    }
+    if (message.type === SERVER_MESSAGE_TYPE.welcome) {
+      playerUid = message.payload?.playerUid ?? null;
+      publish({ type: message.type, payload: message.payload });
+      return;
+    }
+    if (message.type === SERVER_MESSAGE_TYPE.snapshot || message.type === SERVER_MESSAGE_TYPE.delta) {
+      handleReplicationMessage(message);
+      return;
+    }
+    if (message.type === SERVER_MESSAGE_TYPE.actionResult) {
+      const pending = pendingActionsByRequestId.get(message.payload?.requestId) ?? null;
+      if (pending) {
+        pendingActionsByRequestId.delete(message.payload.requestId);
+        if (!message.payload.success) {
+          movementPrediction.reject(message.payload.requestId);
+          publish({
+            type: "prediction-updated",
+            actionResult: structuredClone(message.payload),
+            predictedSelf: movementPrediction.reconcile(replicationStore.getSelf()),
+          });
+        }
+        pending.resolve(structuredClone(message.payload));
+      }
+      publish({ type: message.type, payload: message.payload });
+      return;
+    }
+    if (
+      message.type === SERVER_MESSAGE_TYPE.error &&
+      ["authentication-failed", "connection-rejected"].includes(message.payload?.reason)
+    ) {
+      shouldReconnect = false;
+      rejectConnection?.(new Error(message.payload.reason));
+      resolveConnection = null;
+      rejectConnection = null;
+      connectPromise = null;
+    }
+    publish({ type: message.type, payload: message.payload });
+  };
+
+  const closePendingActions = (reason) => {
+    for (const pending of pendingActionsByRequestId.values()) {
+      pending.reject(new Error(reason));
+    }
+    pendingActionsByRequestId.clear();
+  };
+
+  const scheduleReconnect = () => {
+    if (!shouldReconnect || reconnectTimeoutId !== null) {
+      return;
+    }
+    const delay = Math.min(reconnectDelayMs * 2 ** reconnectAttempt, maxReconnectDelayMs);
+    reconnectAttempt += 1;
+    setConnectionState("reconnecting", { attempt: reconnectAttempt, delay });
+    reconnectTimeoutId = setTimeout(() => {
+      reconnectTimeoutId = null;
+      openSocket();
+    }, delay);
+  };
+
+  const openSocket = () => {
+    const generation = ++socketGeneration;
+    nextSequence = 0;
+    socket = socketFactory(url);
+    setConnectionState(reconnectAttempt > 0 ? "reconnecting" : "connecting", { attempt: reconnectAttempt });
+    socket.addEventListener("open", () => {
+      if (generation !== socketGeneration) {
+        return;
+      }
+      if (!sendMessage(CLIENT_MESSAGE_TYPE.hello, helloPayload)) {
+        socket.close();
+      }
+    });
+    socket.addEventListener("message", (event) => {
+      if (generation === socketGeneration) {
+        handleMessage(event);
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (generation === socketGeneration) {
+        publish({ type: "connection-error" });
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (generation !== socketGeneration) {
+        return;
+      }
+      socket = null;
+      playerUid = null;
+      closePendingActions("WebSocket closed before the action was resolved.");
+      publish({ type: "connection-closed" });
+      if (shouldReconnect) {
+        scheduleReconnect();
+      } else {
+        setConnectionState("disconnected");
+      }
+    });
+  };
+
+  const connect = (nextHelloPayload) => {
+    if (!nextHelloPayload || typeof nextHelloPayload !== "object") {
+      return Promise.reject(new TypeError("A client hello payload is required."));
+    }
+    helloPayload = structuredClone(nextHelloPayload);
+    shouldReconnect = true;
+    if (connectionState === "ready") {
+      return Promise.resolve({ playerUid, snapshot: null });
+    }
+    if (!connectPromise) {
+      connectPromise = new Promise((resolve, reject) => {
+        resolveConnection = resolve;
+        rejectConnection = reject;
+      });
+    }
+    if (!socket && reconnectTimeoutId === null) {
+      openSocket();
+    }
+    return connectPromise;
+  };
+
+  const send = (action) => {
+    if (!action || typeof action.requestId !== "string" || pendingActionsByRequestId.has(action.requestId)) {
+      return Promise.reject(new TypeError("A unique valid game action is required."));
+    }
+    return new Promise((resolve, reject) => {
+      movementPrediction.enqueue(action);
+      pendingActionsByRequestId.set(action.requestId, { resolve, reject });
+      if (!sendMessage(CLIENT_MESSAGE_TYPE.action, { action })) {
+        pendingActionsByRequestId.delete(action.requestId);
+        movementPrediction.reject(action.requestId);
+        reject(new Error("The game connection is not ready."));
+        return;
+      }
+      publish({
+        type: "prediction-updated",
+        action: structuredClone(action),
+        predictedSelf: movementPrediction.reconcile(replicationStore.getSelf()),
+      });
+    });
+  };
+
+  const subscribe = (listener) => {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+
+  return Object.freeze({
+    connect,
+    disconnect: () => {
+      shouldReconnect = false;
+      socketGeneration += 1;
+      if (reconnectTimeoutId !== null) {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = null;
+      }
+      const activeSocket = socket;
+      socket = null;
+      activeSocket?.close();
+      rejectConnection?.(new Error("WebSocket connection cancelled."));
+      resolveConnection = null;
+      rejectConnection = null;
+      connectPromise = null;
+      playerUid = null;
+      closePendingActions("WebSocket connection cancelled.");
+      setConnectionState("disconnected");
+    },
+    send,
+    subscribe,
+    getPlayerUid: () => playerUid,
+    getConnectionState: () => connectionState,
+    getPredictedSelf: () => movementPrediction.reconcile(replicationStore.getSelf()),
+    getReplicationStore: () => replicationStore,
+  });
+};

@@ -82,6 +82,7 @@ export const createPlayerNavigationController = ({
   isTilePathTraversable,
   isWorldItemAvailableForInteraction,
   loseSelectedMonsterTarget,
+  sayGreetingToNpc,
   showGameStatusMessage,
   startItemDrag,
   updatePlayerInventory,

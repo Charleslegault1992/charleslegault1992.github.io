@@ -3,7 +3,7 @@ import { decayingItems } from "../state/worldState.js";
 import { allocateItemUid } from "../state/uidAllocator.js";
 import { getItemData } from "./itemModel.js";
 
-export const createItemInstance = (itemId, quantity, content = []) => {
+export const createItemInstance = (itemId, quantity, content = [], options = {}) => {
   const itemData = getItemData(itemId);
   if (!itemData) {
     return null;
@@ -31,14 +31,16 @@ export const createItemInstance = (itemId, quantity, content = []) => {
       return null;
     }
     itemInstance.decayStage = 0;
-    itemInstance.nextDecayAt = Date.now() + decayCooldown.stage0;
-    decayingItems.push(itemInstance);
+    const currentTime = typeof options.now === "function" ? options.now() : Date.now();
+    itemInstance.nextDecayAt = currentTime + decayCooldown.stage0;
+    const decayCollection = Array.isArray(options.decayingItems) ? options.decayingItems : decayingItems;
+    decayCollection.push(itemInstance);
   }
   return itemInstance;
 };
 
-export const createGroundItem = (itemId, quantity, x, y, z, content = []) => {
-  const worldItem = createItemInstance(itemId, quantity, content);
+export const createGroundItem = (itemId, quantity, x, y, z, content = [], options = {}) => {
+  const worldItem = createItemInstance(itemId, quantity, content, options);
   if (!worldItem) {
     return null;
   }

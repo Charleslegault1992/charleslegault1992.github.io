@@ -1,73 +1,70 @@
 import { SANITY_DECAY_INTERVAL_MS } from "../core/gameConstants.js";
-import { playerState } from "../state/playerState.js";
-import { getPlayerClassRegenerationData } from "./playerProgression.js";
 
-export const resetPlayerRegenerationTimers = () => {
-  playerState.regeneration.nextHealthRegenAt = 0;
-  playerState.regeneration.nextManaRegenAt = 0;
-  playerState.regeneration.nextSanityDecayAt = 0;
-};
-
-export const startPlayerRegenerationTimers = (now) => {
-  const regenerationData = getPlayerClassRegenerationData();
-  if (!Number.isFinite(now) || !regenerationData) {
+export const resetPlayerRegenerationTimers = (player) => {
+  if (!player?.regeneration) {
     return false;
   }
-
-  playerState.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
-  playerState.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
-  playerState.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
+  player.regeneration.nextHealthRegenAt = 0;
+  player.regeneration.nextManaRegenAt = 0;
+  player.regeneration.nextSanityDecayAt = 0;
   return true;
 };
 
-export const advancePlayerRegeneration = (now) => {
-  if (!Number.isFinite(now) || !playerState.regeneration) {
-    return false;
-  }
-  if (playerState.sanity <= 0) {
-    playerState.sanity = 0;
-    resetPlayerRegenerationTimers();
+export const startPlayerRegenerationTimers = (player, regenerationData, now) => {
+  if (!player?.regeneration || !Number.isFinite(now) || !regenerationData) {
     return false;
   }
 
-  const regenerationData = getPlayerClassRegenerationData();
-  if (!regenerationData) {
+  player.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
+  player.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
+  player.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
+  return true;
+};
+
+export const advancePlayerRegeneration = (player, regenerationData, now) => {
+  if (!player?.regeneration || !regenerationData || !Number.isFinite(now)) {
     return false;
   }
+  if (player.sanity <= 0) {
+    player.sanity = 0;
+    resetPlayerRegenerationTimers(player);
+    return false;
+  }
+
   if (
-    playerState.regeneration.nextHealthRegenAt === 0 ||
-    playerState.regeneration.nextManaRegenAt === 0 ||
-    playerState.regeneration.nextSanityDecayAt === 0
+    player.regeneration.nextHealthRegenAt === 0 ||
+    player.regeneration.nextManaRegenAt === 0 ||
+    player.regeneration.nextSanityDecayAt === 0
   ) {
-    startPlayerRegenerationTimers(now);
+    startPlayerRegenerationTimers(player, regenerationData, now);
     return false;
   }
 
   let didVitalChange = false;
 
-  if (now >= playerState.regeneration.nextHealthRegenAt) {
-    if (playerState.hp < playerState.maxHp) {
-      playerState.hp = Math.min(playerState.hp + regenerationData.healthAmount, playerState.maxHp);
+  if (now >= player.regeneration.nextHealthRegenAt) {
+    if (player.hp < player.maxHp) {
+      player.hp = Math.min(player.hp + regenerationData.healthAmount, player.maxHp);
       didVitalChange = true;
     }
-    playerState.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
+    player.regeneration.nextHealthRegenAt = now + regenerationData.healthIntervalMs;
   }
 
-  if (now >= playerState.regeneration.nextManaRegenAt) {
-    if (playerState.mana < playerState.maxMana) {
-      playerState.mana = Math.min(playerState.mana + regenerationData.manaAmount, playerState.maxMana);
+  if (now >= player.regeneration.nextManaRegenAt) {
+    if (player.mana < player.maxMana) {
+      player.mana = Math.min(player.mana + regenerationData.manaAmount, player.maxMana);
       didVitalChange = true;
     }
-    playerState.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
+    player.regeneration.nextManaRegenAt = now + regenerationData.manaIntervalMs;
   }
 
-  if (now >= playerState.regeneration.nextSanityDecayAt) {
-    playerState.sanity = Math.max(playerState.sanity - 1, 0);
+  if (now >= player.regeneration.nextSanityDecayAt) {
+    player.sanity = Math.max(player.sanity - 1, 0);
     didVitalChange = true;
-    if (playerState.sanity > 0) {
-      playerState.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
+    if (player.sanity > 0) {
+      player.regeneration.nextSanityDecayAt = now + SANITY_DECAY_INTERVAL_MS;
     } else {
-      resetPlayerRegenerationTimers();
+      resetPlayerRegenerationTimers(player);
     }
   }
 

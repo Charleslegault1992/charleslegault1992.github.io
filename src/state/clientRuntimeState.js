@@ -81,6 +81,7 @@ export const gameRuntimeState = {
   isLoopRunning: false,
   isSwitchingCharacter: false,
   autosaveIntervalId: null,
+  isRemoteSession: false,
 };
 
 export const frameTimingState = {

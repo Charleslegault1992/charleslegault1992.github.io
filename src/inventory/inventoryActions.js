@@ -1,6 +1,7 @@
 import { getRewardItemsTotalWeight } from "./inventoryTransactions.js";
 import { commitContainerInsertionPlan, createContainerInsertionPlan } from "./inventoryTransactions.js";
 import { createGameAction, rejectGameAction, succeedGameAction } from "../actions/gameAction.js";
+import { isValidItemLocation } from "./itemLocation.js";
 
 export const INVENTORY_ACTION_TYPE = Object.freeze({
   insertItems: "inventory.insert-items",
@@ -20,27 +21,8 @@ export const INVENTORY_ACTION_REASON = Object.freeze({
   moveRejected: "move-rejected",
 });
 
-const isValidItemLocation = (location, allowWorldTile = false) => {
-  if (!location || typeof location !== "object") {
-    return false;
-  }
-  if (location.locationType === "containerSlot") {
-    return Number.isInteger(location.parentContainerUid) && Number.isInteger(location.slotIndex) && location.slotIndex >= 0;
-  }
-  if (location.locationType === "equipmentSlot") {
-    return typeof location.equipmentSlotName === "string" && location.equipmentSlotName !== "";
-  }
-  if (location.locationType === "worldItem") {
-    return Number.isInteger(location.itemUid);
-  }
-  if (allowWorldTile && location.locationType === "worldTile") {
-    return Number.isInteger(location.x) && Number.isInteger(location.y) && Number.isInteger(location.z);
-  }
-  return false;
-};
-
 export const createMoveItemAction = (source, destination, itemUid) => {
-  if (!isValidItemLocation(source) || !isValidItemLocation(destination, true) || !Number.isInteger(itemUid)) {
+  if (!isValidItemLocation(source) || !isValidItemLocation(destination, { allowWorldTile: true }) || !Number.isInteger(itemUid)) {
     return null;
   }
   return createGameAction(INVENTORY_ACTION_TYPE.moveItem, {
@@ -109,7 +91,7 @@ export const executeMoveItemAction = (action, context) => {
   if (!isValidItemLocation(source)) {
     return rejectGameAction(action, INVENTORY_ACTION_REASON.invalidSource);
   }
-  if (!isValidItemLocation(destination, true)) {
+  if (!isValidItemLocation(destination, { allowWorldTile: true })) {
     return rejectGameAction(action, INVENTORY_ACTION_REASON.invalidDestination);
   }
   if (!Number.isInteger(itemUid) || typeof context?.executeMove !== "function") {
