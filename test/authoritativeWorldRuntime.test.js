@@ -82,6 +82,70 @@ test("the authoritative runtime creates independent players and replicates movem
   assert.equal(deltas[0].upserts.players.some((player) => player.uid === firstPlayer.uid), true);
 });
 
+test("movement cooldown uses action receipt time between server ticks", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let wallTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => wallTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "timing", characterId: "timing", name: "Timing" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const start = { x: player.x, y: player.y, z: player.z };
+  const worldMap = worldMapsByZ.get(start.z);
+  const destination = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]
+    .map(([colOffset, rowOffset]) => ({
+      x: start.x + colOffset * TILE_SIZE,
+      y: start.y + rowOffset * TILE_SIZE,
+    }))
+    .find(({ x, y }) => {
+      const col = x / TILE_SIZE;
+      const row = y / TILE_SIZE;
+      return getWorldChunkForTilePosition(worldMap, col, row) && !isTiledCollisionAtTile(worldMap, col, row);
+    });
+  assert.ok(destination);
+
+  runtime.update(1000);
+  const firstMove = runtime.dispatchAction(
+    session,
+    createMovePlayerAction({
+      fromX: start.x,
+      fromY: start.y,
+      fromZ: start.z,
+      toX: destination.x,
+      toY: destination.y,
+      direction: "right",
+      isNavigationMovement: false,
+      requestedAt: 0,
+    }),
+  );
+  assert.equal(firstMove.success, true);
+
+  wallTime = 1200;
+  runtime.update(1150);
+  const returnMove = runtime.dispatchAction(
+    session,
+    createMovePlayerAction({
+      fromX: destination.x,
+      fromY: destination.y,
+      fromZ: start.z,
+      toX: start.x,
+      toY: start.y,
+      direction: "left",
+      isNavigationMovement: false,
+      requestedAt: 0,
+    }),
+  );
+
+  assert.equal(returnMove.success, true);
+  assert.equal(player.x, start.x);
+  assert.equal(player.y, start.y);
+});
+
 test("player spawns use four tiles before stacking additional players", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });

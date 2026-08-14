@@ -902,7 +902,10 @@ export const createAuthoritativeWorldRuntime = ({
       return { success: false, reason: "invalid-session-or-action" };
     }
     const authoritativeAction = structuredClone(action);
-    authoritativeAction.payload.requestedAt = currentServerTime;
+    const receivedAt = now();
+    authoritativeAction.payload.requestedAt = Number.isFinite(receivedAt)
+      ? Math.max(currentServerTime, receivedAt)
+      : currentServerTime;
     const result = simulation.dispatch(authoritativeAction);
     session.lastProcessedActionRequestId = action.requestId;
     if (result?.success) {
