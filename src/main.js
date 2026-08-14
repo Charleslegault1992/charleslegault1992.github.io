@@ -385,7 +385,6 @@ import {
   boiteJeuxInner,
   lightCanvas,
   fpsCounter,
-  versionCounter,
   gameStatusMessage,
   mobileGameControls,
   mobileJoystickZone,
@@ -8410,9 +8409,6 @@ clientBootstrap = createClientBootstrap({
     { name: "interface", run: initializeGameInterface },
   ],
   onStarted: () => {
-    if (versionCounter) {
-      versionCounter.textContent = "V 0.3306";
-    }
     preloadGameSfx();
     startGameMusic();
     if (!gameRuntimeState.isRemoteSession) {
