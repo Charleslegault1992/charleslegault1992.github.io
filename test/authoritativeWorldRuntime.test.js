@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createAttackPlayerAction,
+  createSetPvpEnabledAction,
   createAttackMonsterAction,
   createCastSpellAction,
   createMovePlayerAction,
@@ -80,10 +82,135 @@ test("the authoritative runtime creates independent players and replicates movem
   assert.equal(deltas[0].upserts.players.some((player) => player.uid === firstPlayer.uid), true);
 });
 
+test("player spawns use four tiles before stacking additional players", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });
+  const players = [];
+
+  for (let index = 0; index < 5; index++) {
+    const session = {};
+    const connection = runtime.connectClient(session, {
+      accountId: "spawn-stack",
+      characterId: `player-${index}`,
+    });
+    players.push(runtime.getPlayer(connection.playerUid));
+  }
+
+  const firstFourPositions = new Set(players.slice(0, 4).map((player) => `${player.x}:${player.y}:${player.z}`));
+  assert.equal(firstFourPositions.size, 4);
+  assert.deepEqual(
+    { x: players[4].x, y: players[4].y, z: players[4].z },
+    { x: players[0].x, y: players[0].y, z: players[0].z },
+  );
+  assert.ok(players[4].tileStackOrder > players[0].tileStackOrder);
+});
+
+test("normal movement cannot enter another player's tile", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const firstSession = {};
+  const secondSession = {};
+  firstSession.playerUid = runtime.connectClient(firstSession, {
+    accountId: "movement-stack",
+    characterId: "first",
+  }).playerUid;
+  secondSession.playerUid = runtime.connectClient(secondSession, {
+    accountId: "movement-stack",
+    characterId: "second",
+  }).playerUid;
+  const firstPlayer = runtime.getPlayer(firstSession.playerUid);
+  const secondPlayer = runtime.getPlayer(secondSession.playerUid);
+
+  serverTime += 1000;
+  runtime.update(serverTime);
+  const result = runtime.dispatchAction(
+    firstSession,
+    createMovePlayerAction({
+      fromX: firstPlayer.x,
+      fromY: firstPlayer.y,
+      fromZ: firstPlayer.z,
+      toX: secondPlayer.x,
+      toY: secondPlayer.y,
+      direction: "right",
+      isNavigationMovement: false,
+      requestedAt: 0,
+    }),
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(result.reason, "movement-blocked");
+});
+
+test("PVP requires consent from both players and applies damage on the server", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    now: () => serverTime,
+    combatRandom: {
+      getInt: () => 1,
+      getFloat: (_minimum, maximum) => maximum,
+    },
+  });
+  const attackerSession = {};
+  const targetSession = {};
+  attackerSession.playerUid = runtime.connectClient(attackerSession, {
+    accountId: "pvp",
+    characterId: "attacker",
+    name: "Attacker",
+  }).playerUid;
+  targetSession.playerUid = runtime.connectClient(targetSession, {
+    accountId: "pvp",
+    characterId: "target",
+    name: "Target",
+  }).playerUid;
+  const attacker = runtime.getPlayer(attackerSession.playerUid);
+  const target = runtime.getPlayer(targetSession.playerUid);
+  Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
+
+  const rejected = runtime.dispatchAction(
+    attackerSession,
+    createAttackPlayerAction(target.uid, serverTime),
+  );
+  runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
+  runtime.dispatchAction(targetSession, createSetPvpEnabledAction(true, serverTime));
+  serverTime += 1000;
+  runtime.update(serverTime);
+  const healthBeforeAttack = target.hp;
+  const accepted = runtime.dispatchAction(
+    attackerSession,
+    createAttackPlayerAction(target.uid, serverTime),
+  );
+
+  assert.equal(rejected.reason, "pvp-disabled");
+  assert.equal(accepted.success, true);
+  assert.ok(target.hp < healthBeforeAttack);
+  assert.equal(accepted.changes.targetPlayerUid, target.uid);
+  assert.equal(attacker.pvp.skullType, "white");
+
+  const lockedToggle = runtime.dispatchAction(
+    attackerSession,
+    createSetPvpEnabledAction(false, serverTime),
+  );
+  const retaliation = runtime.dispatchAction(
+    targetSession,
+    createAttackPlayerAction(attacker.uid, serverTime),
+  );
+
+  assert.equal(lockedToggle.reason, "pvp-locked-by-skull");
+  assert.equal(retaliation.success, true);
+  assert.equal(target.pvp.skullType, "none");
+});
+
 test("a disconnected character reloads its authoritative saved position", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   const repository = createSqliteCharacterRepository({ databasePath: ":memory:" });
-  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, characterRepository: repository });
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    allowCharacterAutoCreate: true,
+  });
   const firstSession = {};
   const connection = runtime.connectClient(firstSession, { accountId: "account", characterId: "saved" });
   firstSession.playerUid = connection.playerUid;
@@ -100,6 +227,62 @@ test("a disconnected character reloads its authoritative saved position", async 
     savedPosition,
   );
   repository.close();
+});
+
+test("a persistent runtime rejects a character that was not created by its account", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const repository = createSqliteCharacterRepository({ databasePath: ":memory:" });
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, characterRepository: repository });
+
+  const result = runtime.connectClient({}, { accountId: "account", characterId: "forged" });
+
+  assert.deepEqual(result, { success: false, reason: "character-not-found" });
+  repository.close();
+});
+
+test("dirty character autosaves are spread across server ticks", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const saveCalls = [];
+  const repository = {
+    load: () => null,
+    save(accountId, characterId, _snapshot, expectedVersion) {
+      saveCalls.push({ accountId, characterId });
+      return { success: true, version: (expectedVersion ?? 0) + 1 };
+    },
+  };
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    allowCharacterAutoCreate: true,
+    now: () => serverTime,
+  });
+  const sessions = [];
+  for (let index = 0; index < 5; index++) {
+    const session = {};
+    session.playerUid = runtime.connectClient(session, {
+      accountId: "autosave",
+      characterId: `player-${index}`,
+    }).playerUid;
+    sessions.push(session);
+  }
+  saveCalls.length = 0;
+  for (const session of sessions) {
+    runtime.dispatchAction(session, createSetPvpEnabledAction(true, serverTime));
+  }
+
+  serverTime += 30001;
+  runtime.update(serverTime);
+  assert.equal(saveCalls.length, 2);
+
+  runtime.update(serverTime + 34);
+  assert.equal(saveCalls.length, 4);
+
+  runtime.update(serverTime + 68);
+  assert.equal(saveCalls.length, 5);
+
+  runtime.update(serverTime + 30001);
+  assert.equal(saveCalls.length, 5);
 });
 
 test("the authoritative server owns world-to-inventory item moves", async () => {
@@ -403,9 +586,16 @@ test("the authoritative runtime executes a Tiled floor transition", async () => 
   const connection = runtime.connectClient(session, { accountId: "test", characterId: "transition" });
   session.playerUid = connection.playerUid;
   const player = runtime.getPlayer(connection.playerUid);
+  const secondSession = {};
+  const secondConnection = runtime.connectClient(secondSession, { accountId: "test", characterId: "transition-two" });
+  secondSession.playerUid = secondConnection.playerUid;
+  const secondPlayer = runtime.getPlayer(secondConnection.playerUid);
   player.x = 14 * TILE_SIZE;
   player.y = 16 * TILE_SIZE;
   player.z = 0;
+  secondPlayer.x = 14 * TILE_SIZE;
+  secondPlayer.y = 16 * TILE_SIZE;
+  secondPlayer.z = 0;
 
   serverTime += 1000;
   runtime.update(serverTime);
@@ -419,9 +609,25 @@ test("the authoritative runtime executes a Tiled floor transition", async () => 
       requestedAt: 0,
     }),
   );
+  const secondResult = runtime.dispatchAction(
+    secondSession,
+    createUseWorldTransitionAction({
+      z: 0,
+      col: 14,
+      row: 16,
+      transitionType: "ropeDown",
+      requestedAt: 0,
+    }),
+  );
 
   assert.equal(result.success, true);
+  assert.equal(secondResult.success, true);
   assert.deepEqual({ x: player.x, y: player.y, z: player.z }, { x: 14 * TILE_SIZE, y: 16 * TILE_SIZE, z: -1 });
+  assert.deepEqual(
+    { x: secondPlayer.x, y: secondPlayer.y, z: secondPlayer.z },
+    { x: player.x, y: player.y, z: player.z },
+  );
+  assert.ok(secondPlayer.tileStackOrder > player.tileStackOrder);
 });
 
 test("snapshots contain only nearby serialized world entities", async () => {

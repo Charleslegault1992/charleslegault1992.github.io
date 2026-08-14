@@ -5,6 +5,7 @@ import {
   createNetworkMessage,
   decodeNetworkMessage,
   encodeNetworkMessage,
+  encodeNetworkPayload,
   SERVER_MESSAGE_TYPE,
 } from "../src/network/networkProtocol.js";
 
@@ -13,6 +14,18 @@ test("network messages preserve their version and payload through JSON", () => {
   const decoded = decodeNetworkMessage(encodeNetworkMessage(message));
 
   assert.deepEqual(decoded, message);
+});
+
+test("server payloads can be encoded directly without cloning their source", () => {
+  const payload = { revision: 7, entities: [{ uid: 1 }] };
+  const encoded = encodeNetworkPayload(SERVER_MESSAGE_TYPE.delta, payload, 3);
+
+  assert.deepEqual(decodeNetworkMessage(encoded), {
+    protocolVersion: 1,
+    type: SERVER_MESSAGE_TYPE.delta,
+    sequence: 3,
+    payload,
+  });
 });
 
 test("a message from another protocol version is rejected", () => {

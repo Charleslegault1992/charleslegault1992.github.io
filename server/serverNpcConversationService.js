@@ -2,8 +2,14 @@ import { MAX_ITEM_STACK_SIZE, NPC_DIALOGUE_CONFIG, TILE_SIZE } from "../src/core
 import { npcsDatabase } from "../src/data/npcsDatabase.js";
 import {
   commitPlayerCurrencyValuePlan,
+  commitPlayerBackpackItemRemovalPlan,
+  createPlayerBackpackItemRemovalPlan,
+  createPlayerCurrencyValuePlan,
   createPlayerGoldPaymentPlan,
+  getPlayerBankGoldAmount,
   getPlayerGoldAmount,
+  getPlayerCurrencyValuePlanWeightDifference,
+  rollbackPlayerBackpackItemRemovalPlan,
   rollbackPlayerCurrencyValuePlan,
 } from "../src/inventory/inventoryTransactions.js";
 import { spellsDatabase } from "../src/spellDatabase.js";
@@ -110,39 +116,128 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     if (!pending || !inventory) {
       return createReply(npc, player, dialogue.cancelled ?? "Cancelled.");
     }
-    const paymentPlan = createPlayerGoldPaymentPlan(player, pending.price);
-    if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
-      state.pendingAction = null;
-      return createReply(npc, player, dialogue.notEnoughGold ?? "You do not have enough gold.");
-    }
+    let completedText = dialogue.cancelled ?? "Cancelled.";
+    let transactionSucceeded = false;
 
-    let transaction = null;
-    if (pending.type === "buy-item") {
-      transaction = inventory.insertItems(player.equipment.backpack?.uid, [
-        { itemId: pending.itemId, quantity: pending.quantity },
-      ]);
-    } else if (pending.type === "learn-spell") {
-      if (!player.spellbook.learnedSpellIds.includes(pending.spellId)) {
+    if (pending.type === "buy-item" || pending.type === "learn-spell") {
+      const paymentPlan = createPlayerGoldPaymentPlan(player, pending.price);
+      if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.notEnoughGold ?? "You do not have enough gold.");
+      }
+      const transaction = pending.type === "buy-item"
+        ? inventory.insertItems(player.equipment.backpack?.uid, [{ itemId: pending.itemId, quantity: pending.quantity }])
+        : { success: true };
+      if (!transaction.success) {
+        rollbackPlayerCurrencyValuePlan(paymentPlan);
+        inventory.refreshWeight();
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.noRoom ?? "Make some room first.");
+      }
+      if (pending.type === "learn-spell" && !player.spellbook.learnedSpellIds.includes(pending.spellId)) {
         player.spellbook.learnedSpellIds.push(pending.spellId);
       }
-      transaction = { success: true };
-    }
-    if (!transaction?.success) {
-      rollbackPlayerCurrencyValuePlan(paymentPlan);
-      return createReply(npc, player, dialogue.noRoom ?? "Make some room first.");
+      completedText = pending.type === "learn-spell"
+        ? format(dialogue.learned, player, {
+            spellName: spellsDatabase[pending.spellId].name,
+            incantation: spellsDatabase[pending.spellId].incantation,
+          })
+        : format(dialogue.bought, player, {
+            quantity: pending.quantity,
+            itemName: getItemDataName(pending.itemId),
+            price: pending.price,
+          });
+      transactionSucceeded = true;
+    } else if (pending.type === "sell-item") {
+      const removalPlan = createPlayerBackpackItemRemovalPlan(player, pending.itemId, pending.quantity);
+      if (!removalPlan.success || !commitPlayerBackpackItemRemovalPlan(removalPlan)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.missingItem);
+      }
+      const currencyPlan = createPlayerCurrencyValuePlan(player, getPlayerGoldAmount(player) + pending.price);
+      inventory.refreshWeight();
+      const weightDifference = getPlayerCurrencyValuePlanWeightDifference(currencyPlan);
+      if (
+        !currencyPlan.success ||
+        !Number.isFinite(weightDifference) ||
+        weightDifference > inventory.getRemainingCapacity() ||
+        !commitPlayerCurrencyValuePlan(currencyPlan)
+      ) {
+        rollbackPlayerBackpackItemRemovalPlan(removalPlan);
+        inventory.refreshWeight();
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.noRoom);
+      }
+      completedText = format(dialogue.sold, player, {
+        quantity: pending.quantity,
+        itemName: getItemDataName(pending.itemId),
+        price: pending.price,
+      });
+      transactionSucceeded = true;
+    } else if (pending.type === "deposit") {
+      const paymentPlan = createPlayerGoldPaymentPlan(player, pending.amount);
+      if (!paymentPlan.success || !commitPlayerCurrencyValuePlan(paymentPlan)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.notEnoughCash);
+      }
+      player.bank.goldBalance += pending.amount;
+      completedText = format(dialogue.deposited, player, {
+        amount: pending.amount,
+        bankBalance: player.bank.goldBalance,
+      });
+      transactionSucceeded = true;
+    } else if (pending.type === "withdraw") {
+      if (getPlayerBankGoldAmount(player) < pending.amount) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.notEnoughBankGold);
+      }
+      const currencyPlan = createPlayerCurrencyValuePlan(player, getPlayerGoldAmount(player) + pending.amount);
+      const weightDifference = getPlayerCurrencyValuePlanWeightDifference(currencyPlan);
+      if (!currencyPlan.success) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.noRoom);
+      }
+      if (!Number.isFinite(weightDifference) || weightDifference > inventory.getRemainingCapacity()) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.notEnoughCapacity);
+      }
+      if (!commitPlayerCurrencyValuePlan(currencyPlan)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.unavailable);
+      }
+      player.bank.goldBalance -= pending.amount;
+      completedText = format(dialogue.withdrawn, player, {
+        amount: pending.amount,
+        bankBalance: player.bank.goldBalance,
+      });
+      transactionSucceeded = true;
+    } else if (pending.type === "exchange") {
+      const removalPlan = createPlayerBackpackItemRemovalPlan(player, pending.sourceItemId, pending.sourceQuantity);
+      if (!removalPlan.success || !commitPlayerBackpackItemRemovalPlan(removalPlan)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.missingCoins);
+      }
+      const insertion = inventory.insertItems(player.equipment.backpack?.uid, [
+        { itemId: pending.outputItemId, quantity: pending.outputQuantity },
+      ]);
+      if (!insertion.success) {
+        rollbackPlayerBackpackItemRemovalPlan(removalPlan);
+        inventory.refreshWeight();
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.noRoom);
+      }
+      completedText = format(dialogue.exchanged, player, {
+        outputQuantity: pending.outputQuantity,
+        outputName: pending.outputItemId,
+      });
+      transactionSucceeded = true;
     }
 
     state.pendingAction = null;
-    const completedText = pending.type === "learn-spell"
-      ? format(dialogue.learned, player, {
-          spellName: spellsDatabase[pending.spellId].name,
-          incantation: spellsDatabase[pending.spellId].incantation,
-        })
-      : format(dialogue.bought, player, {
-          quantity: pending.quantity,
-          itemName: getItemDataName(pending.itemId),
-          price: pending.price,
-        });
+    if (!transactionSucceeded) {
+      return createReply(npc, player, dialogue.unavailable ?? dialogue.cancelled);
+    }
+    inventory.refreshWeight();
     return createReply(npc, player, completedText, [], [{ type: "npc-transaction-completed", ...pending }]);
   };
 
@@ -212,14 +307,25 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       );
       if (offerEntry) {
         const [itemId, offer] = offerEntry;
-        if (!Number.isInteger(offer.buyPrice) || offer.buyPrice <= 0) {
+        const isSelling = hasAnyWord(words, ["sell", "selling", "vente", "vendre", "vends"]);
+        const unitPrice = isSelling ? offer.sellPrice : offer.buyPrice;
+        if (!Number.isInteger(unitPrice) || unitPrice <= 0) {
           return createReply(npc, player, dialogue.unavailable);
         }
-        state.pendingAction = { type: "buy-item", itemId, quantity, price: offer.buyPrice * quantity };
+        state.pendingAction = {
+          type: isSelling ? "sell-item" : "buy-item",
+          itemId,
+          quantity,
+          price: unitPrice * quantity,
+        };
         return createReply(
           npc,
           player,
-          format(dialogue.confirmBuy, player, { quantity, itemName: itemId, price: state.pendingAction.price }),
+          format(isSelling ? dialogue.confirmSell : dialogue.confirmBuy, player, {
+            quantity,
+            itemName: itemId,
+            price: state.pendingAction.price,
+          }),
           dialogue.confirmationSuggestions,
         );
       }
@@ -245,11 +351,55 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         );
       }
     }
-    if (npcData.service?.type === "banker" && hasAnyWord(words, ["balance", "solde"])) {
-      return createReply(npc, player, format(dialogue.balance, player, {
-        bankBalance: player.bank.goldBalance,
-        cashBalance: getPlayerGoldAmount(player),
-      }));
+    if (npcData.service?.type === "banker") {
+      if (hasAnyWord(words, ["balance", "solde"])) {
+        return createReply(npc, player, format(dialogue.balance, player, {
+          bankBalance: player.bank.goldBalance,
+          cashBalance: getPlayerGoldAmount(player),
+        }));
+      }
+      const amountMatch = normalize(text).match(/\b(\d+)\b/);
+      const requestedAmount = Number(amountMatch?.[1] ?? 0);
+      if (hasAnyWord(words, ["deposit", "depot", "deposer", "depose"])) {
+        const amount = hasAnyWord(words, ["all", "tout"]) ? getPlayerGoldAmount(player) : requestedAmount;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+          return createReply(npc, player, dialogue.depositPrompt, dialogue.depositSuggestions);
+        }
+        state.pendingAction = { type: "deposit", amount };
+        return createReply(npc, player, format(dialogue.confirmDeposit, player, { amount }), dialogue.confirmationSuggestions);
+      }
+      if (hasAnyWord(words, ["withdraw", "withdrawal", "retrait", "retirer", "retire"])) {
+        const amount = hasAnyWord(words, ["all", "tout"]) ? getPlayerBankGoldAmount(player) : requestedAmount;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+          return createReply(npc, player, dialogue.withdrawPrompt, dialogue.withdrawSuggestions);
+        }
+        state.pendingAction = { type: "withdraw", amount };
+        return createReply(npc, player, format(dialogue.confirmWithdraw, player, { amount }), dialogue.confirmationSuggestions);
+      }
+      if (hasAnyWord(words, ["exchange", "echange", "changer", "change"])) {
+        const normalizedText = normalize(text);
+        const recipe = npcData.service.exchangeRecipes.find((candidate) => {
+          const sourceWords = candidate.sourceItemId === "goldCoin"
+            ? ["gold", "or"]
+            : candidate.sourceItemId === "azureCoin" ? ["platinum", "platine", "azure"] : ["crystal", "cristal"];
+          const outputWords = candidate.outputItemId === "goldCoin"
+            ? ["gold", "or"]
+            : candidate.outputItemId === "azureCoin" ? ["platinum", "platine", "azure"] : ["crystal", "cristal"];
+          const sourceIndex = Math.min(...sourceWords.map((word) => normalizedText.indexOf(word)).filter((index) => index >= 0));
+          const outputIndex = Math.max(...outputWords.map((word) => normalizedText.lastIndexOf(word)));
+          return Number.isFinite(sourceIndex) && sourceIndex >= 0 && outputIndex > sourceIndex;
+        });
+        if (!recipe) {
+          return createReply(npc, player, dialogue.exchangePrompt, dialogue.exchangeSuggestions);
+        }
+        state.pendingAction = { type: "exchange", ...recipe };
+        return createReply(npc, player, format(dialogue.confirmExchange, player, {
+          sourceQuantity: recipe.sourceQuantity,
+          sourceName: recipe.sourceItemId,
+          outputQuantity: recipe.outputQuantity,
+          outputName: recipe.outputItemId,
+        }), dialogue.confirmationSuggestions);
+      }
     }
     if (hasAnyWord(words, ["name", "nom"])) {
       return createReply(npc, player, dialogue.name);

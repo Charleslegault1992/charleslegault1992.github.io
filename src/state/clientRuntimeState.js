@@ -1,5 +1,6 @@
 export const combatTargetState = {
   monsterUid: null,
+  playerUid: null,
 };
 
 export const renderState = {
@@ -98,6 +99,7 @@ export const gameplayTimingState = {
   nextTorchFuelRefresh: 0,
   nextPlayerMoveTime: 0,
   nextPlayerAttackTime: 0,
+  nextChatMessageTime: 0,
 };
 
 export const respawnTimingState = {

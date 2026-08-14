@@ -21,3 +21,13 @@ test("the world journal requests a snapshot when the known revision expired", ()
   assert.equal(journal.getDeltasAfter(0), null);
   assert.equal(journal.getDeltasAfter(3).length, 0);
 });
+
+test("public journal reads cannot mutate retained deltas", () => {
+  const journal = createWorldChangeJournal();
+  journal.record({ serverTime: 1, upserts: { monsters: [{ uid: 1, hp: 10 }] } });
+
+  const firstRead = journal.getDeltasAfter(0);
+  firstRead[0].upserts.monsters[0].hp = 0;
+
+  assert.equal(journal.getDeltasAfter(0)[0].upserts.monsters[0].hp, 10);
+});

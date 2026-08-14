@@ -1,7 +1,7 @@
 /* ==================================================== */
 //#region     -----  IMPORTS  -----
 /* ==================================================== */
-import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
 import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 //#endregion  -----  IMPORTS  -----
@@ -56,6 +56,7 @@ let worldEntityTextureByKey = null;
 let entityFrameTextureByCacheKey = null;
 let playerContainer = null;
 let playerSpritesByLayer = null;
+let remotePlayerVisualsByUid = null;
 let monsterVisualsByUid = null;
 let npcVisualsByUid = null;
 let worldItemVisualsByUid = null;
@@ -446,6 +447,172 @@ export const updatePixiPlayerTransform = ({ x, y, zIndex }) => {
   playerContainer.y = y;
   playerContainer.zIndex = zIndex;
   return true;
+};
+
+export const upsertPixiRemotePlayerAppearance = async ({ uid, appearanceKey, textureUrlsByLayer }) => {
+  if (
+    !entityContainer ||
+    !(remotePlayerVisualsByUid instanceof Map) ||
+    typeof uid !== "string" ||
+    uid === "" ||
+    typeof appearanceKey !== "string" ||
+    appearanceKey === ""
+  ) {
+    return false;
+  }
+
+  let refs = remotePlayerVisualsByUid.get(uid);
+  if (!refs) {
+    const container = new Container();
+    const spritesByLayer = new Map();
+    const name = new Text({
+      text: "",
+      style: { fontFamily: "Arial", fontSize: 12, fill: 0xffffff, stroke: { color: 0x000000, width: 3 } },
+    });
+    const healthBackground = new Graphics().rect(8, -4, 48, 4).fill(0x1a1a1a);
+    const health = new Graphics().rect(0, 0, 48, 4).fill(0xffffff);
+    const selection = new Graphics()
+      .rect(3, TILE_SIZE + 3, TILE_SIZE - 6, TILE_SIZE - 6)
+      .stroke({ width: 2, color: 0xd94a42, alpha: 0.8 });
+    const skull = new Container();
+    const skullHead = new Graphics().circle(0, 0, 6).fill(0xffffff).rect(-4, 3, 8, 5).fill(0xffffff);
+    const skullFace = new Graphics()
+      .circle(-2, -1, 1.25)
+      .circle(2, -1, 1.25)
+      .fill(0x181818)
+      .moveTo(0, 1)
+      .lineTo(-1, 3)
+      .lineTo(1, 3)
+      .closePath()
+      .fill(0x181818);
+    selection.visible = false;
+    skull.visible = false;
+    skull.x = TILE_SIZE / 2;
+    skull.y = -26;
+    skull.addChild(skullHead, skullFace);
+    name.anchor.set(0.5, 1);
+    name.x = TILE_SIZE / 2;
+    name.y = -7;
+    health.x = 8;
+    health.y = -4;
+    container.label = `remote-player:${uid}`;
+    container.addChild(name, healthBackground, health, skull, selection);
+    entityContainer.addChild(container);
+    refs = {
+      container,
+      spritesByLayer,
+      name,
+      health,
+      skull,
+      skullHead,
+      selection,
+      appearanceKey: null,
+      appearanceRequestKey: null,
+      frameKey: null,
+    };
+    remotePlayerVisualsByUid.set(uid, refs);
+  }
+
+  if (refs.appearanceKey === appearanceKey) {
+    return true;
+  }
+  refs.appearanceRequestKey = appearanceKey;
+  const loadedTextures = await Promise.all(
+    PLAYER_APPEARANCE_LAYER_ORDER.map(async (layerName) => {
+      const textureUrl = textureUrlsByLayer?.[layerName];
+      if (typeof textureUrl !== "string" || textureUrl === "") {
+        return null;
+      }
+      return [layerName, await Assets.load(textureUrl)];
+    }),
+  );
+  if (refs.appearanceRequestKey !== appearanceKey || loadedTextures.some((entry) => entry === null)) {
+    return false;
+  }
+  for (const [layerName, texture] of loadedTextures) {
+    worldEntityTextureByKey.set(`remote-player:${appearanceKey}:${layerName}`, texture);
+  }
+  refs.appearanceKey = appearanceKey;
+  refs.frameKey = null;
+  return true;
+};
+
+export const updatePixiRemotePlayerVisual = ({
+  uid,
+  name,
+  hp,
+  maxHp,
+  sourceX,
+  sourceY,
+  sourceWidth,
+  sourceHeight,
+  x,
+  y,
+  zIndex,
+  selected = false,
+  pvp = null,
+}) => {
+  const refs = remotePlayerVisualsByUid?.get(uid);
+  if (!refs?.appearanceKey) {
+    return false;
+  }
+  const frameKey = `${sourceX}:${sourceY}:${sourceWidth}:${sourceHeight}`;
+  if (refs.frameKey !== frameKey) {
+    for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
+      const texture = getEntityFrameTexture(
+        `remote-player:${refs.appearanceKey}:${layerName}`,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+      );
+      if (!texture) {
+        return false;
+      }
+      let sprite = refs.spritesByLayer.get(layerName);
+      if (!sprite) {
+        sprite = new Sprite(texture);
+        sprite.label = `remote-player:${uid}:${layerName}`;
+        refs.container.addChildAt(sprite, refs.spritesByLayer.size);
+        refs.spritesByLayer.set(layerName, sprite);
+      } else {
+        sprite.texture = texture;
+      }
+    }
+    refs.frameKey = frameKey;
+  }
+  const healthRatio = Math.max(0, Math.min(1, Number.isFinite(hp / maxHp) ? hp / maxHp : 0));
+  refs.health.scale.x = healthRatio;
+  refs.health.tint = healthRatio > 0.5 ? 0x35b24a : healthRatio > 0.25 ? 0xe0b42f : 0xd93a32;
+  refs.selection.visible = selected;
+  const skullType = pvp?.skullType ?? "none";
+  refs.skull.visible = skullType === "white" || skullType === "red";
+  refs.skullHead.tint = skullType === "red" ? 0xd9362d : 0xffffff;
+  refs.name.tint = skullType === "red" ? 0xff5a50 : pvp?.enabled === true ? 0xffa09a : 0xffffff;
+  const nextName = String(name ?? "");
+  if (refs.name.text !== nextName) {
+    refs.name.text = nextName;
+  }
+  refs.container.x = x;
+  refs.container.y = y;
+  refs.container.zIndex = zIndex;
+  return true;
+};
+
+export const removePixiRemotePlayerVisual = (uid) => {
+  const refs = remotePlayerVisualsByUid?.get(uid);
+  if (!refs) {
+    return false;
+  }
+  refs.container.destroy({ children: true });
+  remotePlayerVisualsByUid.delete(uid);
+  return true;
+};
+
+export const clearPixiRemotePlayerVisuals = () => {
+  for (const uid of [...(remotePlayerVisualsByUid?.keys() ?? [])]) {
+    removePixiRemotePlayerVisual(uid);
+  }
 };
 
 export const upsertPixiNpcVisual = ({
@@ -1300,6 +1467,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
   entityFrameTextureByCacheKey = new Map();
   playerContainer = null;
   playerSpritesByLayer = null;
+  remotePlayerVisualsByUid = new Map();
   monsterVisualsByUid = new Map();
   npcVisualsByUid = new Map();
   worldItemVisualsByUid = new Map();

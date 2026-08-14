@@ -29,6 +29,7 @@ Le transport WebSocket fait une reconnexion exponentielle de 250 ms a 5 secondes
 - Conversations NPC, file d'attente, achats de base, apprentissage de sorts et consultation bancaire.
 - Monstres, aggro, pathfinding, mouvement, combat, mort, loot et respawn.
 - Regeneration, sanity, mort du joueur, corpse et retour au spawn.
+- PVP consensuel avec skull blanc, retaliation legale, skull rouge et verrouillage en combat.
 - Decay des corpses et effets au sol.
 - Sauvegarde SQLite a la creation, toutes les 30 secondes et a la deconnexion.
 
@@ -64,13 +65,14 @@ En production, le jeton doit etre court, emis apres une vraie connexion HTTPS et
 - Une session ne peut pas agir sous l'UID d'un autre joueur.
 - Une course sur le meme item ne peut avoir qu'un gagnant.
 - Les mutations d'inventaire critiques sont atomiques avec rollback.
+- L'origine HTTP et WebSocket est limitee au client configure en production.
+- Le rate limit d'authentification reconnait l'adresse transmise par le reverse proxy local.
 
 ## Limites connues avant production
 
-- Le login, la creation de compte et l'emission de jetons HTTP ne sont pas encore implementes.
-- Le chat global/local entre plusieurs joueurs n'est pas encore transporte par le serveur.
-- Le rendu des autres joueurs est present dans l'etat replique, mais demande encore son renderer Pixi multijoueur dedie.
-- Les ventes NPC et les operations bancaires completes doivent rejoindre le service NPC serveur.
+- La moderation cible actuellement les personnages connectes; il manque encore les signalements et un historique consultable.
+- Les zones PVP protegees, les drops speciaux du skull rouge et les runes contre les joueurs ne sont pas encore implementes.
+- Les echanges, groupes, guildes et listes d'amis entre joueurs ne sont pas encore implementes.
 - Les fichiers Tiled et les assets restent telecharges par le client; ils ne doivent pas contenir de secrets.
 - SQLite convient au developpement et a un seul processus. PostgreSQL et une strategie de migration seront necessaires avant plusieurs instances serveur.
 - Le test de charge actuel valide la connexion et le snapshot de 20 clients, pas encore un soak test de plusieurs heures.
@@ -85,3 +87,15 @@ npm audit --omit=dev --audit-level=high
 ```
 
 Le serveur expose `GET /health` et le WebSocket `/game`.
+
+Un lancement avec `NODE_ENV=production` exige `GAME_AUTH_SECRET` et `GAME_CLIENT_ORIGIN`. Le workflow GitHub Pages exige aussi les variables de depot `VITE_GAME_SERVER_URL` et `VITE_GAME_API_URL`; il refuse de publier un client qui retomberait accidentellement en mode local.
+
+## Comptes et personnages
+
+L'API HTTP expose maintenant `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` et les operations `GET`, `POST` et `DELETE` sur `/characters`. Les mots de passe sont derives avec `scrypt` et un sel aleatoire. Le navigateur recoit seulement un jeton HMAC court, le renouvelle pendant la session, puis presente ce jeton au WebSocket.
+
+La creation automatique depuis le message `client.hello` est bloquee par defaut. `GAME_ALLOW_CHARACTER_AUTOCREATE=true` existe uniquement pour un environnement local controle. En production, un personnage doit deja appartenir au compte avant sa connexion.
+
+## Schema SQLite
+
+Le schema est versionne dans `server/persistence/sqliteMigrations.js`. Chaque migration est appliquee dans une transaction et inscrite dans `schema_migrations`. Une migration deja inscrite n'est jamais rejouee. Les repositories de comptes et de personnages utilisent la meme base avec WAL, foreign keys et un busy timeout.

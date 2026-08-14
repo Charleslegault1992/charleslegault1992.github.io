@@ -2,6 +2,7 @@ import {
   clearPixiItemUseTargets,
   clearPixiMonsterSelection,
   clearPixiMonsterVisuals,
+  clearPixiRemotePlayerVisuals,
   clearPixiWorldItemSelection,
   clearPixiWorldItemVisuals,
   initializePixiRenderer,
@@ -10,6 +11,7 @@ import {
   playPixiRewardChestEffect,
   playPixiSpellEffect,
   removePixiNpcVisual,
+  removePixiRemotePlayerVisual,
   removePixiMonsterVisual,
   removePixiWorldItemVisual,
   renderPixiFrame,
@@ -20,9 +22,11 @@ import {
   updatePixiCamera,
   updatePixiMonsterTransform,
   updatePixiNpcTransform,
+  updatePixiRemotePlayerVisual,
   updatePixiWorldItemTransform,
   upsertPixiMonsterVisual,
   upsertPixiNpcVisual,
+  upsertPixiRemotePlayerAppearance,
   upsertPixiWorldItemVisual,
 } from "./pixiRendererFacade.js";
 import { loadWorldMaps } from "./worldLoader.js";
@@ -91,8 +95,11 @@ import { createClientBootstrap } from "./core/clientBootstrap.js";
 import { createGameSystemsOrchestrator } from "./core/gameSystemsOrchestrator.js";
 import {
   createAttackMonsterAction,
+  createAttackPlayerAction,
   createCastSpellAction,
   createMovePlayerAction,
+  createSendChatMessageAction,
+  createSetPvpEnabledAction,
   createSpeakToNpcAction,
   createUseWorldTransitionAction,
   createWorldInteractionAction,
@@ -108,10 +115,16 @@ import { createLocalGameTransport } from "./simulation/localGameTransport.js";
 import { createGameActionEffectRouter } from "./simulation/gameActionEffectRouter.js";
 import { createWebSocketGameTransport } from "./network/webSocketGameTransport.js";
 import { createRemoteGameStateBridge } from "./network/remoteGameStateBridge.js";
+import { createGameAccountSession } from "./network/gameAccountSession.js";
 import { createUseItemAction } from "./items/itemUseActions.js";
 import { applyDamageToPlayer } from "./combat/playerHealth.js";
 import { applyDamageToMonsterHealth } from "./combat/monsterHealth.js";
 import { applyPlayerDeathState } from "./player/playerDeath.js";
+import {
+  getPlayerTileStackRenderOffset,
+  getPlayerTileStackRenderOffsets,
+  getTopPlayerAtTile,
+} from "./player/playerTileStack.js";
 import { createInventoryDragController } from "./inventory/inventoryDragController.js";
 import {
   createItemLocationController,
@@ -193,6 +206,7 @@ import {
   getPlayerFloatingTextElement,
   initializePlayerRenderRefs,
   refreshPlayerHpBar,
+  refreshPlayerSkull,
   showPlayerName,
   updatePlayerPosition,
   updatePlayerSprite,
@@ -361,6 +375,7 @@ let gameSimulation = null;
 let gameTransport = null;
 let gameActionEffectRouter = null;
 let remoteGameStateBridge = null;
+const remotePlayerRenderUids = new Set();
 let unsubscribeGameTransportEffects = null;
 
 /* ---------- BASE - ETAT DRAG ---------- */
@@ -383,8 +398,26 @@ const handleGameActionResult = (resultOrPromise, handler) => {
 
 
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
+const ACCOUNT_TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const REMOTE_GAME_SERVER_URL = import.meta.env.VITE_GAME_SERVER_URL?.trim() ?? "";
 const REMOTE_GAME_AUTH_TOKEN = import.meta.env.VITE_GAME_AUTH_TOKEN?.trim() ?? "";
+const configuredGameApiUrl = import.meta.env.VITE_GAME_API_URL?.trim() ?? "";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? "";
+const REMOTE_GAME_API_URL = configuredGameApiUrl || (() => {
+  if (REMOTE_GAME_SERVER_URL === "") {
+    return "";
+  }
+  const apiUrl = new URL(REMOTE_GAME_SERVER_URL);
+  apiUrl.protocol = apiUrl.protocol === "wss:" ? "https:" : "http:";
+  apiUrl.pathname = "/";
+  apiUrl.search = "";
+  apiUrl.hash = "";
+  return apiUrl.href;
+})();
+const gameAccountSession =
+  REMOTE_GAME_SERVER_URL !== "" && REMOTE_GAME_AUTH_TOKEN === ""
+    ? createGameAccountSession({ apiBaseUrl: REMOTE_GAME_API_URL })
+    : null;
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 
@@ -412,6 +445,7 @@ let questWindowController = null;
 let characterSelectorController = null;
 let clientBootstrap = null;
 let gameSystemsOrchestrator = null;
+let accountTokenRefreshIntervalId = null;
 const createCharacterSaveSnapshot = () => characterSessionController.createSnapshot();
 const applyCharacterSavePosition = (characterSnapshot, worldMapsByZ) =>
   characterSessionController.applySavedPosition(characterSnapshot, worldMapsByZ);
@@ -497,6 +531,7 @@ const handlePlayerDeathResolvedEffect = (event) => {
   refreshItemUiAfterDrag();
   pixiWorldRenderState.currentZ = playerState.z;
   combatTargetState.monsterUid = null;
+  combatTargetState.playerUid = null;
   stopPlayerNavigation();
   cancelItemDrag();
   cancelItemUse();
@@ -2491,8 +2526,30 @@ const setGameLanguage = (language) => gameOptionsController.setLanguage(language
 const renderOptionsWindow = () => gameOptionsController.render();
 const toggleOptionsWindow = () => gameOptionsController.toggle();
 
-const showPvpUnavailableMessage = () => {
-  showGameStatusMessage(getGameUiText("pvpUnavailable"));
+const refreshPvpButtonState = () => {
+  const pvpButton = playerInventory?.querySelector('[data-ui-action="show-pvp-status"]');
+  const pvpEnabled = playerState.pvp?.enabled === true;
+  const skullType = playerState.pvp?.skullType ?? "none";
+  pvpButton?.classList.toggle("equipment-ui-button-pvp-active", pvpEnabled);
+  pvpButton?.classList.toggle("equipment-ui-button-pvp-skull-white", skullType === "white");
+  pvpButton?.classList.toggle("equipment-ui-button-pvp-skull-red", skullType === "red");
+  pvpButton?.setAttribute("aria-pressed", String(pvpEnabled));
+  refreshPlayerSkull(skullType);
+};
+
+const togglePvpMode = () => {
+  const enabled = playerState.pvp?.enabled !== true;
+  const action = createSetPvpEnabledAction(enabled, Date.now());
+  handleGameActionResult(gameTransport.send(action), (result) => {
+    if (!result?.success) {
+      const messageKey = result?.reason === "pvp-locked-by-skull" ? "pvpLockedBySkull" : "pvpChangeFailed";
+      showGameStatusMessage(getGameUiText(messageKey));
+      return;
+    }
+    playerState.pvp.enabled = enabled;
+    refreshPvpButtonState();
+    showGameStatusMessage(getGameUiText(enabled ? "pvpEnabled" : "pvpDisabled"));
+  });
 };
 
 const logoutCurrentCharacter = () => {
@@ -2515,10 +2572,11 @@ const bindEquipmentMenuButtons = () => {
   const hotkeyButton = playerInventory.querySelector('[data-ui-action="toggle-spells"]');
   const optionsButton = playerInventory.querySelector('[data-ui-action="toggle-options"]');
   const logoutButton = playerInventory.querySelector('[data-ui-action="logout"]');
-  pvpButton?.addEventListener("click", showPvpUnavailableMessage);
+  pvpButton?.addEventListener("click", togglePvpMode);
   hotkeyButton?.addEventListener("click", toggleSpellWindow);
   optionsButton?.addEventListener("click", toggleOptionsWindow);
   logoutButton?.addEventListener("click", logoutCurrentCharacter);
+  refreshPvpButtonState();
 };
 
 /* ---------- UI - SORTS ET HOTKEYS ---------- */
@@ -4129,6 +4187,21 @@ const syncMobilePlayerHud = () => {
 };
 
 const syncMobileTargetHud = () => {
+  if (!mobileTargetName || !mobileTargetValue || !mobileTargetHealthFill) {
+    return;
+  }
+  const remotePlayer = combatTargetState.playerUid === null
+    ? null
+    : (playersByUid.get(combatTargetState.playerUid) ?? null);
+  if (remotePlayer && remotePlayer.z === playerState.z) {
+    const hpRatio = clamp(remotePlayer.hp / remotePlayer.maxHp, 0, 1);
+    mobileTargetName.textContent = remotePlayer.name;
+    mobileTargetValue.textContent = `${Math.max(remotePlayer.hp, 0)}/${remotePlayer.maxHp}`;
+    mobileTargetHealthFill.style.width = `${hpRatio * 100}%`;
+    mobileTargetHealthFill.style.setProperty("--mobile-target-hp-color", getHpColor(remotePlayer.hp, remotePlayer.maxHp));
+    mobileTargetHud.toggleAttribute("hidden", false);
+    return;
+  }
   const monster = combatTargetState.monsterUid === null ? null : (monstersByUid.get(combatTargetState.monsterUid) ?? null);
   if (!monster || monster.z !== playerState.z) {
     mobileTargetHud?.toggleAttribute("hidden", true);
@@ -5325,9 +5398,7 @@ const getPointerTargetFromEvent = (e) => {
     tile = { row, col, x, y };
     monster = findMonsterAtPosition(x, y);
     npc = findNpcAtClientPosition(e.clientX, e.clientY) ?? findNpcAtPosition(x, y);
-    if (isPlayerAtPosition(x, y)) {
-      player = playerState;
-    }
+    player = getTopPlayerAtTile([playerState, ...playersByUid.values()], x, y, playerState.z);
   }
 
   return {
@@ -5616,6 +5687,9 @@ const finishMobileTouchInput = (event) => {
   } else if (target?.monster) {
     resetDragStatePending();
     selectMonster(target.monster);
+  } else if (target?.player && target.player.uid !== playerState.uid) {
+    resetDragStatePending();
+    selectRemotePlayer(target.player);
   } else if (pendingSource && !mobileTouchInputState.didMove) {
     resetDragStatePending();
     handleUseItemFromSource(pendingSource);
@@ -5968,6 +6042,114 @@ const updateNpcDirectionToPlayer = (npc) => {
   updateNpcSprite(npc);
 };
 
+/* ---------- JOUEURS DISTANTS - RENDU ---------- */
+
+const getRemotePlayerAppearanceKey = (remotePlayer) => {
+  const parts = normalizeCharacterAppearanceParts(remotePlayer.appearanceParts);
+  const colors = normalizeCharacterAppearanceColors(remotePlayer.appearanceColors);
+  return `${parts.headId}:${parts.bodyId}:${parts.legsId}:${parts.bootsId}:${colors.hair}:${colors.clothes}:${colors.pants}:${colors.shoes}`;
+};
+
+const updateRemotePlayerVisual = (remotePlayer, tileStackRenderOffsets = null) => {
+  if (!remotePlayer || remotePlayer.z !== pixiWorldRenderState.currentZ) {
+    return false;
+  }
+  const surfaceOffsetY = getEntitySurfaceOffsetY(remotePlayer);
+  const sourceX = remotePlayer.walkFrame * PLAYER_FRAME_WIDTH;
+  const sourceY = getDirectionRow(remotePlayer.direction) * PLAYER_FRAME_HEIGHT;
+  return updatePixiRemotePlayerVisual({
+    uid: remotePlayer.uid,
+    name: remotePlayer.name,
+    hp: remotePlayer.hp,
+    maxHp: remotePlayer.maxHp,
+    sourceX,
+    sourceY,
+    sourceWidth: PLAYER_FRAME_WIDTH,
+    sourceHeight: PLAYER_FRAME_HEIGHT,
+    x: remotePlayer.renderX,
+    y: remotePlayer.renderY - TILE_SIZE - surfaceOffsetY,
+    zIndex:
+      getWorldRenderZIndex(getEntityRenderSortY(remotePlayer), WORLD_RENDER_LAYER_CREATURE) +
+      (tileStackRenderOffsets?.get(remotePlayer.uid) ??
+        getPlayerTileStackRenderOffset(remotePlayer, [playerState, ...playersByUid.values()])),
+    selected: remotePlayer.uid === combatTargetState.playerUid,
+    pvp: remotePlayer.pvp,
+  });
+};
+
+const renderRemotePlayer = async (remotePlayer) => {
+  if (!remotePlayer || remotePlayer.z !== pixiWorldRenderState.currentZ) {
+    return false;
+  }
+  const appearanceKey = getRemotePlayerAppearanceKey(remotePlayer);
+  const textureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(
+    remotePlayer.appearanceParts,
+    remotePlayer.appearanceColors,
+  );
+  const loaded = await upsertPixiRemotePlayerAppearance({
+    uid: remotePlayer.uid,
+    appearanceKey,
+    textureUrlsByLayer,
+  });
+  if (playersByUid.get(remotePlayer.uid) !== remotePlayer || remotePlayer.z !== pixiWorldRenderState.currentZ) {
+    removePixiRemotePlayerVisual(remotePlayer.uid);
+    remotePlayerRenderUids.delete(remotePlayer.uid);
+    return false;
+  }
+  if (loaded) {
+    remotePlayerRenderUids.add(remotePlayer.uid);
+  }
+  return loaded ? updateRemotePlayerVisual(remotePlayer) : false;
+};
+
+const syncVisibleRemotePlayerRenders = () => {
+  const visiblePlayerUids = new Set();
+  for (const remotePlayer of playersByUid.values()) {
+    if (remotePlayer.z !== pixiWorldRenderState.currentZ) {
+      continue;
+    }
+    visiblePlayerUids.add(remotePlayer.uid);
+    renderRemotePlayer(remotePlayer);
+  }
+  for (const remotePlayerUid of [...remotePlayerRenderUids]) {
+    if (!visiblePlayerUids.has(remotePlayerUid)) {
+      if (combatTargetState.playerUid === remotePlayerUid) {
+        combatTargetState.playerUid = null;
+        syncMobileTargetHud();
+      }
+      removePixiRemotePlayerVisual(remotePlayerUid);
+      remotePlayerRenderUids.delete(remotePlayerUid);
+    }
+  }
+};
+
+const clearRemotePlayerSelection = () => {
+  const selectedPlayerUid = combatTargetState.playerUid;
+  combatTargetState.playerUid = null;
+  if (selectedPlayerUid) {
+    const remotePlayer = playersByUid.get(selectedPlayerUid);
+    if (remotePlayer) {
+      updateRemotePlayerVisual(remotePlayer);
+    }
+  }
+};
+
+const selectRemotePlayer = (remotePlayer) => {
+  if (!remotePlayer || remotePlayer.uid === playerState.uid) {
+    return false;
+  }
+  const wasSelected = combatTargetState.playerUid === remotePlayer.uid;
+  clearRemotePlayerSelection();
+  clearMonsterSelection();
+  combatTargetState.monsterUid = null;
+  if (!wasSelected) {
+    combatTargetState.playerUid = remotePlayer.uid;
+    updateRemotePlayerVisual(remotePlayer);
+  }
+  syncMobileTargetHud();
+  return true;
+};
+
 /* ---------- NPCS - MOUVEMENT ---------- */
 
 const getRandomNpcWanderTile = (npc) => {
@@ -6083,6 +6265,41 @@ const handleRemoteNpcSpeechEffect = (event) => {
   const npc = npcsByUid.get(event.npcUid) ?? null;
   if (npc) {
     npcConversationSystem.presentSpeech(npc, event.text, event.suggestions ?? []);
+  }
+};
+
+const handleChatMessageEffect = (event) => {
+  if (!["local", "global", "trade"].includes(event.channelId) || typeof event.text !== "string") {
+    return;
+  }
+  const speaker = {
+    uid: event.playerUid,
+    name: event.speakerName,
+    level: event.speakerLevel,
+    x: event.x,
+    y: event.y,
+    z: event.z,
+  };
+  addChatMessage(event.channelId, "player", event.text, speaker);
+  if (event.channelId === chatController.getActiveChannelId()) {
+    renderActiveChatMessages();
+  }
+  if (event.channelId === "local" && event.z === playerState.z) {
+    showFloatingTextAboveTarget(event.text, 70, speaker, "speech", 4000);
+  }
+};
+
+const handleChatSystemMessageEffect = (event) => {
+  const channelId = ["global", "logs"].includes(event.channelId) ? event.channelId : "logs";
+  if (typeof event.text !== "string" || event.text === "") {
+    return;
+  }
+  addChatMessage(channelId, "system", event.text);
+  if (channelId === chatController.getActiveChannelId()) {
+    renderActiveChatMessages();
+  }
+  if (event.visibility === "global") {
+    showGameStatusMessage(event.text);
   }
 };
 const updateNpcConversations = (now) => npcConversationSystem.updateConversations(now);
@@ -6235,6 +6452,7 @@ const selectMonster = (monster) => {
     return;
   }
   clearMonsterSelection();
+  clearRemotePlayerSelection();
   if (monster.uid === combatTargetState.monsterUid) {
     combatTargetState.monsterUid = null;
     if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
@@ -6555,6 +6773,7 @@ const renderInitialWorld = () => {
   syncGroundEffectRenderForCurrentZ();
   syncVisibleMonsterRendersAroundPlayer();
   syncVisibleNpcRendersAroundPlayer();
+  syncVisibleRemotePlayerRenders();
   updateWorldRender();
 };
 
@@ -6604,6 +6823,16 @@ const updateRenderPositions = (now) => {
       }
     }
   }
+
+  for (const remotePlayer of playersByUid.values()) {
+    const didFinishMoving = updateEntityRenderPosition(remotePlayer, now);
+    if (didFinishMoving) {
+      remotePlayer.walkFrame = 1;
+    } else if (remotePlayer.moveDuration > 0) {
+      const progress = clamp((now - remotePlayer.moveStartTime) / remotePlayer.moveDuration, 0, 0.999);
+      remotePlayer.walkFrame = Math.floor(progress * PLAYER_ANIMATION_FRAMES);
+    }
+  }
 };
 
 /* ---------- RENDER - GROUPES DE MISE A JOUR ---------- */
@@ -6623,7 +6852,11 @@ const updateRenderWorldItems = () => {
 const updateRenderCreatures = () => {
   updateMonsterPosition();
   updateNpcPosition();
-  updatePlayerPosition(camera);
+  const tileStackRenderOffsets = getPlayerTileStackRenderOffsets([playerState, ...playersByUid.values()]);
+  for (const remotePlayer of playersByUid.values()) {
+    updateRemotePlayerVisual(remotePlayer, tileStackRenderOffsets);
+  }
+  updatePlayerPosition(camera, tileStackRenderOffsets.get(playerState.uid) ?? 0);
 };
 
 const updateRenderLight = () => {
@@ -6656,6 +6889,7 @@ const updatePixiVisibleChunksAroundPlayer = async () => {
 
   syncVisibleMonsterRendersAroundPlayer();
   syncVisibleNpcRendersAroundPlayer();
+  syncVisibleRemotePlayerRenders();
   pixiWorldRenderState.lastPlayerZ = pixiWorldRenderState.currentZ;
   pixiWorldRenderState.lastPlayerChunkX = playerChunkPosition.chunkX;
   pixiWorldRenderState.lastPlayerChunkY = playerChunkPosition.chunkY;
@@ -7041,6 +7275,26 @@ const attackMonster = (monster, now) => {
 };
 
 const updateCombat = (now) => {
+  if (combatTargetState.playerUid !== null) {
+    const targetPlayer = playersByUid.get(combatTargetState.playerUid) ?? null;
+    if (!targetPlayer || targetPlayer.z !== playerState.z || targetPlayer.hp <= 0) {
+      clearRemotePlayerSelection();
+      syncMobileTargetHud();
+      showGameStatusMessage(getGameUiText("targetLost"));
+      return;
+    }
+    if (!isNearPlayer(targetPlayer, getPlayerAttackRange()) || now < gameplayTimingState.nextPlayerAttackTime) {
+      return;
+    }
+    const action = createAttackPlayerAction(targetPlayer.uid, now);
+    gameplayTimingState.nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
+    handleGameActionResult(gameTransport.send(action), (result) => {
+      if (!result?.success && result?.reason === "pvp-disabled") {
+        showGameStatusMessage(getGameUiText("pvpRequiresBothPlayers"));
+      }
+    });
+    return;
+  }
   if (combatTargetState.monsterUid === null) {
     return;
   }
@@ -7060,6 +7314,7 @@ const updateCombat = (now) => {
     return;
   }
   const attackAction = createAttackMonsterAction(monster.uid, now);
+  gameplayTimingState.nextPlayerAttackTime = now + PLAYER_ATTACK_COOLDOWN_MS;
   gameTransport.send(attackAction);
 };
 //#endregion  -----  COMBAT - JOUEUR, MONSTRES ET RUNES  -----
@@ -7128,6 +7383,10 @@ boiteJeux.addEventListener("contextmenu", (e) => {
     return;
   }
   const target = getPointerTargetFromEvent(e);
+  if (target?.player && target.player.uid !== playerState.uid) {
+    selectRemotePlayer(target.player);
+    return;
+  }
   if (handleNpcGreetingFromPointerTarget(target)) {
     return;
   }
@@ -7366,13 +7625,15 @@ gameOptionsController = createGameOptionsController({
 });
 
 characterSelectorController = createCharacterSelectorController({
+  accountSession: gameAccountSession,
+  googleClientId: GOOGLE_CLIENT_ID,
   applyGameLanguageUi,
   cancelItemDrag,
   cancelItemUse,
   renderOptionsWindow,
   renderQuestWindow,
   resetMobileJoystick,
-  saveBeforeSwitch: () => characterSessionController.saveBeforeSwitch(),
+  saveBeforeSwitch: () => gameRuntimeState.isRemoteSession || characterSessionController.saveBeforeSwitch(),
   setGameLanguage,
   setOpenMobilePanel,
   showGameStatusMessage,
@@ -7491,6 +7752,24 @@ chatController = createChatController({
   castLearnedSpell: castLearnedPlayerSpellById,
   showPlayerSpeech: (text) => showFloatingTextAboveTarget(text, 70, playerState, "speech", 4000),
   handleNpcSpeech: handleNpcPlayerSpeech,
+  sendChannelMessage: ({ channelId, text }) => {
+    if (!gameRuntimeState.isRemoteSession) {
+      return false;
+    }
+    const action = createSendChatMessageAction(channelId, text, Date.now());
+    if (!action) {
+      return true;
+    }
+    handleGameActionResult(gameTransport.send(action), (result) => {
+      if (!result?.success) {
+        showGameStatusMessage(result?.reason ?? "Chat message rejected.");
+      }
+    });
+    if (channelId === "local") {
+      handleNpcPlayerSpeech(text, playerState, Date.now());
+    }
+    return true;
+  },
   resetMovementKeys,
 });
 
@@ -7752,6 +8031,37 @@ const handlePlayerAttackResolvedEffect = (event) => {
   playPlayerAttackResultSfx(event.attackResult);
 };
 
+const handlePlayerPvpAttackResolvedEffect = (event) => {
+  playPlayerWeaponProjectile(event.targetRenderSnapshot);
+  const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
+  if (targetPlayer) {
+    showFloatingTextAboveTarget(
+      event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
+      70,
+      targetPlayer,
+      event.attackResult?.textType ?? "damage",
+    );
+    updateRemotePlayerVisual(targetPlayer);
+  }
+  playPlayerAttackResultSfx(event.attackResult);
+  syncMobileTargetHud();
+};
+
+const handleServerPlayerDeathEffect = (event) => {
+  if (event.playerUid === combatTargetState.playerUid) {
+    clearRemotePlayerSelection();
+    syncMobileTargetHud();
+  }
+  if (event.playerUid === playerState.uid) {
+    combatTargetState.monsterUid = null;
+    clearRemotePlayerSelection();
+    clearMonsterSelection();
+    stopPlayerNavigation();
+    refreshPlayerVitalsUi();
+    showGameStatusMessage(getGameUiText("youDied"));
+  }
+};
+
 const handleMonsterDamageResolvedEffect = (event) => {
   const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
   if (groundEffect) {
@@ -7827,11 +8137,13 @@ const handleItemUseResolvedEffect = (event) => {
 gameSimulation = createGameSimulation({
   state: {
     player: playerState,
+    playersByUid,
     monstersByUid,
     timing: gameplayTimingState,
   },
   rules: {
     canPlayerAttackMonster: canSimulationPlayerAttackMonster,
+    canPlayerAttackPlayer: canSimulationPlayerAttackMonster,
     canPlayerMove: canSimulationPlayerMove,
     canPlayerUseWorldTransition: (movingPlayer, transition) => isNearPlayer(transition, 1),
     canUseWorldItemSource: (source) => canInteractWithWorldItemSource(source),
@@ -7840,6 +8152,27 @@ gameSimulation = createGameSimulation({
   },
   commands: {
     executeAttackMonster: (monster, payload) => attackMonster(monster, payload.requestedAt),
+    executeAttackPlayer: (targetPlayer) => {
+      const attackResult = calculatePlayerAttackResult(targetPlayer);
+      if (attackResult.finalDamage > 0) {
+        applyDamageToPlayer(targetPlayer, attackResult.finalDamage);
+      }
+      return {
+        success: true,
+        changes: { targetPlayerUid: targetPlayer.uid, hp: targetPlayer.hp },
+        events: [{
+          type: "player-pvp-attack-resolved",
+          playerUid: playerState.uid,
+          targetPlayerUid: targetPlayer.uid,
+          attackResult,
+          targetRenderSnapshot: structuredClone(targetPlayer),
+        }],
+      };
+    },
+    executeSetPvpEnabled: (enabled) => {
+      playerState.pvp.enabled = enabled;
+      return { success: true, changes: { pvp: structuredClone(playerState.pvp) } };
+    },
     executeItemUse: executeSimulationItemUse,
     executeMoveItem: executeInventoryMoveRequest,
     executeNpcSpeech: (payload, speakingPlayer) =>
@@ -7861,12 +8194,17 @@ gameSimulation = createGameSimulation({
 });
 
 gameActionEffectRouter = createGameActionEffectRouter({
+  "chat-message": handleChatMessageEffect,
+  "chat-system-message": handleChatSystemMessageEffect,
   "inventory-items-inserted": () => refreshInventoryUi(),
   "inventory-move-completed": (event) => playGameSfx(event.sfx),
   "item-use-resolved": handleItemUseResolvedEffect,
   "monster-damage-resolved": handleMonsterDamageResolvedEffect,
   "npc-spoke": handleRemoteNpcSpeechEffect,
   "player-attack-resolved": handlePlayerAttackResolvedEffect,
+  "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
+  "player-died": handleServerPlayerDeathEffect,
+  "player-pvp-state-changed": () => refreshPvpButtonState(),
   "player-world-transitioned": () => presentPlayerWorldTransition(),
   "reward-chest-completed": handleRewardChestCompletedEffect,
 });
@@ -7890,6 +8228,8 @@ const synchronizeRemoteWorldRender = (event) => {
     for (const npcUid of [...npcElementsByUid.keys()]) {
       removeNpcRender(npcUid);
     }
+    clearPixiRemotePlayerVisuals();
+    remotePlayerRenderUids.clear();
     updatePixiVisibleChunksAroundPlayer();
   }
   for (const itemUid of [...worldItemElementsByUid.keys()]) {
@@ -7902,6 +8242,7 @@ const synchronizeRemoteWorldRender = (event) => {
   syncGroundEffectRenderForCurrentZ();
   syncVisibleMonsterRendersAroundPlayer();
   syncVisibleNpcRendersAroundPlayer();
+  syncVisibleRemotePlayerRenders();
   if (event.type === "server.snapshot" || event.payload?.upserts?.self) {
     refreshInventoryUi();
     refreshPlayerVitalsUi();
@@ -7914,8 +8255,15 @@ const initializeRemoteGameSession = async () => {
     gameRuntimeState.isRemoteSession = false;
     return { remoteSession: false };
   }
-  if (REMOTE_GAME_AUTH_TOKEN === "") {
-    throw new Error("VITE_GAME_AUTH_TOKEN is required when VITE_GAME_SERVER_URL is configured.");
+  if (gameAccountSession) {
+    const refreshResult = await gameAccountSession.refreshToken();
+    if (!refreshResult.success) {
+      throw new Error("The authenticated account session expired or could not be refreshed.");
+    }
+  }
+  const authToken = gameAccountSession?.getAuthToken() ?? REMOTE_GAME_AUTH_TOKEN;
+  if (typeof authToken !== "string" || authToken === "") {
+    throw new Error("An authenticated account session is required when VITE_GAME_SERVER_URL is configured.");
   }
 
   gameRuntimeState.isRemoteSession = true;
@@ -7944,11 +8292,19 @@ const initializeRemoteGameSession = async () => {
     },
   });
   await remoteTransport.connect({
-    authToken: REMOTE_GAME_AUTH_TOKEN,
+    authToken,
     characterId: playerState.uid,
     name: playerState.name,
     language: gameOptionsUiState.values.language,
   });
+  if (gameAccountSession && accountTokenRefreshIntervalId === null) {
+    accountTokenRefreshIntervalId = window.setInterval(async () => {
+      const refreshResult = await gameAccountSession.refreshToken().catch(() => ({ success: false }));
+      if (refreshResult.success) {
+        remoteTransport.updateAuthenticationToken(gameAccountSession.getAuthToken());
+      }
+    }, ACCOUNT_TOKEN_REFRESH_INTERVAL_MS);
+  }
   return { remoteSession: true };
 };
 
@@ -7968,7 +8324,18 @@ const initializePlayerUi = () => {
 
 /* ---------- INITIALISATION - DEMARRAGE ---------- */
 const prepareGameData = () => {
-  const loadedCharacterSnapshot = loadInitialCharacterSnapshot();
+  const selectedOnlineCharacter = gameAccountSession?.getActiveCharacter() ?? null;
+  if (selectedOnlineCharacter) {
+    playerState.uid = selectedOnlineCharacter.characterId;
+    playerState.name = selectedOnlineCharacter.name;
+    playerState.appearanceId = getPlayerAppearanceData(selectedOnlineCharacter.appearanceId).appearanceId;
+    playerState.appearanceParts = normalizeCharacterAppearanceParts(
+      selectedOnlineCharacter.appearanceParts,
+      playerState.appearanceId,
+    );
+    playerState.appearanceColors = normalizeCharacterAppearanceColors(selectedOnlineCharacter.appearanceColors);
+  }
+  const loadedCharacterSnapshot = gameAccountSession ? null : loadInitialCharacterSnapshot();
   if (!loadedCharacterSnapshot && REMOTE_GAME_SERVER_URL === "") {
     setupTestPlayerInventory();
   }

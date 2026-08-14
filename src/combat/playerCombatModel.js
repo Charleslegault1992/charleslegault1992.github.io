@@ -90,10 +90,21 @@ export const getPlayerShieldDefense = (player = playerState) => {
 };
 
 export const getTargetCombatData = (target) => {
-  if (!target?.monsterId) {
-    return EMPTY_TARGET_COMBAT_DATA;
+  if (target?.monsterId) {
+    return getMonsterData(target.monsterId)?.combat ?? EMPTY_TARGET_COMBAT_DATA;
   }
-  return getMonsterData(target.monsterId)?.combat ?? EMPTY_TARGET_COMBAT_DATA;
+  if (target?.equipment && target?.skills) {
+    const shielding = target.skills.shielding?.level ?? 0;
+    const shieldDefense = getPlayerShieldDefense(target);
+    return {
+      attack: 0,
+      armor: getPlayerTotalArmor(target),
+      defense: shieldDefense + shielding * 0.1,
+      blockChance: clamp(10 + shielding * 0.8 + shieldDefense * 0.8, 5, 70),
+      hitChance: 0,
+    };
+  }
+  return EMPTY_TARGET_COMBAT_DATA;
 };
 
 export const calculatePlayerAttackResult = (target, player = playerState, random = DEFAULT_COMBAT_RANDOM) => {

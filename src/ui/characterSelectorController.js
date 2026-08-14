@@ -18,6 +18,7 @@ import {
   playerAppearancesDatabase,
 } from "../player/playerAppearance.js";
 import { getLevelFromExperience } from "../player/playerProgression.js";
+import { renderGoogleIdentityButton } from "../network/googleIdentityClient.js";
 import {
   characterSelectorUiState,
   gameRuntimeState,
@@ -35,6 +36,8 @@ import {
 export const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
 
 export const createCharacterSelectorController = ({
+  accountSession = null,
+  googleClientId = "",
   applyGameLanguageUi,
   cancelItemDrag,
   cancelItemUse,
@@ -50,6 +53,11 @@ export const createCharacterSelectorController = ({
   unlockGameAudio,
   windowObject = window,
 }) => {
+  const isOnlineAccountMode = accountSession !== null;
+  let onlineCharacters = [];
+  let onlineCharactersLoading = false;
+  let onlineCharactersError = null;
+
   const getCharacterSelectorErrorMessage = (reason) => {
     const messagesByReason = {
       "invalid-name": getGameUiText("invalidCharacterName"),
@@ -59,6 +67,15 @@ export const createCharacterSelectorController = ({
       "corrupted-save": getGameUiText("corruptedSave"),
       "unsupported-save": getGameUiText("unsupportedSave"),
       "not-found": getGameUiText("characterNotFound"),
+      "authentication-required": getGameUiText("authenticationRequired"),
+      "invalid-credentials": getGameUiText("invalidCredentials"),
+      "account-already-exists": getGameUiText("accountAlreadyExists"),
+      "character-name-taken": getGameUiText("duplicateCharacterName"),
+      "character-online": getGameUiText("characterOnline"),
+      "too-many-attempts": getGameUiText("tooManyLoginAttempts"),
+      "google-auth-failed": getGameUiText("googleAuthFailed"),
+      "google-auth-unavailable": getGameUiText("googleAuthUnavailable"),
+      "external-account-creation-failed": getGameUiText("googleAuthFailed"),
     };
     return messagesByReason[reason] ?? getGameUiText("characterOperationFailed");
   };
@@ -66,6 +83,42 @@ export const createCharacterSelectorController = ({
   const closeCharacterSelector = () => {
     characterSelectorUiState.isOpen = false;
     characterSelectorUiState.view = "list";
+    renderCharacterSelector();
+  };
+
+  const applyOnlineCharacterIdentity = (character) => {
+    if (!character || typeof character.characterId !== "string") {
+      return false;
+    }
+    playerState.uid = character.characterId;
+    playerState.name = character.name;
+    playerState.appearanceId = getPlayerAppearanceData(character.appearanceId).appearanceId;
+    playerState.appearanceParts = normalizeCharacterAppearanceParts(
+      character.appearanceParts,
+      playerState.appearanceId,
+    );
+    playerState.appearanceColors = normalizeCharacterAppearanceColors(character.appearanceColors);
+    return accountSession.selectCharacter(character);
+  };
+
+  const refreshOnlineCharacters = async () => {
+    if (!isOnlineAccountMode || !accountSession.isAuthenticated() || onlineCharactersLoading) {
+      return;
+    }
+    onlineCharactersLoading = true;
+    onlineCharactersError = null;
+    renderCharacterSelector();
+    const result = await accountSession.listCharacters().catch(() => ({ success: false, reason: "connection-error" }));
+    onlineCharactersLoading = false;
+    if (!result.success) {
+      onlineCharacters = [];
+      onlineCharactersError = result.reason;
+      if (!accountSession.isAuthenticated()) {
+        characterSelectorUiState.view = "auth";
+      }
+    } else {
+      onlineCharacters = result.characters;
+    }
     renderCharacterSelector();
   };
 
@@ -95,7 +148,8 @@ export const createCharacterSelectorController = ({
       return;
     }
     characterSelectorUiState.isOpen = true;
-    characterSelectorUiState.view = "list";
+    characterSelectorUiState.view =
+      isOnlineAccountMode && !accountSession.isAuthenticated() ? "auth" : "list";
     if (gameRuntimeState.isStarted) {
       questUiState.isOpen = false;
       gameOptionsUiState.isOpen = false;
@@ -108,6 +162,9 @@ export const createCharacterSelectorController = ({
       cancelItemUse();
     }
     renderCharacterSelector();
+    if (isOnlineAccountMode && accountSession.isAuthenticated()) {
+      void refreshOnlineCharacters();
+    }
   };
 
   const saveCurrentCharacterBeforeSwitch = () => {
@@ -115,6 +172,19 @@ export const createCharacterSelectorController = ({
   };
 
   const selectCharacterProfile = (characterId) => {
+    if (isOnlineAccountMode) {
+      const character = onlineCharacters.find((entry) => entry.characterId === characterId);
+      if (!applyOnlineCharacterIdentity(character)) {
+        showGameStatusMessage(getGameUiText("characterNotFound"));
+        return;
+      }
+      if (gameRuntimeState.isStarted) {
+        reloadIntoSelectedCharacter();
+      } else {
+        startSelectedCharacterGame();
+      }
+      return;
+    }
     if (!gameRuntimeState.isStarted) {
       const selectionResult = setActiveCharacterId(characterId);
       if (!selectionResult.success) {
@@ -141,7 +211,22 @@ export const createCharacterSelectorController = ({
     reloadIntoSelectedCharacter();
   };
 
-  const createNewCharacterProfile = (name, appearanceId, appearanceColors, appearanceParts, errorElement) => {
+  const createNewCharacterProfile = async (name, appearanceId, appearanceColors, appearanceParts, errorElement) => {
+    if (isOnlineAccountMode) {
+      const creationResult = await accountSession.createCharacter({
+        name,
+        appearanceId,
+        appearanceColors,
+        appearanceParts,
+      }).catch(() => ({ success: false, reason: "connection-error" }));
+      if (!creationResult.success) {
+        errorElement.textContent = getCharacterSelectorErrorMessage(creationResult.reason);
+        return;
+      }
+      characterSelectorUiState.view = "list";
+      await refreshOnlineCharacters();
+      return;
+    }
     if (gameRuntimeState.isStarted && !saveCurrentCharacterBeforeSwitch()) {
       errorElement.textContent = getGameUiText("currentCharacterSaveFailed");
       return;
@@ -159,8 +244,20 @@ export const createCharacterSelectorController = ({
     }
   };
 
-  const deleteExistingCharacterProfile = (characterProfile) => {
+  const deleteExistingCharacterProfile = async (characterProfile) => {
     if (!characterProfile || !windowObject.confirm(getGameUiText("deleteCharacterConfirm")(characterProfile.name))) {
+      return;
+    }
+
+    if (isOnlineAccountMode) {
+      const deletionResult = await accountSession.deleteCharacter(characterProfile.characterId)
+        .catch(() => ({ success: false, reason: "connection-error" }));
+      if (!deletionResult.success) {
+        showGameStatusMessage(getCharacterSelectorErrorMessage(deletionResult.reason));
+        return;
+      }
+      onlineCharacters = onlineCharacters.filter((entry) => entry.characterId !== characterProfile.characterId);
+      renderCharacterSelector();
       return;
     }
 
@@ -198,6 +295,7 @@ export const createCharacterSelectorController = ({
       return;
     }
     const isCreatingCharacter = characterSelectorUiState.view === "create";
+    const isAuthenticating = characterSelectorUiState.view === "auth";
 
     const windowElement = document.createElement("section");
     windowElement.classList.add("boite-panneau", "character-selector-window");
@@ -212,7 +310,9 @@ export const createCharacterSelectorController = ({
     headerElement.classList.add("character-selector-header");
     const titleElement = document.createElement("div");
     titleElement.classList.add("boite-jeux-titre");
-    titleElement.textContent = getGameUiText(isCreatingCharacter ? "newCharacter" : "characters");
+    titleElement.textContent = getGameUiText(
+      isAuthenticating ? "account" : (isCreatingCharacter ? "newCharacter" : "characters"),
+    );
     const closeButtonElement = document.createElement("button");
     closeButtonElement.classList.add("character-selector-close-button");
     closeButtonElement.type = "button";
@@ -238,14 +338,124 @@ export const createCharacterSelectorController = ({
     const separatorElement = document.createElement("div");
     separatorElement.classList.add("separateur-panneau");
 
+    if (isAuthenticating) {
+      const authFormElement = document.createElement("form");
+      authFormElement.classList.add("character-account-form");
+      const accountInputElement = document.createElement("input");
+      accountInputElement.classList.add("character-create-input");
+      accountInputElement.type = "text";
+      accountInputElement.autocomplete = "username";
+      accountInputElement.minLength = 3;
+      accountInputElement.maxLength = 40;
+      accountInputElement.placeholder = getGameUiText("accountName");
+      const passwordInputElement = document.createElement("input");
+      passwordInputElement.classList.add("character-create-input");
+      passwordInputElement.type = "password";
+      passwordInputElement.autocomplete = "current-password";
+      passwordInputElement.minLength = 8;
+      passwordInputElement.placeholder = getGameUiText("password");
+      const authActionsElement = document.createElement("div");
+      authActionsElement.classList.add("character-account-actions");
+      const loginButtonElement = document.createElement("button");
+      loginButtonElement.classList.add("character-create-button");
+      loginButtonElement.type = "submit";
+      loginButtonElement.textContent = getGameUiText("login");
+      const registerButtonElement = document.createElement("button");
+      registerButtonElement.classList.add("character-open-create-button");
+      registerButtonElement.type = "button";
+      registerButtonElement.textContent = getGameUiText("register");
+      const errorElement = document.createElement("div");
+      errorElement.classList.add("character-selector-error");
+
+      const setAuthenticationDisabled = (isDisabled) => {
+        loginButtonElement.disabled = isDisabled;
+        registerButtonElement.disabled = isDisabled;
+        authFormElement.classList.toggle("character-account-form-busy", isDisabled);
+      };
+
+      const completeAuthentication = async (result) => {
+        if (!result.success) {
+          errorElement.textContent = getCharacterSelectorErrorMessage(result.reason);
+          setAuthenticationDisabled(false);
+          return;
+        }
+        characterSelectorUiState.view = "list";
+        onlineCharacters = [];
+        renderCharacterSelector();
+        await refreshOnlineCharacters();
+      };
+
+      const authenticate = async (method) => {
+        setAuthenticationDisabled(true);
+        errorElement.textContent = "";
+        const result = await accountSession[method](accountInputElement.value, passwordInputElement.value)
+          .catch(() => ({ success: false, reason: "connection-error" }));
+        await completeAuthentication(result);
+      };
+
+      authFormElement.addEventListener("submit", (event) => {
+        event.preventDefault();
+        void authenticate("login");
+      });
+      registerButtonElement.addEventListener("click", () => {
+        void authenticate("register");
+      });
+      authActionsElement.append(loginButtonElement, registerButtonElement);
+      authFormElement.append(accountInputElement, passwordInputElement, authActionsElement);
+      if (googleClientId !== "") {
+        const authDividerElement = document.createElement("div");
+        authDividerElement.classList.add("character-account-divider");
+        authDividerElement.textContent = getGameUiText("or");
+        const googleButtonElement = document.createElement("div");
+        googleButtonElement.classList.add("character-google-button");
+        authFormElement.append(authDividerElement, googleButtonElement);
+        void renderGoogleIdentityButton({
+          clientId: googleClientId,
+          buttonElement: googleButtonElement,
+          locale: gameOptionsUiState.values.language,
+          onCredential: async (credential) => {
+            setAuthenticationDisabled(true);
+            errorElement.textContent = "";
+            const result = await accountSession.loginWithGoogle(credential)
+              .catch(() => ({ success: false, reason: "connection-error" }));
+            await completeAuthentication(result);
+          },
+        }).catch(() => {
+          errorElement.textContent = getGameUiText("googleAuthUnavailable");
+        });
+      }
+      authFormElement.append(errorElement);
+      wrapperElement.append(headerElement, separatorElement, authFormElement);
+      windowElement.appendChild(wrapperElement);
+      characterSelector.appendChild(windowElement);
+      accountInputElement.focus();
+      return;
+    }
+
     const characterListElement = document.createElement("div");
     characterListElement.classList.add("character-selector-list");
-    const profileResult = listCharacterProfiles();
+    const activeOnlineCharacterId = accountSession?.getActiveCharacter()?.characterId ?? null;
+    const profileResult = isOnlineAccountMode
+      ? {
+          success: onlineCharactersError === null,
+          reason: onlineCharactersError,
+          characters: onlineCharacters.map((character) => ({
+            ...character,
+            experience: 0,
+            isActive: character.characterId === activeOnlineCharacterId,
+          })),
+        }
+      : listCharacterProfiles();
     if (!profileResult.success) {
       const errorElement = document.createElement("div");
       errorElement.classList.add("character-selector-empty");
       errorElement.textContent = getCharacterSelectorErrorMessage(profileResult.reason);
       characterListElement.appendChild(errorElement);
+    } else if (onlineCharactersLoading) {
+      const loadingElement = document.createElement("div");
+      loadingElement.classList.add("character-selector-empty");
+      loadingElement.textContent = getGameUiText("loadingCharacters");
+      characterListElement.appendChild(loadingElement);
     } else if (profileResult.characters.length === 0) {
       const emptyElement = document.createElement("div");
       emptyElement.classList.add("character-selector-empty");
@@ -278,7 +488,10 @@ export const createCharacterSelectorController = ({
         nameElement.textContent = characterProfile.name;
         const levelElement = document.createElement("span");
         levelElement.classList.add("character-selector-level");
-        levelElement.textContent = `${getGameUiText("levelLabel")} ${getLevelFromExperience(characterProfile.experience)}`;
+        const characterLevel = Number.isFinite(characterProfile.level)
+          ? characterProfile.level
+          : getLevelFromExperience(characterProfile.experience);
+        levelElement.textContent = `${getGameUiText("levelLabel")} ${characterLevel}`;
         identityElement.append(nameElement, levelElement);
 
         const statusElement = document.createElement("span");
@@ -323,6 +536,24 @@ export const createCharacterSelectorController = ({
         secondSeparatorElement,
         openCreationButtonElement,
       );
+      if (isOnlineAccountMode) {
+        const accountFooterElement = document.createElement("div");
+        accountFooterElement.classList.add("character-account-footer");
+        const accountNameElement = document.createElement("span");
+        accountNameElement.textContent = accountSession.getAccountId();
+        const logoutButtonElement = document.createElement("button");
+        logoutButtonElement.classList.add("character-selector-delete-button");
+        logoutButtonElement.type = "button";
+        logoutButtonElement.textContent = getGameUiText("logoutAccount");
+        logoutButtonElement.addEventListener("click", () => {
+          accountSession.clear();
+          onlineCharacters = [];
+          characterSelectorUiState.view = "auth";
+          renderCharacterSelector();
+        });
+        accountFooterElement.append(accountNameElement, logoutButtonElement);
+        wrapperElement.appendChild(accountFooterElement);
+      }
       windowElement.appendChild(wrapperElement);
       characterSelector.appendChild(windowElement);
       return;

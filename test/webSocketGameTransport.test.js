@@ -157,3 +157,35 @@ test("the WebSocket transport reconnects and requires a fresh snapshot", async (
   assert.equal(states.includes("reconnecting"), true);
   transport.disconnect();
 });
+
+test("the WebSocket transport uses a refreshed token when it reconnects", async () => {
+  const sockets = [];
+  const transport = createWebSocketGameTransport({
+    url: "ws://test/game",
+    socketFactory: () => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      return socket;
+    },
+    reconnectDelayMs: 0,
+    maxReconnectDelayMs: 0,
+  });
+
+  const connection = transport.connect({ characterId: "reconnect", authToken: "old-token" });
+  sockets[0].open();
+  const initialHello = JSON.parse(sockets[0].sent[0]);
+  sockets[0].receive(SERVER_MESSAGE_TYPE.welcome, { playerUid: "player:reconnect" }, 0);
+  sockets[0].receive(SERVER_MESSAGE_TYPE.snapshot, createReconnectSnapshot(1), 1);
+  await connection;
+
+  assert.equal(initialHello.payload.authToken, "old-token");
+  assert.equal(transport.updateAuthenticationToken("fresh-token"), true);
+
+  sockets[0].close();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  sockets[1].open();
+  const reconnectHello = JSON.parse(sockets[1].sent[0]);
+
+  assert.equal(reconnectHello.payload.authToken, "fresh-token");
+  transport.disconnect();
+});

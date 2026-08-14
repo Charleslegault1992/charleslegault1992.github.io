@@ -119,13 +119,10 @@ Pixi est charge avec un `import()` dynamique par la facade seulement quand le je
 - transport local unique et simulation autoritaire pour les actions de gameplay et d'inventaire;
 - evenements de resultat separes pour les effets Pixi, DOM et audio.
 
-## Prochaines extractions
+## Frontiere online
 
-La prochaine frontiere majeure est le serveur autoritaire:
+Le transport WebSocket, la simulation serveur, les snapshots, les deltas, la prediction du mouvement, le chat et le rendu des joueurs distants utilisent maintenant les memes contrats d'actions que le transport local. L'API HTTP possede les comptes et les personnages, tandis que SQLite applique son schema par migrations versionnees.
 
-1. implementer un transport WebSocket qui respecte le contrat actuel de `localGameTransport`;
-2. executer `gameSimulation` dans le processus serveur avec un etat appartenant au serveur;
-3. appliquer les snapshots et deltas recus du serveur dans les stores du client;
-4. conserver le transport local comme adaptateur de developpement et de tests.
+L'accueil utilise maintenant l'API de comptes, le chat possede une premiere moderation persistante et le PVP consensuel passe par la simulation autoritaire. Les prochaines frontieres sont les echanges entre joueurs, les groupes et le remplacement eventuel de SQLite lorsque le serveur devra utiliser plusieurs processus.
 
 Chaque extraction doit passer les tests de domaine, le build de production et une verification des references JavaScript avant de commencer la suivante.

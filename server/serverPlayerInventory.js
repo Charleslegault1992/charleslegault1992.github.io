@@ -248,5 +248,6 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     getRemainingCapacity: () => getPlayerRemainingCapacity(player),
     insertItems,
     removeItem: locationController.removeItem,
+    refreshWeight: () => updatePlayerCarriedWeight(player),
   });
 };

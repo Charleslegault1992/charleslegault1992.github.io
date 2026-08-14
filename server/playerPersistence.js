@@ -32,6 +32,7 @@ const PLAYER_OBJECT_FIELDS = [
   "cooldowns",
   "progress",
   "equipment",
+  "pvp",
 ];
 
 export const hydratePlayerFromPersistence = (player, snapshot) => {
@@ -48,9 +49,14 @@ export const hydratePlayerFromPersistence = (player, snapshot) => {
       player[field] = structuredClone(snapshot[field]);
     }
   }
+  if (!(snapshot.pvp && typeof snapshot.pvp === "object") && typeof snapshot.pvpEnabled === "boolean") {
+    player.pvp.enabled = snapshot.pvpEnabled;
+  }
+  player.pvp = normalizePlayerPvpState(player.pvp);
   player.renderX = player.x;
   player.renderY = player.y;
   player.moveStartTime = 0;
   player.moveDuration = 0;
   return true;
 };
+import { normalizePlayerPvpState } from "../src/combat/playerPvpState.js";

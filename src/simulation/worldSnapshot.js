@@ -57,9 +57,15 @@ export const serializePlayerPublicState = (player) => {
     direction: player.direction,
     moveStartTime: player.moveStartTime,
     moveDuration: player.moveDuration,
+    tileStackOrder: Number.isSafeInteger(player.tileStackOrder) ? player.tileStackOrder : 0,
     hp: player.hp,
     maxHp: player.maxHp,
     level: player.level,
+    pvp: {
+      enabled: player.pvp?.enabled === true,
+      skullType: player.pvp?.skullType ?? "none",
+      skullExpiresAt: Number.isFinite(player.pvp?.skullExpiresAt) ? player.pvp.skullExpiresAt : 0,
+    },
   };
 };
 
@@ -90,6 +96,7 @@ export const serializePlayerPrivateState = (player) => {
     spellEffects: cloneOrNull(player.spellEffects),
     cooldowns: cloneOrNull(player.cooldowns),
     progress: cloneOrNull(player.progress),
+    pvp: cloneOrNull(player.pvp),
     equipment,
   };
 };
@@ -178,6 +185,7 @@ export const createWorldSnapshot = ({
   worldItems = [],
   groundEffects = [],
   chunks = [],
+  chunksAreSerialized = false,
   visibleChunkKeys = [],
   acknowledgedActionRequestId = null,
 }) => {
@@ -201,7 +209,7 @@ export const createWorldSnapshot = ({
       groundEffects: serializeCollection(groundEffects, serializeGroundEffectState),
     },
     chunks: valuesFrom(chunks)
-      .map(serializeWorldChunk)
+      .map((chunk) => (chunksAreSerialized ? chunk : serializeWorldChunk(chunk)))
       .filter(Boolean)
       .sort((first, second) => first.key.localeCompare(second.key)),
     visibleChunkKeys: [...new Set(visibleChunkKeys)].sort(),

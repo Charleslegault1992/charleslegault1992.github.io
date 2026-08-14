@@ -48,6 +48,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     player.x = payload.toX;
     player.y = payload.toY;
     player.direction = payload.direction;
+    commands.recordPlayerTileEntry?.(player);
     state.timing.nextPlayerMoveTime = payload.requestedAt + moveTiming.cooldown;
 
     const events = [
@@ -112,6 +113,43 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     return commandResult === true ? { success: true } : commandResult;
   };
 
+  const executeAttackPlayer = (payload) => {
+    const player = state.player;
+    const target = state.playersByUid?.get(payload.playerUid) ?? null;
+    if (!target || target.uid === player.uid || target.hp <= 0 || target.z !== player.z || player.hp <= 0) {
+      return rejectCommand("target-lost");
+    }
+    if (!player.pvp?.enabled || !target.pvp?.enabled) {
+      return rejectCommand("pvp-disabled");
+    }
+    if (payload.requestedAt < state.timing.nextPlayerAttackTime) {
+      return rejectCommand("attack-cooldown");
+    }
+    if (rules.canPlayerAttackPlayer?.(player, target) !== true) {
+      return rejectCommand("target-out-of-range");
+    }
+    const attackCooldownMs = rules.getPlayerAttackCooldownMs?.();
+    if (!Number.isFinite(attackCooldownMs) || attackCooldownMs < 0) {
+      return rejectCommand("invalid-attack-cooldown");
+    }
+    const commandResult = commands.executeAttackPlayer?.(target, payload) ?? rejectCommand("missing-executor");
+    if (commandResult?.success === false || commandResult === false) {
+      return commandResult;
+    }
+    state.timing.nextPlayerAttackTime = payload.requestedAt + attackCooldownMs;
+    return commandResult === true ? { success: true } : commandResult;
+  };
+
+  const executeSetPvpEnabled = (payload) => {
+    if (typeof payload.enabled !== "boolean" || state.player.hp <= 0) {
+      return rejectCommand("invalid-pvp-state");
+    }
+    if (payload.enabled === false && rules.canPlayerDisablePvp?.(state.player, payload.requestedAt) === false) {
+      return rejectCommand("pvp-locked-by-skull");
+    }
+    return commands.executeSetPvpEnabled?.(payload.enabled) ?? rejectCommand("missing-executor");
+  };
+
   const executeSpeakToNpc = (payload) => {
     const player = commands.getPlayerByUid?.(payload.playerUid) ?? null;
     if (!player || player.hp <= 0) {
@@ -136,6 +174,17 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
       return rejectCommand("spell-not-found");
     }
     return commands.executeSpell?.(payload) ?? rejectCommand("missing-executor");
+  };
+
+  const executeSendChatMessage = (payload) => {
+    if (state.player.hp <= 0 || payload.requestedAt < (state.timing.nextChatMessageTime ?? 0)) {
+      return rejectCommand("chat-cooldown");
+    }
+    const result = commands.executeChatMessage?.(payload, state.player) ?? rejectCommand("missing-executor");
+    if (result?.success !== false) {
+      state.timing.nextChatMessageTime = payload.requestedAt + 500;
+    }
+    return result;
   };
 
   const executeWorldTransition = (payload) => {
@@ -169,9 +218,12 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
 
   const context = Object.freeze({
     executeAttackMonster,
+    executeAttackPlayer,
     executeCastSpell,
     executeMove: commands.executeMoveItem,
     executeMovePlayer,
+    executeSendChatMessage,
+    executeSetPvpEnabled,
     executeSpeakToNpc,
     executeUseItem,
     executeWorldInteraction,

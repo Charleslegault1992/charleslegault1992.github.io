@@ -9,10 +9,13 @@ import {
 export const GAMEPLAY_ACTION_TYPE = Object.freeze({
   movePlayer: "gameplay.move-player",
   attackMonster: "gameplay.attack-monster",
+  attackPlayer: "gameplay.attack-player",
+  setPvpEnabled: "gameplay.set-pvp-enabled",
   speakToNpc: "gameplay.speak-to-npc",
   interactWithWorld: "gameplay.interact-with-world",
   useWorldTransition: "gameplay.use-world-transition",
   castSpell: "gameplay.cast-spell",
+  sendChatMessage: "gameplay.send-chat-message",
 });
 
 export const GAMEPLAY_ACTION_REASON = Object.freeze({
@@ -55,6 +58,20 @@ export const createAttackMonsterAction = (monsterUid, requestedAt) => {
   return createTimedGameAction(GAMEPLAY_ACTION_TYPE.attackMonster, { monsterUid }, requestedAt);
 };
 
+export const createAttackPlayerAction = (playerUid, requestedAt) => {
+  if (typeof playerUid !== "string" || playerUid === "") {
+    return null;
+  }
+  return createTimedGameAction(GAMEPLAY_ACTION_TYPE.attackPlayer, { playerUid }, requestedAt);
+};
+
+export const createSetPvpEnabledAction = (enabled, requestedAt) => {
+  if (typeof enabled !== "boolean") {
+    return null;
+  }
+  return createTimedGameAction(GAMEPLAY_ACTION_TYPE.setPvpEnabled, { enabled }, requestedAt);
+};
+
 export const createSpeakToNpcAction = (text, playerUid, requestedAt) => {
   if (typeof text !== "string" || text.trim() === "" || typeof playerUid !== "string" || playerUid === "") {
     return null;
@@ -86,6 +103,18 @@ export const createCastSpellAction = (spellId, requestedAt) => {
     return null;
   }
   return createTimedGameAction(GAMEPLAY_ACTION_TYPE.castSpell, { spellId }, requestedAt);
+};
+
+export const createSendChatMessageAction = (channelId, text, requestedAt) => {
+  const normalizedText = typeof text === "string" ? text.trim() : "";
+  if (
+    !["local", "global", "trade"].includes(channelId) ||
+    normalizedText === "" ||
+    normalizedText.length > 200
+  ) {
+    return null;
+  }
+  return createTimedGameAction(GAMEPLAY_ACTION_TYPE.sendChatMessage, { channelId, text: normalizedText }, requestedAt);
 };
 
 export const createUseWorldTransitionAction = ({ z, col, row, transitionType, requestedAt }) => {
@@ -129,10 +158,13 @@ export const registerGameplayActionHandlers = (dispatcher) => {
   const registrations = [
     [GAMEPLAY_ACTION_TYPE.movePlayer, "executeMovePlayer"],
     [GAMEPLAY_ACTION_TYPE.attackMonster, "executeAttackMonster"],
+    [GAMEPLAY_ACTION_TYPE.attackPlayer, "executeAttackPlayer"],
+    [GAMEPLAY_ACTION_TYPE.setPvpEnabled, "executeSetPvpEnabled"],
     [GAMEPLAY_ACTION_TYPE.speakToNpc, "executeSpeakToNpc"],
     [GAMEPLAY_ACTION_TYPE.interactWithWorld, "executeWorldInteraction"],
     [GAMEPLAY_ACTION_TYPE.useWorldTransition, "executeWorldTransition"],
     [GAMEPLAY_ACTION_TYPE.castSpell, "executeCastSpell"],
+    [GAMEPLAY_ACTION_TYPE.sendChatMessage, "executeSendChatMessage"],
   ];
 
   return registrations.every(([type, executorName]) =>

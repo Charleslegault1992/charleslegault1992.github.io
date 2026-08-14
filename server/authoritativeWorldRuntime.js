@@ -15,6 +15,7 @@ import { createPlayerState } from "../src/state/playerState.js";
 import {
   MONSTER_ATTACK_COOLDOWN_MS,
   CORPSE_DECAY_COOLDOWN_MS,
+  DECAY_REFRESH_COOLDOWN_MS,
   PLAYER_ATTACK_COOLDOWN_MS,
   PLAYER_MOVE_COOLDOWN_MS,
   TILE_SIZE,
@@ -58,8 +59,24 @@ import { advancePlayerRegeneration } from "../src/player/playerRegeneration.js";
 import { playerClassesDatabase } from "../src/data/playerClassesDatabase.js";
 import { applyPlayerDeathState } from "../src/player/playerDeath.js";
 import { GROUND_EFFECT_DECAY_STAGE_MS } from "../src/data/groundEffectsDatabase.js";
+import {
+  PVP_AGGRESSION_DURATION_MS,
+  applyUnjustifiedPvpAggression,
+  clearWhiteSkullOnDeath,
+  expirePlayerPvpState,
+  hasActivePlayerSkull,
+  recordUnjustifiedPlayerKill,
+} from "../src/combat/playerPvpState.js";
 
 const AUTOSAVE_INTERVAL_MS = 30000;
+const AUTOSAVE_RETRY_DELAY_MS = 5000;
+const MAX_AUTOSAVES_PER_TICK = 2;
+const PLAYER_SPAWN_TILE_OFFSETS = Object.freeze([
+  Object.freeze({ col: 0, row: 0 }),
+  Object.freeze({ col: 1, row: 0 }),
+  Object.freeze({ col: 0, row: 1 }),
+  Object.freeze({ col: 1, row: 1 }),
+]);
 
 const findPlayerSpawn = (worldMap, spawnId) => {
   for (const chunk of worldMap?.chunksByKey?.values() ?? []) {
@@ -93,6 +110,8 @@ const getVisibleChunkKeys = (worldMap, x, y, radius = 1) => {
 export const createAuthoritativeWorldRuntime = ({
   worldMapsByZ,
   characterRepository = null,
+  chatModerationService = null,
+  allowCharacterAutoCreate = false,
   now = () => Date.now(),
   combatRandom = null,
 }) => {
@@ -101,9 +120,91 @@ export const createAuthoritativeWorldRuntime = ({
   }
 
   const playersByUid = new Map();
+  const visiblePlayersByChunkKey = new Map();
+  const serializedWorldChunksByKey = new Map();
+  const pvpAggressionExpiresAtByPair = new Map();
   const journal = createWorldChangeJournal({ maxEntries: 512 });
   let currentServerTime = now();
   let isInitializingWorldEntities = true;
+  let nextPlayerTileStackOrder = 1;
+  let indexedPlayerRevision = -1;
+  let nextWorldDecayAt = 0;
+  let nextAutosaveSweepAt = Number.POSITIVE_INFINITY;
+
+  for (const worldMap of worldMapsByZ.values()) {
+    for (const chunk of worldMap.chunksByKey.values()) {
+      const serializedChunk = serializeWorldChunk(chunk);
+      if (serializedChunk) {
+        serializedWorldChunksByKey.set(serializedChunk.key, serializedChunk);
+      }
+    }
+  }
+
+  const recordPlayerTileEntry = (player) => {
+    if (!player) {
+      return false;
+    }
+    player.tileStackOrder = nextPlayerTileStackOrder++;
+    return true;
+  };
+
+  const executePlayerWorldTransition = (player, transition) => {
+    const result = applyPlayerWorldTransitionState(player, transition, worldMapsByZ);
+    if (result.success) {
+      recordPlayerTileEntry(player);
+    }
+    return result;
+  };
+
+  const getPvpAggressionKey = (attackerUid, targetUid) => `${attackerUid}\u0000${targetUid}`;
+
+  const hasActivePvpAggression = (attackerUid, targetUid) => {
+    const aggressionKey = getPvpAggressionKey(attackerUid, targetUid);
+    const expiresAt = pvpAggressionExpiresAtByPair.get(aggressionKey) ?? 0;
+    if (expiresAt <= currentServerTime) {
+      pvpAggressionExpiresAtByPair.delete(aggressionKey);
+      return false;
+    }
+    return true;
+  };
+
+  const recordPvpAggression = (attackerUid, targetUid) => {
+    pvpAggressionExpiresAtByPair.set(
+      getPvpAggressionKey(attackerUid, targetUid),
+      currentServerTime + PVP_AGGRESSION_DURATION_MS,
+    );
+  };
+
+  const isPlayerInPvpCombat = (playerUid) => {
+    for (const [aggressionKey, expiresAt] of pvpAggressionExpiresAtByPair) {
+      if (expiresAt <= currentServerTime) {
+        pvpAggressionExpiresAtByPair.delete(aggressionKey);
+        continue;
+      }
+      const [attackerUid, targetUid] = aggressionKey.split("\u0000");
+      if (attackerUid === playerUid || targetUid === playerUid) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const clearPlayerPvpAggressions = (playerUid) => {
+    for (const aggressionKey of pvpAggressionExpiresAtByPair.keys()) {
+      const [attackerUid, targetUid] = aggressionKey.split("\u0000");
+      if (attackerUid === playerUid || targetUid === playerUid) {
+        pvpAggressionExpiresAtByPair.delete(aggressionKey);
+      }
+    }
+  };
+
+  const pruneExpiredPvpAggressions = () => {
+    for (const [aggressionKey, expiresAt] of pvpAggressionExpiresAtByPair) {
+      if (expiresAt <= currentServerTime) {
+        pvpAggressionExpiresAtByPair.delete(aggressionKey);
+      }
+    }
+  };
   const worldEntities = createServerWorldEntities(worldMapsByZ, {
     playersByUid,
     now,
@@ -129,6 +230,13 @@ export const createAuthoritativeWorldRuntime = ({
   const simulationsByPlayerUid = new Map();
   const inventoriesByPlayerUid = new Map();
   const sessionsByPlayerUid = new Map();
+  const markPlayerPersistenceDirty = (playerUid) => {
+    const persistenceSession = sessionsByPlayerUid.get(playerUid);
+    if (persistenceSession) {
+      persistenceSession.isDirty = true;
+      nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
+    }
+  };
   const npcConversationService = createServerNpcConversationService({
     npcs: worldEntities.npcs,
     playersByUid,
@@ -143,29 +251,30 @@ export const createAuthoritativeWorldRuntime = ({
   });
 
   const findAvailableSpawnPosition = (worldMap, spawn) => {
-    for (let radius = 0; radius <= 5; radius++) {
-      for (let rowOffset = -radius; rowOffset <= radius; rowOffset++) {
-        for (let colOffset = -radius; colOffset <= radius; colOffset++) {
-          if (radius > 0 && Math.abs(colOffset) !== radius && Math.abs(rowOffset) !== radius) {
-            continue;
-          }
-          const col = spawn.col + colOffset;
-          const row = spawn.row + rowOffset;
-          const x = col * TILE_SIZE;
-          const y = row * TILE_SIZE;
-          if (!getWorldChunkForTilePosition(worldMap, col, row) || isTiledCollisionAtTile(worldMap, col, row)) {
-            continue;
-          }
-          const occupied = [...playersByUid.values()].some(
-            (player) => player.z === worldMap.z && player.x === x && player.y === y,
-          ) || worldEntities.monsters.getAt(x, y, worldMap.z) || worldEntities.npcs.getAt(x, y, worldMap.z);
-          if (!occupied) {
-            return { x, y };
-          }
-        }
+    const validSpawnPositions = PLAYER_SPAWN_TILE_OFFSETS.flatMap((offset) => {
+      const col = spawn.col + offset.col;
+      const row = spawn.row + offset.row;
+      if (!getWorldChunkForTilePosition(worldMap, col, row) || isTiledCollisionAtTile(worldMap, col, row)) {
+        return [];
+      }
+      return [{ x: col * TILE_SIZE, y: row * TILE_SIZE }];
+    });
+    for (const position of validSpawnPositions) {
+      const occupiedByPlayer = [...playersByUid.values()].some(
+        (player) => player.z === worldMap.z && player.x === position.x && player.y === position.y,
+      );
+      const occupiedByWorldCreature =
+        worldEntities.monsters.getAt(position.x, position.y, worldMap.z) ||
+        worldEntities.npcs.getAt(position.x, position.y, worldMap.z);
+      if (!occupiedByPlayer && !occupiedByWorldCreature) {
+        return position;
       }
     }
-    return null;
+    return validSpawnPositions.find(
+      (position) =>
+        !worldEntities.monsters.getAt(position.x, position.y, worldMap.z) &&
+        !worldEntities.npcs.getAt(position.x, position.y, worldMap.z),
+    ) ?? null;
   };
 
   const isPlayerDestinationAvailable = (movingPlayer, payload) => {
@@ -192,15 +301,15 @@ export const createAuthoritativeWorldRuntime = ({
       !worldEntities.npcs.getAt(payload.toX, payload.toY, movingPlayer.z);
   };
 
-  const canPlayerAttackMonster = (player, monster) => {
-    if (!player || !monster || player.z !== monster.z) {
+  const canPlayerAttackTarget = (player, target) => {
+    if (!player || !target || player.uid === target.uid || player.z !== target.z) {
       return false;
     }
     const range = getPlayerAttackRange(player);
     const playerCol = player.x / TILE_SIZE;
     const playerRow = player.y / TILE_SIZE;
-    const monsterCol = monster.x / TILE_SIZE;
-    const monsterRow = monster.y / TILE_SIZE;
+    const monsterCol = target.x / TILE_SIZE;
+    const monsterRow = target.y / TILE_SIZE;
     if (
       !Number.isInteger(playerCol) ||
       !Number.isInteger(playerRow) ||
@@ -220,6 +329,9 @@ export const createAuthoritativeWorldRuntime = ({
       { col: monsterCol, row: monsterRow },
     );
   };
+
+  const canPlayerAttackMonster = (player, monster) => canPlayerAttackTarget(player, monster);
+  const canPlayerAttackPlayer = (player, target) => canPlayerAttackTarget(player, target);
 
   const resolvePlayerDamageToMonster = (player, monster, attackResult, initialEvents = []) => {
     const targetRenderSnapshot = {
@@ -298,7 +410,27 @@ export const createAuthoritativeWorldRuntime = ({
     };
   };
 
+  const consumePlayerAttackAmmunition = (player) => {
+    const ammunitionItemId = getEquippedWeaponCombatData(player)?.ammunitionItemId;
+    if (!ammunitionItemId) {
+      return true;
+    }
+    const ammunition = player.equipment.shield;
+    if (ammunition?.itemId !== ammunitionItemId || ammunition.quantity <= 0) {
+      return false;
+    }
+    if (ammunition.quantity > 1) {
+      ammunition.quantity -= 1;
+    } else {
+      player.equipment.shield = null;
+    }
+    return true;
+  };
+
   const executePlayerAttack = (player, monster) => {
+    if (!consumePlayerAttackAmmunition(player)) {
+      return { success: false, reason: "ammunition-required" };
+    }
     const attackResult = calculatePlayerAttackResult(monster, player, combatRandom ?? undefined);
     return resolvePlayerDamageToMonster(player, monster, attackResult, [
       {
@@ -317,6 +449,103 @@ export const createAuthoritativeWorldRuntime = ({
         },
       },
     ]);
+  };
+
+  const resolvePlayerDeath = (target) => {
+    const deathPosition = { x: target.x, y: target.y, z: target.z };
+    const backpack = target.equipment.backpack;
+    if (backpack) {
+      target.equipment.backpack = null;
+    }
+    let corpse = createGroundItem("playerCorpse", 1, target.x, target.y, target.z, backpack ? [backpack] : [], {
+      decayingItems: worldEntities.decayingItems,
+      now: () => currentServerTime,
+    });
+    if (!corpse || !worldEntities.worldItems.add(corpse)) {
+      target.equipment.backpack = backpack;
+      corpse = null;
+    }
+    const spawnWorldMap = worldMapsByZ.get(target.spawn.z);
+    const spawn = findPlayerSpawn(spawnWorldMap, target.spawn.spawnId);
+    const spawnPosition = spawn ? findAvailableSpawnPosition(spawnWorldMap, spawn) : null;
+    if (spawnPosition) {
+      const deathStateResult = applyPlayerDeathState(target, { ...spawnPosition, z: target.spawn.z });
+      if (deathStateResult.success) {
+        recordPlayerTileEntry(target);
+      }
+    }
+    for (const monster of worldEntities.monsters.values()) {
+      if (monster.targetUid === target.uid) {
+        monster.targetUid = null;
+        monster.path = [];
+        monster.state = "wander";
+      }
+    }
+    clearWhiteSkullOnDeath(target);
+    clearPlayerPvpAggressions(target.uid);
+    return {
+      corpse,
+      event: {
+        type: "player-died",
+        playerUid: target.uid,
+        corpseUid: corpse?.uid ?? null,
+        deathPosition,
+        spawnPosition: { x: target.x, y: target.y, z: target.z },
+      },
+    };
+  };
+
+  const executePlayerPvpAttack = (player, target) => {
+    if (!consumePlayerAttackAmmunition(player)) {
+      return { success: false, reason: "ammunition-required" };
+    }
+    const targetRenderSnapshot = {
+      uid: target.uid,
+      x: target.x,
+      y: target.y,
+      z: target.z,
+      renderX: target.renderX,
+      renderY: target.renderY,
+    };
+    const isRetaliation = hasActivePvpAggression(target.uid, player.uid);
+    const isOpenPvpTarget = hasActivePlayerSkull(target, currentServerTime);
+    const isUnjustifiedAttack = !isRetaliation && !isOpenPvpTarget;
+    recordPvpAggression(player.uid, target.uid);
+    if (isUnjustifiedAttack) {
+      applyUnjustifiedPvpAggression(player, currentServerTime);
+    }
+    const attackResult = calculatePlayerAttackResult(target, player, combatRandom ?? undefined);
+    if (attackResult.finalDamage > 0) {
+      applyDamageToPlayer(target, attackResult.finalDamage);
+    }
+    if (target.hp <= 0 && isUnjustifiedAttack) {
+      recordUnjustifiedPlayerKill(player, currentServerTime);
+    }
+    const deathResult = target.hp <= 0 ? resolvePlayerDeath(target) : null;
+    return {
+      success: true,
+      changes: {
+        targetPlayerUid: target.uid,
+        finalDamage: attackResult.finalDamage,
+        hp: target.hp,
+        didHit: attackResult.didHit,
+        didDie: deathResult !== null,
+        corpseUid: deathResult?.corpse?.uid ?? null,
+        pvp: structuredClone(player.pvp),
+      },
+      events: [
+        {
+          type: "player-pvp-attack-resolved",
+          playerUid: player.uid,
+          targetPlayerUid: target.uid,
+          attackResult,
+          isUnjustifiedAttack,
+          attackerSkullType: player.pvp.skullType,
+          targetRenderSnapshot,
+        },
+        ...(deathResult ? [deathResult.event] : []),
+      ],
+    };
   };
 
   const updateMonsterCombat = () => {
@@ -340,44 +569,14 @@ export const createAuthoritativeWorldRuntime = ({
         applyDamageToPlayer(target, attackResult.finalDamage);
       }
       if (target.hp <= 0) {
-        const deathPosition = { x: target.x, y: target.y, z: target.z };
-        const backpack = target.equipment.backpack;
-        let corpse = null;
-        if (backpack) {
-          target.equipment.backpack = null;
+        const deathResult = resolvePlayerDeath(target);
+        if (deathResult.corpse) {
+          createdWorldItems.push(deathResult.corpse);
         }
-        corpse = createGroundItem("playerCorpse", 1, target.x, target.y, target.z, backpack ? [backpack] : [], {
-          decayingItems: worldEntities.decayingItems,
-          now: () => currentServerTime,
-        });
-        if (corpse && worldEntities.worldItems.add(corpse)) {
-          createdWorldItems.push(corpse);
-        } else {
-          target.equipment.backpack = backpack;
-          corpse = null;
-        }
-        const spawnWorldMap = worldMapsByZ.get(target.spawn.z);
-        const spawn = findPlayerSpawn(spawnWorldMap, target.spawn.spawnId);
-        const spawnPosition = spawn ? findAvailableSpawnPosition(spawnWorldMap, spawn) : null;
-        if (spawnPosition) {
-          applyPlayerDeathState(target, { ...spawnPosition, z: target.spawn.z });
-        }
-        for (const otherMonster of worldEntities.monsters.values()) {
-          if (otherMonster.targetUid === target.uid) {
-            otherMonster.targetUid = null;
-            otherMonster.path = [];
-            otherMonster.state = "wander";
-          }
-        }
-        events.push({
-          type: "player-died",
-          playerUid: target.uid,
-          corpseUid: corpse?.uid ?? null,
-          deathPosition,
-          spawnPosition: { x: target.x, y: target.y, z: target.z },
-        });
+        events.push(deathResult.event);
       }
       changedPlayers.set(target.uid, target);
+      markPlayerPersistenceDirty(target.uid);
       events.push({
         type: "monster-attack-resolved",
         monsterUid: monster.uid,
@@ -394,7 +593,7 @@ export const createAuthoritativeWorldRuntime = ({
     const upsertedGroundEffects = [];
     const removedGroundEffectUids = [];
 
-    for (const effect of [...worldEntities.groundEffects.values()]) {
+    for (const effect of worldEntities.groundEffects.values()) {
       if (currentServerTime < effect.nextDecayAt) {
         continue;
       }
@@ -463,12 +662,15 @@ export const createAuthoritativeWorldRuntime = ({
     }
   };
 
-  const createSimulationForPlayer = (player, inventory, itemUse) => {
-    const timing = { nextPlayerMoveTime: 0, nextPlayerAttackTime: 0 };
+  const createSimulationForPlayer = (player, inventory, itemUse, chatSession) => {
+    const timing = { nextPlayerMoveTime: 0, nextPlayerAttackTime: 0, nextChatMessageTime: 0 };
     return createGameSimulation({
-      state: { player, monstersByUid: worldEntities.monsters.getMap(), timing },
+      state: { player, playersByUid, monstersByUid: worldEntities.monsters.getMap(), timing },
       rules: {
         canPlayerAttackMonster,
+        canPlayerAttackPlayer,
+        canPlayerDisablePvp: (pvpPlayer) =>
+          !hasActivePlayerSkull(pvpPlayer, currentServerTime) && !isPlayerInPvpCombat(pvpPlayer.uid),
         canPlayerMove: (payload) => isPlayerDestinationAvailable(player, payload),
         canPlayerUseWorldTransition: (movingPlayer, transition) => isPlayerNearTiledObject(movingPlayer, transition, 1),
         getPlayerMoveTiming: (payload) => {
@@ -486,7 +688,47 @@ export const createAuthoritativeWorldRuntime = ({
         getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
       },
       commands: {
+        recordPlayerTileEntry,
         executeAttackMonster: (monster) => executePlayerAttack(player, monster),
+        executeAttackPlayer: (target) => executePlayerPvpAttack(player, target),
+        executeSetPvpEnabled: (enabled) => {
+          player.pvp.enabled = enabled;
+          return {
+            success: true,
+            changes: { pvp: structuredClone(player.pvp) },
+            events: [{ type: "player-pvp-state-changed", playerUid: player.uid, pvp: structuredClone(player.pvp) }],
+          };
+        },
+        executeChatMessage: (payload) => {
+          const moderationResult = chatModerationService?.handleMessage({
+            session: chatSession,
+            player,
+            payload,
+            playersByUid,
+            sessionsByPlayerUid,
+            now: currentServerTime,
+          }) ?? null;
+          if (moderationResult) {
+            return moderationResult;
+          }
+          return {
+            success: true,
+            changes: { channelId: payload.channelId },
+            events: [{
+              type: "chat-message",
+              channelId: payload.channelId,
+              text: payload.text,
+              playerUid: player.uid,
+              speakerName: player.name,
+              speakerLevel: player.level,
+              x: player.x,
+              y: player.y,
+              z: player.z,
+              createdAt: currentServerTime,
+              visibility: payload.channelId === "local" ? "local" : "channel",
+            }],
+          };
+        },
         executeItemUse: itemUse.execute,
         executeNpcSpeech: (payload) => npcConversationService.handleSpeech(payload.text, player, payload.requestedAt),
         executeSpell: (payload) => executePlayerSpellCast({
@@ -509,7 +751,7 @@ export const createAuthoritativeWorldRuntime = ({
           });
         },
         executeMoveItem: inventory.executeMove,
-        executeWorldTransition: (transition) => applyPlayerWorldTransitionState(player, transition, worldMapsByZ),
+        executeWorldTransition: (transition) => executePlayerWorldTransition(player, transition),
         findAutomaticWorldTransition: (movingPlayer) => {
           const worldMap = worldMapsByZ.get(movingPlayer.z);
           return findTransitionAtTile(worldMap, movingPlayer.x / TILE_SIZE, movingPlayer.y / TILE_SIZE);
@@ -549,6 +791,9 @@ export const createAuthoritativeWorldRuntime = ({
     }
     const player = createPlayerState();
     const persistedCharacter = characterRepository?.load(accountId, characterId) ?? null;
+    if (characterRepository && !persistedCharacter && !allowCharacterAutoCreate) {
+      return { success: false, reason: "character-not-found" };
+    }
     if (persistedCharacter) {
       hydratePlayerFromPersistence(player, persistedCharacter.snapshot);
     }
@@ -574,7 +819,9 @@ export const createAuthoritativeWorldRuntime = ({
     }
     player.uid = playerUid;
     player.language = hello?.language === "fr" ? "fr" : "en";
-    player.name = typeof hello?.name === "string" && hello.name.trim() !== "" ? hello.name.trim().slice(0, 24) : characterId;
+    if (!persistedCharacter) {
+      player.name = typeof hello?.name === "string" && hello.name.trim() !== "" ? hello.name.trim().slice(0, 24) : characterId;
+    }
     player.x = spawnPosition.x;
     player.y = spawnPosition.y;
     if (!savedPositionIsValid) {
@@ -584,6 +831,7 @@ export const createAuthoritativeWorldRuntime = ({
     player.oldY = player.y;
     player.renderX = player.x;
     player.renderY = player.y;
+    recordPlayerTileEntry(player);
     playersByUid.set(playerUid, player);
     const inventory = createServerPlayerInventory({ player, worldMapsByZ, worldItems: worldEntities.worldItems });
     const itemUse = createServerPlayerItemUse({
@@ -600,14 +848,16 @@ export const createAuthoritativeWorldRuntime = ({
         ),
     });
     inventoriesByPlayerUid.set(playerUid, inventory);
-    simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse));
     const persistenceSession = {
       accountId,
       characterId,
       version: persistedCharacter?.version ?? null,
       lastSavedAt: currentServerTime,
+      nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
+      isDirty: false,
     };
     sessionsByPlayerUid.set(playerUid, persistenceSession);
+    simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse, persistenceSession));
     if (characterRepository && persistenceSession.version === null) {
       const saveResult = characterRepository.save(
         accountId,
@@ -648,6 +898,7 @@ export const createAuthoritativeWorldRuntime = ({
       }
     }
     playersByUid.delete(session.playerUid);
+    clearPlayerPvpAggressions(session.playerUid);
     simulationsByPlayerUid.delete(session.playerUid);
     inventoriesByPlayerUid.delete(session.playerUid);
     sessionsByPlayerUid.delete(session.playerUid);
@@ -666,8 +917,17 @@ export const createAuthoritativeWorldRuntime = ({
     session.lastProcessedActionRequestId = action.requestId;
     if (result?.success) {
       const player = playersByUid.get(session.playerUid);
+      markPlayerPersistenceDirty(player.uid);
       const upserts = { players: [serializePlayerPublicState(player)] };
       const removals = {};
+      const changedPlayerUid = result.changes?.targetPlayerUid;
+      if (typeof changedPlayerUid === "string" && changedPlayerUid !== player.uid) {
+        const changedPlayer = playersByUid.get(changedPlayerUid);
+        if (changedPlayer) {
+          markPlayerPersistenceDirty(changedPlayerUid);
+          upserts.players.push(serializePlayerPublicState(changedPlayer));
+        }
+      }
       const changedMonsterUid = result.changes?.monsterUid;
       if (Number.isInteger(changedMonsterUid)) {
         const changedMonster = worldEntities.monsters.get(changedMonsterUid);
@@ -715,14 +975,32 @@ export const createAuthoritativeWorldRuntime = ({
       return null;
     }
     const visibleChunkKeys = getVisibleChunkKeys(worldMap, selfPlayer.x, selfPlayer.y);
-    const visibleChunkKeySet = new Set(visibleChunkKeys);
-    const visiblePlayers = [...playersByUid.values()].filter((player) => {
-      if (player.uid === selfPlayer.uid || player.z !== selfPlayer.z) {
-        return false;
+    const currentRevision = journal.getRevision();
+    if (indexedPlayerRevision !== currentRevision) {
+      visiblePlayersByChunkKey.clear();
+      for (const player of playersByUid.values()) {
+        const chunk = getChunkPositionFromWorldPosition(player.x, player.y);
+        if (!chunk) {
+          continue;
+        }
+        const chunkKey = `${player.z}:${chunk.chunkX}:${chunk.chunkY}`;
+        let chunkPlayers = visiblePlayersByChunkKey.get(chunkKey);
+        if (!chunkPlayers) {
+          chunkPlayers = [];
+          visiblePlayersByChunkKey.set(chunkKey, chunkPlayers);
+        }
+        chunkPlayers.push(player);
       }
-      const chunk = getChunkPositionFromWorldPosition(player.x, player.y);
-      return chunk ? visibleChunkKeySet.has(`${player.z}:${chunk.chunkX}:${chunk.chunkY}`) : false;
-    });
+      indexedPlayerRevision = currentRevision;
+    }
+    const visiblePlayers = [];
+    for (const chunkKey of visibleChunkKeys) {
+      for (const player of visiblePlayersByChunkKey.get(chunkKey) ?? []) {
+        if (player.uid !== selfPlayer.uid) {
+          visiblePlayers.push(player);
+        }
+      }
+    }
     return {
       selfPlayer,
       worldMap,
@@ -755,14 +1033,15 @@ export const createAuthoritativeWorldRuntime = ({
       npcs: view.visibleNpcs,
       worldItems: view.visibleWorldItems,
       groundEffects: view.visibleGroundEffects,
-      chunks: view.visibleChunkKeys.map((key) => view.worldMap.chunksByKey.get(key)),
+      chunks: view.visibleChunkKeys.map((key) => serializedWorldChunksByKey.get(key)),
+      chunksAreSerialized: true,
       visibleChunkKeys: view.visibleChunkKeys,
       acknowledgedActionRequestId: session.lastProcessedActionRequestId ?? null,
     });
   };
 
   const getDeltasForClient = (session, knownRevision) => {
-    const sourceDeltas = journal.getDeltasAfter(knownRevision);
+    const sourceDeltas = journal.readDeltasAfter(knownRevision);
     if (sourceDeltas === null || sourceDeltas.length === 0) {
       return sourceDeltas;
     }
@@ -785,23 +1064,46 @@ export const createAuthoritativeWorldRuntime = ({
     const addedChunkKeys = view.visibleChunkKeys.filter((key) => !previousChunkKeys.has(key));
     const removedChunkKeys = [...previousChunkKeys].filter((key) => !currentChunkKeys.has(key));
     const removedPlayerUids = [...previousPlayerUids].filter((playerUid) => !currentPlayerUids.has(playerUid));
-    const getChangedUids = (entityType) => {
-      return new Set(
-        sourceDeltas.flatMap((sourceDelta) => sourceDelta.upserts?.[entityType] ?? []).map((entity) => entity.uid),
-      );
-    };
+    const changedUidsByEntityType = new Map([
+      ["players", new Set()],
+      ["monsters", new Set()],
+      ["npcs", new Set()],
+      ["worldItems", new Set()],
+      ["groundEffects", new Set()],
+    ]);
+    const sourceEvents = [];
+    for (const sourceDelta of sourceDeltas) {
+      for (const [entityType, changedUids] of changedUidsByEntityType) {
+        for (const entity of sourceDelta.upserts?.[entityType] ?? []) {
+          changedUids.add(entity.uid);
+        }
+      }
+      sourceEvents.push(...sourceDelta.events);
+    }
     const getVisibleEntityUpserts = (entities, previousUids, entityType, serializer) => {
-      const changedUids = getChangedUids(entityType);
+      const changedUids = changedUidsByEntityType.get(entityType);
       return entities
         .filter((entity) => !previousUids.has(entity.uid) || changedUids.has(entity.uid))
         .map(serializer)
         .filter(Boolean);
     };
-    const selfChanged = getChangedUids("players").has(view.selfPlayer.uid);
+    const selfChanged = changedUidsByEntityType.get("players").has(view.selfPlayer.uid);
     const visibleEventPlayerUids = new Set([view.selfPlayer.uid, ...previousPlayerUids, ...currentPlayerUids]);
     const visibleEventMonsterUids = new Set([...previousMonsterUids, ...currentMonsterUids]);
     const visibleEventNpcUids = new Set([...previousNpcUids, ...currentNpcUids]);
     const isEventVisible = (event) => {
+      if (event?.recipientPlayerUid && event.recipientPlayerUid !== view.selfPlayer.uid) {
+        return false;
+      }
+      if (event?.visibility === "global") {
+        return true;
+      }
+      if (event?.type === "npc-spoke" && event.playerUid !== view.selfPlayer.uid) {
+        return false;
+      }
+      if (event?.type === "chat-message" && ["global", "trade"].includes(event.channelId)) {
+        return true;
+      }
       if (
         visibleEventPlayerUids.has(event?.actorPlayerUid) ||
         visibleEventPlayerUids.has(event?.playerUid) ||
@@ -838,7 +1140,7 @@ export const createAuthoritativeWorldRuntime = ({
           "groundEffects",
           serializeGroundEffectState,
         ),
-        chunks: addedChunkKeys.map((key) => serializeWorldChunk(view.worldMap.chunksByKey.get(key))),
+        chunks: addedChunkKeys.map((key) => serializedWorldChunksByKey.get(key)),
       },
       removals: {
         players: removedPlayerUids,
@@ -848,7 +1150,7 @@ export const createAuthoritativeWorldRuntime = ({
         groundEffects: [...previousGroundEffectUids].filter((uid) => !currentGroundEffectUids.has(uid)),
         chunks: removedChunkKeys,
       },
-      events: sourceDeltas.flatMap((sourceDelta) => sourceDelta.events).filter(isEventVisible),
+      events: sourceEvents.filter(isEventVisible),
     });
     session.knownVisibleChunkKeys = currentChunkKeys;
     session.knownVisiblePlayerUids = currentPlayerUids;
@@ -870,7 +1172,10 @@ export const createAuthoritativeWorldRuntime = ({
         currentServerTime = serverTime;
       }
       worldEntities.respawnSystem.update(currentServerTime);
-      updateWorldDecay();
+      if (currentServerTime >= nextWorldDecayAt) {
+        nextWorldDecayAt = currentServerTime + DECAY_REFRESH_COOLDOWN_MS;
+        updateWorldDecay();
+      }
       const changedMonsters = monsterAi.update(currentServerTime);
       if (changedMonsters.length > 0) {
         journal.record({
@@ -903,11 +1208,35 @@ export const createAuthoritativeWorldRuntime = ({
         }
       }
       if (regeneratedPlayers.length > 0) {
+        for (const player of regeneratedPlayers) {
+          markPlayerPersistenceDirty(player.uid);
+        }
         journal.record({
           serverTime: currentServerTime,
           upserts: { players: regeneratedPlayers.map(serializePlayerPublicState) },
         });
       }
+      const pvpStateChangedPlayers = [];
+      for (const player of playersByUid.values()) {
+        if (expirePlayerPvpState(player, currentServerTime)) {
+          pvpStateChangedPlayers.push(player);
+        }
+      }
+      if (pvpStateChangedPlayers.length > 0) {
+        for (const player of pvpStateChangedPlayers) {
+          markPlayerPersistenceDirty(player.uid);
+        }
+        journal.record({
+          serverTime: currentServerTime,
+          upserts: { players: pvpStateChangedPlayers.map(serializePlayerPublicState) },
+          events: pvpStateChangedPlayers.map((player) => ({
+            type: "player-pvp-state-changed",
+            playerUid: player.uid,
+            pvp: structuredClone(player.pvp),
+          })),
+        });
+      }
+      pruneExpiredPvpAggressions();
       const npcEvents = npcConversationService.update(currentServerTime);
       if (npcEvents.length > 0) {
         journal.record({ serverTime: currentServerTime, events: npcEvents });
@@ -915,22 +1244,44 @@ export const createAuthoritativeWorldRuntime = ({
       if (!characterRepository) {
         return;
       }
-      for (const [playerUid, persistenceSession] of sessionsByPlayerUid.entries()) {
-        if (currentServerTime - persistenceSession.lastSavedAt < AUTOSAVE_INTERVAL_MS) {
-          continue;
+      if (currentServerTime >= nextAutosaveSweepAt) {
+        let autosavesThisTick = 0;
+        let nextSweepAt = Number.POSITIVE_INFINITY;
+        for (const [playerUid, persistenceSession] of sessionsByPlayerUid.entries()) {
+          if (!persistenceSession.isDirty) {
+            continue;
+          }
+          if (currentServerTime < persistenceSession.nextSaveAttemptAt) {
+            nextSweepAt = Math.min(nextSweepAt, persistenceSession.nextSaveAttemptAt);
+            continue;
+          }
+          if (autosavesThisTick >= MAX_AUTOSAVES_PER_TICK) {
+            nextSweepAt = currentServerTime;
+            continue;
+          }
+          const player = playersByUid.get(playerUid);
+          if (!player) {
+            continue;
+          }
+          autosavesThisTick++;
+          const saveResult = characterRepository.save(
+            persistenceSession.accountId,
+            persistenceSession.characterId,
+            serializePlayerPrivateState(player),
+            persistenceSession.version,
+            currentServerTime,
+          );
+          if (saveResult.success) {
+            persistenceSession.version = saveResult.version;
+            persistenceSession.lastSavedAt = currentServerTime;
+            persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_INTERVAL_MS;
+            persistenceSession.isDirty = false;
+          } else {
+            persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_RETRY_DELAY_MS;
+            nextSweepAt = Math.min(nextSweepAt, persistenceSession.nextSaveAttemptAt);
+          }
         }
-        const player = playersByUid.get(playerUid);
-        persistenceSession.lastSavedAt = currentServerTime;
-        const saveResult = characterRepository.save(
-          persistenceSession.accountId,
-          persistenceSession.characterId,
-          serializePlayerPrivateState(player),
-          persistenceSession.version,
-          currentServerTime,
-        );
-        if (saveResult.success) {
-          persistenceSession.version = saveResult.version;
-        }
+        nextAutosaveSweepAt = nextSweepAt;
       }
     },
     getPlayer: (playerUid) => playersByUid.get(playerUid) ?? null,

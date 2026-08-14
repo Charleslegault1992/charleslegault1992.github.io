@@ -43,6 +43,13 @@ export const renderPixiVisibleWorldChunks = async (...args) => {
 export const drawPixiMinimapRegion = (...args) => callPixiRenderer("drawPixiMinimapRegion", args, false);
 export const setPixiPlayerFrame = (...args) => callPixiRenderer("setPixiPlayerFrame", args, false);
 export const updatePixiPlayerTransform = (...args) => callPixiRenderer("updatePixiPlayerTransform", args, false);
+export const upsertPixiRemotePlayerAppearance = async (...args) => {
+  const renderer = await loadPixiRenderer();
+  return renderer.upsertPixiRemotePlayerAppearance(...args);
+};
+export const updatePixiRemotePlayerVisual = (...args) => callPixiRenderer("updatePixiRemotePlayerVisual", args, false);
+export const removePixiRemotePlayerVisual = (...args) => callPixiRenderer("removePixiRemotePlayerVisual", args, false);
+export const clearPixiRemotePlayerVisuals = (...args) => callPixiRenderer("clearPixiRemotePlayerVisuals", args);
 export const upsertPixiNpcVisual = (...args) => callPixiRenderer("upsertPixiNpcVisual", args, false);
 export const updatePixiNpcTransform = (...args) => callPixiRenderer("updatePixiNpcTransform", args, false);
 export const removePixiNpcVisual = (...args) => callPixiRenderer("removePixiNpcVisual", args, false);

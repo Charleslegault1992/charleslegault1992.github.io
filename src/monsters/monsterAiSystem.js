@@ -27,8 +27,11 @@ export const createMonsterAiSystem = ({
   updateMonsterDirection,
   updateMonsterSprite,
   getPlayers = () => [playerState],
+  getPlayerByUid = (playerUid) => (getPlayers() ?? []).find((player) => player?.uid === playerUid) ?? null,
   getWorldMap = (z) => pixiWorldRenderState.worldMapsByZ?.get(z) ?? null,
 }) => {
+  let eligiblePlayersByZ = null;
+
   const isEntityInsideMonsterRange = (monster, entity, rangeX, rangeY) => {
     if (
       !monster ||
@@ -51,7 +54,13 @@ export const createMonsterAiSystem = ({
   };
 
   const getEligiblePlayers = (monster) => {
-    return (getPlayers() ?? []).filter((player) => player?.hp > 0 && player.z === monster?.z);
+    const z = monster?.z;
+    if (eligiblePlayersByZ?.has(z)) {
+      return eligiblePlayersByZ.get(z);
+    }
+    const eligiblePlayers = (getPlayers() ?? []).filter((player) => player?.hp > 0 && player.z === z);
+    eligiblePlayersByZ?.set(z, eligiblePlayers);
+    return eligiblePlayers;
   };
 
   const isPlayerInsideMonsterRange = (monster, rangeX, rangeY) => {
@@ -163,7 +172,8 @@ export const createMonsterAiSystem = ({
       return null;
     }
 
-    return getEligiblePlayers(monster).find((player) => player.uid === monster.targetUid) ?? null;
+    const target = getPlayerByUid(monster.targetUid);
+    return target?.hp > 0 && target.z === monster.z ? target : null;
   };
 
   const setMonsterTarget = (monster, target) => {
@@ -230,7 +240,7 @@ export const createMonsterAiSystem = ({
     monster.nextAggroCheckAt =
       now + getRandomInt(MONSTER_AI_CONFIG.aggroCheckCooldownMinMs, MONSTER_AI_CONFIG.aggroCheckCooldownMaxMs);
 
-    const candidates = getEligiblePlayers(monster).sort((first, second) => {
+    const candidates = [...getEligiblePlayers(monster)].sort((first, second) => {
       const firstDistance = Math.abs(first.x - monster.x) + Math.abs(first.y - monster.y);
       const secondDistance = Math.abs(second.x - monster.x) + Math.abs(second.y - monster.y);
       return firstDistance - secondDistance;
@@ -663,6 +673,7 @@ export const createMonsterAiSystem = ({
   };
 
   const updateMonsterMovement = (now, activeMonsters) => {
+    eligiblePlayersByZ = new Map();
     activeMonsters.forEach((monster) => {
       if (!updateMonsterActivityState(monster)) {
         return;
@@ -746,6 +757,7 @@ export const createMonsterAiSystem = ({
         monster.path.shift();
       }
     });
+    eligiblePlayersByZ = null;
   };
 
   return {

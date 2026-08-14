@@ -1,3 +1,16 @@
+0.330 - Version online serveur autoritaire
+    - Ajout de l'inscription et de la connexion HTTP avec mots de passe hashes et sales.
+    - Ajout de la connexion Google avec validation du jeton par le serveur.
+    - Ajout de jetons signes courts pour ouvrir une session WebSocket.
+    - Ajout de la liste, de la creation et de la suppression des personnages par compte.
+    - Un client ne peut plus inventer un characterId qui n'appartient pas a son compte.
+    - Ajout des migrations SQLite, du WAL, du busy timeout et des sauvegardes online.
+    - Ajout du chat multijoueur, des joueurs distants, de la banque et du commerce autoritaires.
+    - Ajout de la moderation persistante et des commandes serveur.
+    - Ajout du premier combat PVP autoritaire avec skulls blanc et rouge.
+    - Optimisation de la replication, des chunks, de l'IA et des sauvegardes pour le serveur public.
+    - Ajout de la validation d'origine WebSocket, du rate limit et de la preparation au reverse proxy.
+
 0.329 - Client distant, reconnexion et verification online
     - Ajout du transport WebSocket dans le demarrage du client avec activation par configuration.
     - Ajout de la prediction du mouvement et de la reconciliation avec les snapshots du serveur.

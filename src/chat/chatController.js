@@ -17,6 +17,7 @@ export const createChatController = ({
   castLearnedSpell,
   showPlayerSpeech,
   handleNpcSpeech,
+  sendChannelMessage = null,
   resetMovementKeys,
 }) => {
   const messagesByChannelId = {
@@ -127,6 +128,9 @@ export const createChatController = ({
         castLearnedSpell(spellData.spellId);
         return true;
       }
+    }
+    if (sendChannelMessage?.({ channelId: activeChannelId, text: text.trim() }) === true) {
+      return true;
     }
     if (!addMessage(activeChannelId, "player", text, playerState)) {
       return false;

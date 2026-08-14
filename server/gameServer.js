@@ -4,9 +4,8 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import {
   CLIENT_MESSAGE_TYPE,
-  createNetworkMessage,
   decodeNetworkMessage,
-  encodeNetworkMessage,
+  encodeNetworkPayload,
   SERVER_MESSAGE_TYPE,
 } from "../src/network/networkProtocol.js";
 import { createServerTickLoop } from "./serverTickLoop.js";
@@ -19,8 +18,17 @@ const REQUIRED_RUNTIME_METHODS = [
   "getDeltasForClient",
   "update",
 ];
+const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
 
-export const createGameServer = ({ runtime, authenticateClient, host = "127.0.0.1", port = 8080, tickRateHz = 30 } = {}) => {
+export const createGameServer = ({
+  runtime,
+  authenticateClient,
+  handleHttpRequest = null,
+  allowedOrigin = "",
+  host = "127.0.0.1",
+  port = 8080,
+  tickRateHz = 30,
+} = {}) => {
   if (
     !runtime ||
     !REQUIRED_RUNTIME_METHODS.every((methodName) => typeof runtime[methodName] === "function") ||
@@ -29,24 +37,48 @@ export const createGameServer = ({ runtime, authenticateClient, host = "127.0.0.
     throw new TypeError("The game server requires a complete authoritative runtime.");
   }
 
-  const httpServer = createServer((request, response) => {
+  const httpServer = createServer(async (request, response) => {
     if (request.url === "/health") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ status: "ok", clients: sessionsBySocket.size }));
       return;
     }
+    if (typeof handleHttpRequest === "function") {
+      try {
+        if (await handleHttpRequest(request, response)) {
+          return;
+        }
+      } catch {
+        if (!response.headersSent) {
+          response.writeHead(500, { "content-type": "application/json" });
+        }
+        response.end(JSON.stringify({ success: false, reason: "internal-server-error" }));
+        return;
+      }
+    }
     response.writeHead(404);
     response.end();
   });
-  const webSocketServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  const webSocketServer = new WebSocketServer({
+    noServer: true,
+    maxPayload: 64 * 1024,
+    perMessageDeflate: {
+      threshold: 1024,
+      clientNoContextTakeover: true,
+      serverNoContextTakeover: true,
+    },
+  });
   const sessionsBySocket = new Map();
 
   const send = (session, type, payload) => {
     if (session.socket.readyState !== WebSocket.OPEN) {
       return false;
     }
-    const message = createNetworkMessage(type, payload, session.nextServerSequence++);
-    const encodedMessage = encodeNetworkMessage(message);
+    if (session.socket.bufferedAmount > MAX_SOCKET_BUFFERED_BYTES) {
+      session.socket.close(1013, "Client connection is too slow");
+      return false;
+    }
+    const encodedMessage = encodeNetworkPayload(type, payload, session.nextServerSequence++);
     if (!encodedMessage) {
       return false;
     }
@@ -188,7 +220,8 @@ export const createGameServer = ({ runtime, authenticateClient, host = "127.0.0.
   });
 
   httpServer.on("upgrade", (request, socket, head) => {
-    if (request.url !== "/game") {
+    if (request.url !== "/game" || (allowedOrigin && request.headers.origin !== allowedOrigin)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }

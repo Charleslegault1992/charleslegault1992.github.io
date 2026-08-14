@@ -25,10 +25,10 @@ export const createWorldChangeJournal = ({ initialRevision = 0, maxEntries = 256
     while (entries.length > maxEntries) {
       entries.shift();
     }
-    return structuredClone(delta);
+    return Object.freeze({ baseRevision: delta.baseRevision, revision: delta.revision });
   };
 
-  const getDeltasAfter = (knownRevision) => {
+  const readDeltasAfter = (knownRevision) => {
     if (!Number.isSafeInteger(knownRevision) || knownRevision < 0 || knownRevision > revision) {
       return null;
     }
@@ -39,12 +39,19 @@ export const createWorldChangeJournal = ({ initialRevision = 0, maxEntries = 256
     if (knownRevision < firstAvailableBaseRevision) {
       return null;
     }
-    return structuredClone(entries.filter((entry) => entry.revision > knownRevision));
+    const startIndex = knownRevision - firstAvailableBaseRevision;
+    return entries.slice(startIndex);
+  };
+
+  const getDeltasAfter = (knownRevision) => {
+    const deltas = readDeltasAfter(knownRevision);
+    return deltas === null ? null : structuredClone(deltas);
   };
 
   return Object.freeze({
     getRevision: () => revision,
     getDeltasAfter,
+    readDeltasAfter,
     record,
   });
 };

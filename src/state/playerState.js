@@ -7,6 +7,7 @@ import {
 import { SPELL_HOTKEY_KEYS } from "../core/gameConstants.js";
 import { DEFAULT_PLAYER_APPEARANCE_ID } from "../player/playerAppearance.js";
 import { spellsDatabase } from "../spellDatabase.js";
+import { createPlayerPvpState } from "../combat/playerPvpState.js";
 
 const createDefaultPlayerSpellbook = () => {
   const learnedSpellIds = Object.values(spellsDatabase)
@@ -51,6 +52,7 @@ export const createPlayerState = () => ({
   renderY: null,
   moveStartTime: 0,
   moveDuration: 0,
+  tileStackOrder: 0,
   name: "Charles",
   appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
   appearanceParts: normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS),
@@ -138,6 +140,7 @@ export const createPlayerState = () => ({
   walkFrame: 1,
   light: 750,
   combatMode: "balanced",
+  pvp: createPlayerPvpState(),
   equipment: {
     necklace: null,
     helmet: null,

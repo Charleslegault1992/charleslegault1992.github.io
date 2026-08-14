@@ -272,6 +272,13 @@ export const createWebSocketGameTransport = ({
 
   return Object.freeze({
     connect,
+    updateAuthenticationToken: (authToken) => {
+      if (!helloPayload || typeof authToken !== "string" || authToken === "") {
+        return false;
+      }
+      helloPayload.authToken = authToken;
+      return true;
+    },
     disconnect: () => {
       shouldReconnect = false;
       socketGeneration += 1;

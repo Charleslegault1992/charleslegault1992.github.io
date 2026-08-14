@@ -99,11 +99,14 @@ export const createSpatialEntityStore = () => {
         for (const uid of entityUidsByChunkKey.get(chunkKey) ?? []) {
           if (!visitedUids.has(uid)) {
             visitedUids.add(uid);
-            entities.push(entitiesByUid.get(uid));
+            const entity = entitiesByUid.get(uid);
+            if (entity) {
+              entities.push(entity);
+            }
           }
         }
       }
-      return entities.filter(Boolean);
+      return entities;
     },
     getSize: () => entitiesByUid.size,
   });

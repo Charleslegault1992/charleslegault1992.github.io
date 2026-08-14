@@ -107,3 +107,33 @@ test("the gateway executes a request ID once and rejects a conflicting replay", 
   assert.equal(conflict.payload.reason, "request-id-conflict");
   assert.equal(dispatchCount, 1);
 });
+
+test("the WebSocket gateway rejects an unexpected browser origin", async (testContext) => {
+  const runtime = {
+    connectClient: () => ({ success: true, playerUid: "player-1" }),
+    disconnectClient: () => {},
+    dispatchAction: () => ({ success: true }),
+    createSnapshotForClient: () => ({ revision: 0, self: { uid: "player-1" } }),
+    getDeltasForClient: () => [],
+    update: () => {},
+  };
+  const server = createGameServer({
+    runtime,
+    authenticateClient: () => ({ accountId: "account-1" }),
+    allowedOrigin: "https://nonameyet.example",
+    port: 0,
+  });
+  await server.start();
+  testContext.after(() => server.stop());
+
+  const socket = new WebSocket(`ws://127.0.0.1:${server.getAddress().port}/game`, {
+    origin: "https://unexpected.example",
+  });
+  socket.on("error", () => {});
+  const statusCode = await new Promise((resolve) => {
+    socket.once("unexpected-response", (_request, response) => resolve(response.statusCode));
+  });
+
+  assert.equal(statusCode, 403);
+  socket.close();
+});

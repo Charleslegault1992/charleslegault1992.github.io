@@ -19,3 +19,14 @@ test("SQLite character saves use optimistic versions", () => {
   });
   repository.close();
 });
+
+test("SQLite reserves character names across accounts", () => {
+  const repository = createSqliteCharacterRepository({ databasePath: ":memory:" });
+  const first = repository.save("account-1", "first", { name: "Ari Vale", level: 1 }, null, 100);
+  const duplicate = repository.save("account-2", "second", { name: "ari vale", level: 1 }, null, 100);
+
+  assert.equal(first.success, true);
+  assert.equal(duplicate.reason, "character-name-taken");
+  assert.equal(repository.load("account-2", "second"), null);
+  repository.close();
+});

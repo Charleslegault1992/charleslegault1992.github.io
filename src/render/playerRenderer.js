@@ -15,11 +15,13 @@ const playerRenderRefs = {
   root: player,
   hp: null,
   floatingText: null,
+  skull: null,
 };
 
 export const initializePlayerRenderRefs = () => {
   playerRenderRefs.hp = playerRenderRefs.root?.querySelector(".php-red") ?? null;
   playerRenderRefs.floatingText = playerRenderRefs.root?.querySelector(".player-floating-text-layer") ?? null;
+  playerRenderRefs.skull = playerRenderRefs.root?.querySelector(".player-skull") ?? null;
 };
 
 export const getPlayerFloatingTextElement = () => {
@@ -39,6 +41,22 @@ export const showPlayerName = (name) => {
   playerName.textContent = `${name}`;
 };
 
+export const refreshPlayerSkull = (skullType) => {
+  if (!playerRenderRefs.root) {
+    return;
+  }
+  let skull = playerRenderRefs.skull;
+  if (!skull) {
+    skull = document.createElement("div");
+    skull.classList.add("player-skull");
+    playerRenderRefs.root.appendChild(skull);
+    playerRenderRefs.skull = skull;
+  }
+  const hasSkull = skullType === "white" || skullType === "red";
+  skull.hidden = !hasSkull;
+  skull.classList.toggle("player-skull-red", skullType === "red");
+};
+
 export const updatePlayerSprite = () => {
   const sourceX = playerState.walkFrame * PLAYER_FRAME_WIDTH;
   const sourceY = getDirectionRow(playerState.direction) * PLAYER_FRAME_HEIGHT;
@@ -50,17 +68,18 @@ export const updatePlayerSprite = () => {
   });
 };
 
-export const updatePlayerPosition = (camera) => {
+export const updatePlayerPosition = (camera, tileStackRenderOffset = 0) => {
   const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
   const renderX = playerState.renderX;
   const renderY = playerState.renderY - TILE_SIZE - surfaceOffsetY;
-  const zIndex = getWorldRenderZIndex(getEntityRenderSortY(playerState), WORLD_RENDER_LAYER_CREATURE);
+  const zIndex =
+    getWorldRenderZIndex(getEntityRenderSortY(playerState), WORLD_RENDER_LAYER_CREATURE) + tileStackRenderOffset;
 
   updatePixiPlayerTransform({ x: renderX, y: renderY, zIndex });
 
   playerRenderRefs.root.style.left = `${renderX - camera.x}px`;
   playerRenderRefs.root.style.top = `${renderY - camera.y}px`;
-  playerRenderRefs.root.style.zIndex = zIndex;
+  playerRenderRefs.root.style.zIndex = Math.floor(zIndex);
 };
 
 export const refreshPlayerHpBar = () => {

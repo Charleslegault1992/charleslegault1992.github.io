@@ -49,6 +49,18 @@ export const encodeNetworkMessage = (message) => {
   return isValidNetworkMessage(message) ? JSON.stringify(message) : null;
 };
 
+export const encodeNetworkPayload = (type, payload, sequence = 0) => {
+  if (!NETWORK_MESSAGE_TYPES.has(type) || !Number.isSafeInteger(sequence) || sequence < 0) {
+    return null;
+  }
+  return JSON.stringify({
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
+    type,
+    sequence,
+    payload: payload ?? null,
+  });
+};
+
 export const decodeNetworkMessage = (rawMessage) => {
   if (typeof rawMessage !== "string") {
     return null;
