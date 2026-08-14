@@ -1167,6 +1167,15 @@ const updateItemPosition = () => {
       return;
     }
 
+    const stackOffsetY = getWorldItemStackOffsetY(item);
+    const stackIndex = getWorldItemStackIndex(item);
+    updatePixiWorldItemTransform(
+      item.uid,
+      item.x,
+      item.y - stackOffsetY,
+      getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
+    );
+
     const itemHitboxElement = findWorldItemHitboxElement(item.uid);
     if (itemHitboxElement) {
       const positionHitbox = {
@@ -1448,7 +1457,40 @@ const setWorldItemPosition = (destination, item) => {
   return true;
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
+const syncOpenedContainerItemReferences = () => {
+  for (let index = openedContainers.length - 1; index >= 0; index--) {
+    const wrapper = openedContainers[index];
+    const containerUid = wrapper?.item?.uid;
+
+    if (!Number.isInteger(containerUid)) {
+      openedContainers.splice(index, 1);
+      continue;
+    }
+
+    const currentLocation = findItemLocationByUid(containerUid);
+    const currentItem = currentLocation ? getItemFromLocation(currentLocation) : null;
+
+    if (!currentItem || !isOpenableContainerItem(currentItem)) {
+      openedContainers.splice(index, 1);
+      continue;
+    }
+
+    wrapper.item = currentItem;
+  }
+
+  for (const wrapper of openedContainers) {
+    const parentUid = wrapper.parent?.item?.uid;
+
+    if (!Number.isInteger(parentUid)) {
+      continue;
+    }
+
+    wrapper.parent = openedContainers.find((openedWrapper) => openedWrapper.item?.uid === parentUid) ?? null;
+  }
+};
+
 const refreshInventoryUi = () => {
+  syncOpenedContainerItemReferences();
   updatePlayerCarriedWeight(playerState);
   updatePlayerInventory();
   renderContainerDock();
@@ -2429,7 +2471,10 @@ const completeItemDrag = (destination) => {
             ? getGameUiText("notEnoughCapacity")
             : getGameUiText("cannotPlaceItem"),
         );
+        return;
       }
+
+      renderContainerDock();
     });
   }
   return result;
@@ -7983,6 +8028,10 @@ containerWindowController = createContainerWindowController({
   syncMobileBackpackButton,
   syncItemUseSourceFeedback,
   refreshInventoryUi,
+  resolveContainerItem: (containerUid) => {
+    const location = findItemLocationByUid(containerUid);
+    return location ? getItemFromLocation(location) : null;
+  },
 });
 
 const getSimulationContainerByUid = (containerUid) => {
@@ -8404,6 +8453,13 @@ const synchronizeRemoteWorldRender = (event) => {
     refreshInventoryUi();
     refreshPlayerVitalsUi();
     updatePlayerExperience();
+  }
+  const didWorldItemsChange = event.payload?.upserts?.worldItems || event.payload?.removals?.worldItems;
+  const isItemInteractionInProgress =
+    dragState.isDragging || dragState.pendingSourceLocation !== null || dragState.pendingSlotElement !== null;
+
+  if (didWorldItemsChange && !isItemInteractionInProgress) {
+    renderContainerDock();
   }
 };
 

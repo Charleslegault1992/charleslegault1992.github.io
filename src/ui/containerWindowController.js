@@ -18,13 +18,33 @@ export const createContainerWindowController = ({
   syncMobileBackpackButton,
   syncItemUseSourceFeedback,
   refreshInventoryUi,
+  resolveContainerItem,
 }) => {
+  const getWrapperUid = (containerWrapper) => {
+    return containerWrapper?.itemUid ?? containerWrapper?.item?.uid ?? null;
+  };
+
+  const getCurrentContainerItem = (containerWrapper) => {
+    const containerUid = getWrapperUid(containerWrapper);
+    if (!Number.isInteger(containerUid)) {
+      return null;
+    }
+
+    const currentItem = resolveContainerItem(containerUid);
+    if (!currentItem || !isOpenableContainerItem(currentItem)) {
+      return null;
+    }
+
+    containerWrapper.item = currentItem;
+    return currentItem;
+  };
+
   const findWrapperByUid = (containerUid) => {
-    return openedContainers.find((container) => container.item.uid === containerUid) ?? null;
+    return openedContainers.find((container) => getWrapperUid(container) === containerUid) ?? null;
   };
 
   const findIndexByUid = (containerUid) => {
-    return openedContainers.findIndex((container) => container.item.uid === containerUid);
+    return openedContainers.findIndex((container) => getWrapperUid(container) === containerUid);
   };
 
   const getRootWrapper = (containerWrapper) => {
@@ -242,11 +262,13 @@ export const createContainerWindowController = ({
       return true;
     }
     openedContainers.push({
+      itemUid: containerItem.uid,
       item: containerItem,
       title,
       isMinimized: false,
       sourceType,
       parent,
+      parentUid: parent ? getWrapperUid(parent) : null,
       windowHeight: null,
       maxWindowHeight: null,
     });
@@ -262,18 +284,30 @@ export const createContainerWindowController = ({
       return;
     }
     playerContainers.innerHTML = "";
+    for (let index = openedContainers.length - 1; index >= 0; index--) {
+      if (!getCurrentContainerItem(openedContainers[index])) {
+        openedContainers.splice(index, 1);
+      }
+    }
+
     for (const container of openedContainers) {
+      const containerItem = getCurrentContainerItem(container);
+      if (!containerItem) {
+        continue;
+      }
+
       let body = null;
       const windowElement = document.createElement("div");
       windowElement.classList.add("container-window", `container-window-${container.sourceType}`);
-      windowElement.dataset.containerUid = container.item.uid;
+      windowElement.dataset.containerUid = containerItem.uid;
 
       const header = document.createElement("div");
       header.classList.add("container-window-header");
       header.addEventListener("pointerdown", (event) => startDockDrag(event, windowElement));
+
       const title = document.createElement("div");
       title.classList.add("boite-jeux-titre");
-      title.textContent = getLocalizedItemName(container.item.itemId);
+      title.textContent = getLocalizedItemName(containerItem.itemId);
       header.appendChild(title);
 
       if (container.parent) {
@@ -283,14 +317,22 @@ export const createContainerWindowController = ({
         backButton.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
+
           const parentWrapper = container.parent;
-          close(container.item);
-          const parentAlreadyOpen = findWrapperByUid(parentWrapper.item.uid);
+          const parentUid = getWrapperUid(parentWrapper);
+
+          close(containerItem);
+
+          const parentAlreadyOpen = findWrapperByUid(parentUid);
           if (parentAlreadyOpen) {
             parentAlreadyOpen.isMinimized = false;
             render();
-          } else {
-            open(parentWrapper.item, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
+            return;
+          }
+
+          const parentItem = getCurrentContainerItem(parentWrapper);
+          if (parentItem) {
+            open(parentItem, parentWrapper.title, parentWrapper.sourceType, parentWrapper.parent);
           }
         });
         header.appendChild(backButton);
@@ -304,14 +346,16 @@ export const createContainerWindowController = ({
         container.isMinimized = !container.isMinimized;
         render();
       });
+
       const closeButton = document.createElement("button");
       closeButton.classList.add("container-minimize-button");
       closeButton.textContent = "X";
       closeButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        close(container.item);
+        close(containerItem);
       });
+
       header.append(minimizeButton, closeButton);
 
       if (container.isMinimized) {
@@ -327,7 +371,7 @@ export const createContainerWindowController = ({
         separator.classList.add("separateur-panneau");
         body = document.createElement("div");
         body.classList.add("container-window-body");
-        renderSlots(body, container.item);
+        renderSlots(body, containerItem);
         const resizeHandle = document.createElement("div");
         resizeHandle.classList.add("container-window-resize-handle");
         resizeHandle.addEventListener("pointerdown", (event) =>

@@ -1,6 +1,10 @@
 import { MAX_SURFACE_HEIGHT, TILE_SIZE } from "../src/core/gameConstants.js";
 import { createInventoryMoveService } from "../src/inventory/inventoryMoveService.js";
-import { getPlayerRemainingCapacity, getItemTotalWeight, updatePlayerCarriedWeight } from "../src/inventory/inventoryWeight.js";
+import {
+  getPlayerRemainingCapacity,
+  getItemTotalWeight,
+  updatePlayerCarriedWeight,
+} from "../src/inventory/inventoryWeight.js";
 import { createItemLocationController } from "../src/inventory/itemLocationController.js";
 import { getItemData, getItemSurfaceHeight, isContainerItem } from "../src/items/itemModel.js";
 import { canPlayerEquipItemInSlot } from "../src/player/playerEquipment.js";
@@ -113,8 +117,10 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     ) {
       return false;
     }
-    const surfaceHeight = getWorldItemsAt(destination.x, destination.y, destination.z)
-      .reduce((total, worldItem) => total + getItemSurfaceHeight(worldItem), 0);
+    const surfaceHeight = getWorldItemsAt(destination.x, destination.y, destination.z).reduce(
+      (total, worldItem) => total + getItemSurfaceHeight(worldItem),
+      0,
+    );
     if (surfaceHeight + getItemSurfaceHeight(item) > MAX_SURFACE_HEIGHT) {
       return false;
     }
@@ -207,15 +213,31 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
   });
 
   const executeMove = (request) => {
+    const changedWorldContainerUids = new Set();
+
+    for (const location of [request?.source, request?.destination]) {
+      if (location?.locationType !== "containerSlot") {
+        continue;
+      }
+
+      const worldRoot = findWorldRootContaining(location.parentContainerUid);
+      if (worldRoot) {
+        changedWorldContainerUids.add(worldRoot.uid);
+      }
+    }
+
     const result = moveService.execute(request);
+
     if (result.success) {
       updatePlayerCarriedWeight(player);
       result.changes = {
         ...result.changes,
         carriedWeight: player.carriedWeight,
         equipment: player.equipment,
+        changedWorldContainerUids: [...changedWorldContainerUids],
       };
     }
+
     return result;
   };
 
