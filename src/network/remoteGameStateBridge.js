@@ -1,10 +1,71 @@
 const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects"]);
 
+const isItemState = (value) => Number.isInteger(value?.uid) && typeof value?.itemId === "string";
+
+const collectItemReferences = (item, itemsByUid) => {
+  if (!isItemState(item)) {
+    return;
+  }
+  itemsByUid.set(item.uid, item);
+  for (const child of item.content ?? []) {
+    collectItemReferences(child, itemsByUid);
+  }
+};
+
+const synchronizeItemState = (target, source, itemsByUid) => {
+  for (const [key, value] of Object.entries(source)) {
+    if (key !== "content") {
+      target[key] = structuredClone(value);
+    }
+  }
+  if (Array.isArray(source.content)) {
+    target.content = source.content.map((sourceItem) => {
+      if (!isItemState(sourceItem)) {
+        return null;
+      }
+      const currentItem = itemsByUid.get(sourceItem.uid) ?? null;
+      if (!currentItem) {
+        return structuredClone(sourceItem);
+      }
+      return synchronizeItemState(currentItem, sourceItem, itemsByUid);
+    });
+  }
+  return target;
+};
+
+const synchronizeEquipmentState = (targetEquipment, sourceEquipment) => {
+  const itemsByUid = new Map();
+  for (const item of Object.values(targetEquipment)) {
+    collectItemReferences(item, itemsByUid);
+  }
+  for (const slotName of Object.keys(targetEquipment)) {
+    if (!(slotName in sourceEquipment)) {
+      delete targetEquipment[slotName];
+    }
+  }
+  for (const [slotName, sourceItem] of Object.entries(sourceEquipment)) {
+    const currentItem = isItemState(sourceItem) ? itemsByUid.get(sourceItem.uid) ?? null : null;
+    targetEquipment[slotName] = currentItem
+      ? synchronizeItemState(currentItem, sourceItem, itemsByUid)
+      : structuredClone(sourceItem);
+  }
+};
+
 const copyFieldsInto = (target, source) => {
   if (!target || !source) {
     return false;
   }
+  if (isItemState(target) && isItemState(source) && target.uid === source.uid) {
+    const itemsByUid = new Map();
+    collectItemReferences(target, itemsByUid);
+    synchronizeItemState(target, source, itemsByUid);
+    return true;
+  }
   for (const [key, value] of Object.entries(source)) {
+    if (key === "equipment" && target.equipment && value && typeof value === "object") {
+      synchronizeEquipmentState(target.equipment, value);
+      continue;
+    }
     target[key] = structuredClone(value);
   }
   return true;

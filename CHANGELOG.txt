@@ -1,3 +1,7 @@
+0.3304 - Correction des items online
+    - Les equipements, sacs et items gardent maintenant leurs bonnes references pendant la replication serveur.
+    - Correction des items visibles dans un sac mais impossibles a utiliser ou deplacer.
+
 0.3303 - Correction des retours en arriere online
     - Le serveur valide maintenant le cooldown avec l'heure de reception exacte du mouvement entre ses ticks.
 

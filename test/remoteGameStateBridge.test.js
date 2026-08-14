@@ -88,3 +88,42 @@ test("the remote state bridge removes entities that leave the replicated interes
 
   assert.equal(entityMaps.monsters.size, 0);
 });
+
+test("the remote state bridge preserves equipment and container references while applying item changes", () => {
+  const replicationStore = createClientReplicationStore();
+  const harness = createTransportHarness(replicationStore);
+  const apple = { uid: 12, itemId: "apple", quantity: 1 };
+  const backpack = { uid: 11, itemId: "bag", quantity: 1, content: [apple, null] };
+  const equipment = { backpack, weapon: null };
+  const playerState = { uid: "local", equipment };
+  const entityMaps = {
+    players: new Map(),
+    monsters: new Map(),
+    npcs: new Map(),
+    worldItems: new Map(),
+    groundEffects: new Map(),
+  };
+  createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
+
+  const result = replicationStore.applySnapshot({
+    revision: 1,
+    self: {
+      uid: "player:one",
+      x: 0,
+      y: 0,
+      z: 0,
+      equipment: {
+        backpack: { uid: 11, itemId: "bag", quantity: 1, content: [null, apple] },
+        weapon: null,
+      },
+    },
+    entities: { players: [], monsters: [], npcs: [], worldItems: [], groundEffects: [] },
+    chunks: [],
+  });
+  harness.publish({ type: "server.snapshot", result });
+
+  assert.equal(playerState.equipment, equipment);
+  assert.equal(playerState.equipment.backpack, backpack);
+  assert.equal(playerState.equipment.backpack.content[1], apple);
+  assert.equal(playerState.equipment.backpack.content[0], null);
+});
