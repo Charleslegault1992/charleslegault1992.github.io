@@ -158,8 +158,11 @@ export const createRemoteGameStateBridge = ({
     if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
       playerState.oldX = previousX;
       playerState.oldY = previousY;
-      playerState.moveStartTime = Date.now();
-      playerState.moveDuration = 100; // Short interpolation for reconciliation
+      // Preserve valid movement timing from nextSelf/predictedSelf; only fall back if missing/invalid
+      if (!Number.isFinite(playerState.moveStartTime) || !Number.isFinite(playerState.moveDuration)) {
+        playerState.moveStartTime = Date.now();
+        playerState.moveDuration = 100; // Short interpolation for reconciliation
+      }
     }
 
     if (

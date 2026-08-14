@@ -4117,6 +4117,25 @@ const addLevelUpFeedback = (newLevel) => {
   playGameSfx(GAME_SFX.levelUp);
 };
 
+const addLevelUpFeedbackFromExperienceReward = (experienceReward) => {
+  if (!Number.isFinite(experienceReward) || experienceReward <= 0) {
+    return;
+  }
+
+  const currentExperience = Number.isFinite(playerState.experience) ? playerState.experience : 0;
+  const previousExperience = Math.max(0, currentExperience - experienceReward);
+  const previousLevel = getLevelFromExperience(previousExperience);
+  const currentLevel = getLevelFromExperience(currentExperience);
+
+  if (currentLevel <= previousLevel) {
+    return;
+  }
+
+  for (let level = previousLevel + 1; level <= currentLevel; level++) {
+    addLevelUpFeedback(level);
+  }
+};
+
 const addSkillLevelUpFeedback = (skillKey, newLevel) => {
   const logMessage = getGameUiText("skillAdvanced")(getLocalizedSkillName(skillKey), newLevel);
   addLogMessage(logMessage, "level");
@@ -4540,24 +4559,23 @@ const removeExpiredFloatingTextEntries = (targetQueue, textType, now) => {
 };
 
 const updateCombatFloatingTextEntryPosition = (combatEntry) => {
-  const target = combatEntry?.target;
   const element = combatEntry?.element;
-  if (!target || !element) {
+  if (!element) {
     return;
   }
-  if (target.z !== playerState.z) {
+
+  if (Number.isInteger(combatEntry.z) && combatEntry.z !== playerState.z) {
     element.style.display = "none";
     return;
   }
-  const monsterData = getMonsterData(target.monsterId);
-  const renderX = Number.isFinite(target.renderX) ? target.renderX : target.x;
-  const renderY = Number.isFinite(target.renderY) ? target.renderY : target.y;
-  const drawOffsetX = monsterData?.drawOffsetX ?? 0;
-  const drawOffsetY = monsterData?.drawOffsetY ?? 0;
-  const drawWidth = monsterData?.drawWidth ?? TILE_SIZE;
-  const surfaceOffsetY = getEntitySurfaceOffsetY(target);
-  element.style.left = `${renderX + drawOffsetX - camera.x + drawWidth / 2}px`;
-  element.style.top = `${renderY + drawOffsetY - camera.y - surfaceOffsetY}px`;
+
+  if (!Number.isFinite(combatEntry.worldX) || !Number.isFinite(combatEntry.worldY)) {
+    element.style.display = "none";
+    return;
+  }
+
+  element.style.left = `${combatEntry.worldX - camera.x}px`;
+  element.style.top = `${combatEntry.worldY - camera.y}px`;
   element.style.display = "block";
 };
 
@@ -4666,40 +4684,100 @@ const showLookFloatingText = (lookInfo) => {
   showFloatingTextAboveTarget(text, offsetY, playerState);
 };
 
-const showFloatingTextAboveMonster = (monster, text, type) => {
-  if (!monster || !game) {
-    return;
+const createFloatingCombatTextAtWorldPosition = ({ worldX, worldY, z, text, type, durationMs = 1300 }) => {
+  if (!game || !Number.isFinite(worldX) || !Number.isFinite(worldY) || !Number.isInteger(z)) {
+    return false;
   }
+
   const textElement = document.createElement("div");
   textElement.classList.add("floating-combat-text");
   textElement.classList.add(`floating-combat-text-${type}`);
   textElement.textContent = `${text}`;
   game.appendChild(textElement);
+
   const combatEntry = {
-    target: monster,
     element: textElement,
+    worldX,
+    worldY,
+    z,
   };
+
   floatingTextState.combatEntries.add(combatEntry);
   updateCombatFloatingTextEntryPosition(combatEntry);
+
   setTimeout(() => {
     floatingTextState.combatEntries.delete(combatEntry);
     textElement.remove();
-  }, 1300);
+  }, durationMs);
+
+  return true;
+};
+
+const getMonsterCombatTextWorldPosition = (monster) => {
+  if (!monster || !Number.isInteger(monster.z)) {
+    return null;
+  }
+
+  const monsterData = getMonsterData(monster.monsterId);
+  if (!monsterData) {
+    return null;
+  }
+
+  if (!Number.isFinite(monster.x) || !Number.isFinite(monster.y)) {
+    return null;
+  }
+
+  const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
+
+  return {
+    worldX: monster.x + (monsterData.drawOffsetX ?? 0) + (monsterData.drawWidth ?? TILE_SIZE) / 2,
+    worldY: monster.y + (monsterData.drawOffsetY ?? 0) - surfaceOffsetY,
+    z: monster.z,
+  };
+};
+
+const showFloatingTextAboveMonster = (monster, text, type) => {
+  const position = getMonsterCombatTextWorldPosition(monster);
+  if (!position) {
+    return false;
+  }
+
+  return createFloatingCombatTextAtWorldPosition({
+    worldX: position.worldX,
+    worldY: position.worldY,
+    z: position.z,
+    text,
+    type,
+  });
+};
+
+const getPlayerCombatTextWorldPosition = () => {
+  if (!Number.isFinite(playerState.x) || !Number.isFinite(playerState.y) || !Number.isInteger(playerState.z)) {
+    return null;
+  }
+
+  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
+
+  return {
+    worldX: playerState.x + TILE_SIZE / 2,
+    worldY: playerState.y - surfaceOffsetY,
+    z: playerState.z,
+  };
 };
 
 const showFloatingTextAbovePlayer = (text, type) => {
-  const playerTextElement = getPlayerFloatingTextElement();
-  if (!playerTextElement) {
-    return;
+  const position = getPlayerCombatTextWorldPosition();
+  if (!position) {
+    return false;
   }
-  const textElement = document.createElement("div");
-  textElement.classList.add("floating-combat-text");
-  textElement.classList.add(`floating-combat-text-${type}`);
-  textElement.textContent = `${text}`;
-  playerTextElement.appendChild(textElement);
-  setTimeout(() => {
-    textElement.remove();
-  }, 1300);
+
+  return createFloatingCombatTextAtWorldPosition({
+    worldX: position.worldX,
+    worldY: position.worldY,
+    z: position.z,
+    text,
+    type,
+  });
 };
 
 //#endregion  -----  UI - STATS, SCALE ET TEXTES FLOTTANTS  -----
@@ -6780,6 +6858,12 @@ const updateMonsterPosition = () => {
       removeMonsterRender(monsterUid);
       continue;
     }
+    // Refresh sprite when direction or walkFrame changed (e.g. from replicated server state)
+    if (refs.lastDirection !== monster.direction || refs.lastWalkFrame !== monster.walkFrame) {
+      updateMonsterSprite(monster);
+      refs.lastDirection = monster.direction;
+      refs.lastWalkFrame = monster.walkFrame;
+    }
     const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
     const monsterData = getMonsterData(monster.monsterId);
     const monsterElement = refs.root;
@@ -8095,6 +8179,39 @@ const handleServerPlayerDeathEffect = (event) => {
   }
 };
 
+const handleMonsterAttackResolvedEffect = (event) => {
+  if (event.playerUid !== playerState.uid) {
+    return;
+  }
+
+  const attackResult = event.attackResult;
+  if (!attackResult) {
+    return;
+  }
+
+  const monster = findMonsterByUid(event.monsterUid);
+  const monsterData = getMonsterData(monster?.monsterId);
+  const localizedMonsterData = monsterData ? (getLocalizedMonsterData(monster.monsterId) ?? monsterData) : null;
+
+  if (attackResult.finalDamage > 0 && localizedMonsterData) {
+    const logMessage = getGameUiText("damageTaken")(attackResult.finalDamage, localizedMonsterData.name);
+    addLogMessage(logMessage, "combat");
+  }
+
+  showFloatingTextAbovePlayer(
+    attackResult.finalDamage > 0 ? attackResult.finalDamage : attackResult.text,
+    attackResult.textType,
+  );
+
+  if (attackResult.textType === "block") {
+    playGameSfx(GAME_SFX.block);
+  } else if (attackResult.textType === "absorb") {
+    playGameSfx(GAME_SFX.armorBlock);
+  }
+
+  refreshPlayerVitalsUi();
+};
+
 const handleMonsterDamageResolvedEffect = (event) => {
   const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
   if (groundEffect) {
@@ -8106,7 +8223,8 @@ const handleMonsterDamageResolvedEffect = (event) => {
   if (localizedMonsterData) {
     addLogMessage(getGameUiText("damageDealt")(event.damageApplied, localizedMonsterData.name), "combat");
   }
-  showFloatingTextAboveMonster(event.targetRenderSnapshot, event.damageApplied, event.textType);
+  const liveMonster = findMonsterByUid(event.monsterUid);
+  showFloatingTextAboveMonster(liveMonster ?? event.targetRenderSnapshot, event.damageApplied, event.textType);
 
   if (!event.didDie) {
     const monster = findMonsterByUid(event.monsterUid);
@@ -8125,6 +8243,7 @@ const handleMonsterDamageResolvedEffect = (event) => {
   addLootLogMessage(event.lootContent, localizedMonsterData?.name ?? null);
   if (event.experienceReward > 0) {
     addExperienceGainFeedback(event.experienceReward, localizedMonsterData?.name ?? null);
+    addLevelUpFeedbackFromExperienceReward(event.experienceReward);
     updatePlayerExperience();
   }
 
@@ -8235,6 +8354,7 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "inventory-move-completed": (event) => playGameSfx(event.sfx),
   "item-use-resolved": handleItemUseResolvedEffect,
   "monster-damage-resolved": handleMonsterDamageResolvedEffect,
+  "monster-attack-resolved": handleMonsterAttackResolvedEffect,
   "npc-spoke": handleRemoteNpcSpeechEffect,
   "player-attack-resolved": handlePlayerAttackResolvedEffect,
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,

@@ -35,6 +35,7 @@ import { createGroundItem, createItemInstance } from "../src/items/itemFactory.j
 import { getItemData } from "../src/items/itemModel.js";
 import { getMonsterData } from "../src/monsters/monsterModel.js";
 import { applyMonsterExperienceReward, generateMonsterLoot } from "../src/monsters/monsterRewards.js";
+import { getLevelFromExperience } from "../src/player/playerProgression.js";
 import {
   getTileMovementCost,
   hasLineOfSightBetweenTiles,
@@ -374,6 +375,9 @@ export const createAuthoritativeWorldRuntime = ({
         corpse = null;
       }
       experienceReward = applyMonsterExperienceReward(player, monsterData);
+      if (experienceReward > 0) {
+        player.level = getLevelFromExperience(player.experience);
+      }
       worldEntities.respawnSystem.decreaseAliveCount(monster);
       worldEntities.respawnSystem.schedule(monster.spawnId, currentServerTime);
       worldEntities.monsters.remove(monster.uid);

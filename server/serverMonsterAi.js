@@ -23,8 +23,8 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
   let activePlayersByZ = new Map();
   let occupiedPlayerTileKeysByZ = new Map();
 
-  const getSurfaceHeight = (x, y, z) => worldItems.getAllAt(x, y, z)
-    .reduce((height, item) => height + getItemSurfaceHeight(item), 0);
+  const getSurfaceHeight = (x, y, z) =>
+    worldItems.getAllAt(x, y, z).reduce((height, item) => height + getItemSurfaceHeight(item), 0);
 
   for (const [z, worldMap] of worldMapsByZ.entries()) {
     const isTilePathTraversable = (row, col, fromTile = null) => {
@@ -54,9 +54,7 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
       const x = col * TILE_SIZE;
       const y = row * TILE_SIZE;
       return Boolean(
-        monsters.getAt(x, y, z) ||
-        npcs.getAt(x, y, z) ||
-        occupiedPlayerTileKeysByZ.get(z)?.has(`${col}:${row}`),
+        monsters.getAt(x, y, z) || npcs.getAt(x, y, z) || occupiedPlayerTileKeysByZ.get(z)?.has(`${col}:${row}`),
       );
     };
     const pathfinder = createPathfinder({ isTilePathTraversable, isTileOccupiedByCreature });
@@ -75,7 +73,16 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
       isTileOccupiedByCreature,
       isTilePathTraversable,
       isWalkableTile: pathfinder.isWalkableTile,
-      moveMonsterInTileIndex: (monster, x, y) => monsters.updatePosition(monster.uid, x, y, monster.z),
+      moveMonsterInTileIndex: (monster, x, y) => {
+        const previousX = monster.x;
+        const previousY = monster.y;
+        const moved = monsters.updatePosition(monster.uid, x, y, monster.z);
+        // Restore old position so updateMonsterDirection can compute the correct delta;
+        // the AI system sets monster.x/y to the new position right after.
+        monster.x = previousX;
+        monster.y = previousY;
+        return moved;
+      },
       syncMonsterRenderVisibility: () => {},
       updateMonsterDirection: (monster, tile) => {
         const current = getTilePosition(monster);
@@ -152,12 +159,17 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
         continue;
       }
       const activeMonsters = monsters.getInChunkKeys(activeChunkKeys);
-      const previousByUid = new Map(activeMonsters.map((monster) => [monster.uid, {
-        x: monster.x,
-        y: monster.y,
-        state: monster.state,
-        targetUid: monster.targetUid,
-      }]));
+      const previousByUid = new Map(
+        activeMonsters.map((monster) => [
+          monster.uid,
+          {
+            x: monster.x,
+            y: monster.y,
+            state: monster.state,
+            targetUid: monster.targetUid,
+          },
+        ]),
+      );
       system.updateMovement(now, activeMonsters);
       for (const monster of activeMonsters) {
         const previous = previousByUid.get(monster.uid);
