@@ -81,13 +81,7 @@ import {
   WORLD_RENDER_LAYER_ITEM,
 } from "./core/gameConstants.js";
 import { QUEST_STATUS } from "./data/questsDatabase.js";
-import {
-  clamp,
-  getManhattanDistance,
-  getRandomFloat,
-  getRandomInt,
-  isEmpty,
-} from "./core/mathUtils.js";
+import { clamp, getManhattanDistance, getRandomFloat, getRandomInt, isEmpty } from "./core/mathUtils.js";
 import { getAtlasSource } from "./core/atlasUtils.js";
 import { startFixedStepGameLoop } from "./core/fixedStepGameLoop.js";
 import { createClientBootstrap } from "./core/clientBootstrap.js";
@@ -358,8 +352,66 @@ import {
   hasLineOfSightBetweenTiles,
 } from "./world/pathfinding.js";
 
-import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapFloorUpButton, minimapFloorDownButton, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, versionCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
-
+import {
+  panneauGauche,
+  panneauDroite,
+  boitePrincipale,
+  playerMinimap,
+  minimapCanvas,
+  minimapZoomOutButton,
+  minimapZoomInButton,
+  minimapCenterButton,
+  minimapFloorUpButton,
+  minimapFloorDownButton,
+  playerStats,
+  playerInventory,
+  playerQuests,
+  gameOptionsWindow,
+  playerSpells,
+  gameWelcome,
+  gameWelcomePlayButton,
+  gameWelcomeLanguageButtons,
+  characterSelector,
+  stackSplitMenu,
+  playerContainers,
+  player,
+  game,
+  boiteJeux,
+  nav,
+  boiteChat,
+  chat,
+  chatTabs,
+  chatInput,
+  boiteJeuxInner,
+  lightCanvas,
+  fpsCounter,
+  versionCounter,
+  gameStatusMessage,
+  mobileGameControls,
+  mobileJoystickZone,
+  mobileJoystick,
+  mobileJoystickKnob,
+  mobilePanelButtons,
+  mobileActionButtons,
+  mobilePanelCloseButton,
+  mobilePlayerName,
+  mobilePlayerLevel,
+  mobilePlayerHealthFill,
+  mobilePlayerHealthValue,
+  mobilePlayerManaFill,
+  mobilePlayerManaValue,
+  mobilePlayerSanityFill,
+  mobilePlayerSanityValue,
+  mobileTargetHud,
+  mobileTargetName,
+  mobileTargetValue,
+  mobileTargetHealthFill,
+  mobileItemUseIndicator,
+  mobileItemUseIcon,
+  mobileItemUseLabel,
+  mobileStanceIcon,
+  mobileStanceLabel,
+} from "./ui/domRefs.js";
 
 /* ==================================================== */
 //#region     -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
@@ -371,7 +423,6 @@ let GAME_SCALE = 1;
 /* ---------- BASE - TILES ---------- */
 
 /* ---------- BASE - UID ET SELECTION ---------- */
-
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
 const itemCooldownOverlayElements = new Set();
@@ -400,32 +451,31 @@ const handleGameActionResult = (resultOrPromise, handler) => {
 };
 /* ---------- BASE - ETAT ITEM USE ---------- */
 
-
 const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
 const ACCOUNT_TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const REMOTE_GAME_SERVER_URL = import.meta.env.VITE_GAME_SERVER_URL?.trim() ?? "";
 const REMOTE_GAME_AUTH_TOKEN = import.meta.env.VITE_GAME_AUTH_TOKEN?.trim() ?? "";
 const configuredGameApiUrl = import.meta.env.VITE_GAME_API_URL?.trim() ?? "";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? "";
-const REMOTE_GAME_API_URL = configuredGameApiUrl || (() => {
-  if (REMOTE_GAME_SERVER_URL === "") {
-    return "";
-  }
-  const apiUrl = new URL(REMOTE_GAME_SERVER_URL);
-  apiUrl.protocol = apiUrl.protocol === "wss:" ? "https:" : "http:";
-  apiUrl.pathname = "/";
-  apiUrl.search = "";
-  apiUrl.hash = "";
-  return apiUrl.href;
-})();
+const REMOTE_GAME_API_URL =
+  configuredGameApiUrl ||
+  (() => {
+    if (REMOTE_GAME_SERVER_URL === "") {
+      return "";
+    }
+    const apiUrl = new URL(REMOTE_GAME_SERVER_URL);
+    apiUrl.protocol = apiUrl.protocol === "wss:" ? "https:" : "http:";
+    apiUrl.pathname = "/";
+    apiUrl.search = "";
+    apiUrl.hash = "";
+    return apiUrl.href;
+  })();
 const gameAccountSession =
   REMOTE_GAME_SERVER_URL !== "" && REMOTE_GAME_AUTH_TOKEN === ""
     ? createGameAccountSession({ apiBaseUrl: REMOTE_GAME_API_URL })
     : null;
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
-
-
 
 /* ==================================================== */
 //#region     -----  CORE - TIMING ET COOLDOWNS  -----
@@ -481,14 +531,7 @@ const updatePlayerRegeneration = (now) => {
 
 const createPlayerCorpse = () => {
   const bag = getEquipmentSlotItem("backpack");
-  const corpse = createGroundItem(
-    "playerCorpse",
-    1,
-    playerState.x,
-    playerState.y,
-    playerState.z,
-    bag ? [bag] : [],
-  );
+  const corpse = createGroundItem("playerCorpse", 1, playerState.x, playerState.y, playerState.z, bag ? [bag] : []);
   if (!corpse || !addWorldItemToState(corpse)) {
     return null;
   }
@@ -877,7 +920,6 @@ const presentPlayerWorldTransition = () => {
   renderGroundItems(worldItemsByUid.values());
   syncGroundEffectRenderForCurrentZ();
   updateWorldRender();
-
 };
 
 const findPlayerSpawnInWorldMap = (worldMap, spawnId) => {
@@ -2176,8 +2218,7 @@ const refreshAllByUid = (uid) => {
   refreshInventoryUi();
 };
 
-const closeContainerAndChildren = (containerToClose) =>
-  containerWindowController.closeWithChildren(containerToClose);
+const closeContainerAndChildren = (containerToClose) => containerWindowController.closeWithChildren(containerToClose);
 
 const removeAllByUid = (uid) => {
   const location = findItemLocationByUid(uid);
@@ -2472,10 +2513,7 @@ const renderEquipmentSlots = () => {
     const slotName = equipmentElement.getAttribute("data-equipment-slot");
     const item = getEquipmentSlotItem(slotName);
     const slotSize = equipmentElement.classList.contains("equipment-small-slot") ? 24 : 48;
-    equipmentElement.classList.toggle(
-      "equipment-slot-ammunition-mode",
-      slotName === "shield" && weaponUsesAmmunition,
-    );
+    equipmentElement.classList.toggle("equipment-slot-ammunition-mode", slotName === "shield" && weaponUsesAmmunition);
     renderItemIcon(equipmentElement, item, slotSize);
     if (item) {
       equipmentElement.classList.add("equipment-slot-filled");
@@ -2587,8 +2625,7 @@ const bindEquipmentMenuButtons = () => {
 
 const isPlayerSpellLearned = (spellId) => playerSpellSystem.isLearned(spellId);
 const getLearnedPlayerSpells = () => playerSpellSystem.getLearned();
-const assignPlayerSpellToHotkey = (hotkeyIndex, spellId) =>
-  playerSpellSystem.assignToHotkey(hotkeyIndex, spellId);
+const assignPlayerSpellToHotkey = (hotkeyIndex, spellId) => playerSpellSystem.assignToHotkey(hotkeyIndex, spellId);
 
 const renderSpellWindow = () => {
   if (!playerSpells) {
@@ -2656,13 +2693,9 @@ const renderSpellWindow = () => {
   helpElement.id = "spell-window-help";
   helpElement.classList.add("spell-window-help");
   helpElement.setAttribute("aria-live", "polite");
-  const selectedSpellData = spellUiState.selectedSpellId
-    ? getLocalizedSpellData(spellUiState.selectedSpellId)
-    : null;
+  const selectedSpellData = spellUiState.selectedSpellId ? getLocalizedSpellData(spellUiState.selectedSpellId) : null;
   if (isMobileAssigning) {
-    helpElement.textContent = getGameUiText("mobileSpellAssignPrompt")(
-      SPELL_HOTKEY_KEYS[mobileAssignHotkeyIndex],
-    );
+    helpElement.textContent = getGameUiText("mobileSpellAssignPrompt")(SPELL_HOTKEY_KEYS[mobileAssignHotkeyIndex]);
   } else if (mobileLayout) {
     helpElement.textContent = getGameUiText("mobileSpellBarHelp");
   } else {
@@ -2773,10 +2806,7 @@ const renderSpellWindow = () => {
       clearButtonElement.type = "button";
       clearButtonElement.textContent = "x";
       clearButtonElement.title = getGameUiText("clearHotkey");
-      clearButtonElement.setAttribute(
-        "aria-label",
-        getGameUiText("clearSpellSlot")(SPELL_HOTKEY_KEYS[hotkeyIndex]),
-      );
+      clearButtonElement.setAttribute("aria-label", getGameUiText("clearSpellSlot")(SPELL_HOTKEY_KEYS[hotkeyIndex]));
       clearButtonElement.addEventListener("click", () => {
         assignPlayerSpellToHotkey(hotkeyIndex, null);
       });
@@ -2826,7 +2856,10 @@ const renderSpellWindow = () => {
       assignButtonElement.classList.add("spell-list-assign-button");
       assignButtonElement.type = "button";
       assignButtonElement.textContent = getGameUiText("assignSpell");
-      assignButtonElement.setAttribute("aria-pressed", spellUiState.selectedSpellId === spellData.spellId ? "true" : "false");
+      assignButtonElement.setAttribute(
+        "aria-pressed",
+        spellUiState.selectedSpellId === spellData.spellId ? "true" : "false",
+      );
       assignButtonElement.setAttribute("aria-label", `${getGameUiText("assignSpell")}: ${spellData.name}`);
       assignButtonElement.addEventListener("click", () => {
         if (isMobileAssigning) {
@@ -3205,10 +3238,8 @@ const syncItemUseTargetIndicators = () => {
   clearPixiItemUseTargets();
 };
 
-const getOpenedContainerRootWrapper = (containerWrapper) =>
-  containerWindowController.getRootWrapper(containerWrapper);
-const findOpenedContainerWrapperByUid = (containerUid) =>
-  containerWindowController.findWrapperByUid(containerUid);
+const getOpenedContainerRootWrapper = (containerWrapper) => containerWindowController.getRootWrapper(containerWrapper);
+const findOpenedContainerWrapperByUid = (containerUid) => containerWindowController.findWrapperByUid(containerUid);
 
 const handleOpenContainerUse = (source, item, itemData, context = {}) => {
   if (source.locationType === "equipmentSlot") {
@@ -3303,12 +3334,7 @@ const replacePotionWithEmptyBottle = (item, emptyItemId) => {
 };
 
 const createFluidPuddle = (groundEffectId, x, y, z, decayStage = 0) => {
-  if (
-    !getGroundEffectData(groundEffectId) ||
-    !Number.isInteger(x) ||
-    !Number.isInteger(y) ||
-    !Number.isInteger(z)
-  ) {
+  if (!getGroundEffectData(groundEffectId) || !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z)) {
     return null;
   }
 
@@ -3430,11 +3456,7 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 
 const handleRuneUse = (source, item, useData, target) => {
   let result = null;
-  if (
-    target.monster?.hp > 0 &&
-    target.monster.z === playerState.z &&
-    !isNearPlayer(target.monster, useData.range)
-  ) {
+  if (target.monster?.hp > 0 && target.monster.z === playerState.z && !isNearPlayer(target.monster, useData.range)) {
     startPlayerActionNavigation({
       type: PLAYER_ACTION_TYPE.targetItemUse,
       itemUid: item.uid,
@@ -3816,7 +3838,10 @@ const updateSkillStatRow = (skillKey) => {
 
   row.valueElement.textContent = skillProgressData.level;
   setProgressBarValue(row.progressBarRefs, skillProgressData.progressRatio);
-  setProgressTooltipText(row.tooltipElement, getGameUiText("xpRemaining")(skillProgressData.experienceNeededForNextLevel));
+  setProgressTooltipText(
+    row.tooltipElement,
+    getGameUiText("xpRemaining")(skillProgressData.experienceNeededForNextLevel),
+  );
 };
 
 const createProgressBarRefs = () => {
@@ -4008,7 +4033,10 @@ const updatePlayerStatsUi = () => {
   );
   setProgressTooltipText(rows.hp.tooltipElement, `${playerState.hp}/${playerState.maxHp} HP`);
   setProgressTooltipText(rows.mana.tooltipElement, `${playerState.mana}/${playerState.maxMana} mana`);
-  setProgressTooltipText(rows.sanity.tooltipElement, `${playerState.sanity}/${playerState.maxSanity} ${getGameUiText("sanityLabel").replace(":", "").toLowerCase()}`);
+  setProgressTooltipText(
+    rows.sanity.tooltipElement,
+    `${playerState.sanity}/${playerState.maxSanity} ${getGameUiText("sanityLabel").replace(":", "").toLowerCase()}`,
+  );
   rows.experience.valueElement.textContent = playerState.experience;
   setProgressBarValue(rows.experience.progressBarRefs, progressData.progressRatio);
   setProgressTooltipText(
@@ -4194,19 +4222,22 @@ const syncMobileTargetHud = () => {
   if (!mobileTargetName || !mobileTargetValue || !mobileTargetHealthFill) {
     return;
   }
-  const remotePlayer = combatTargetState.playerUid === null
-    ? null
-    : (playersByUid.get(combatTargetState.playerUid) ?? null);
+  const remotePlayer =
+    combatTargetState.playerUid === null ? null : (playersByUid.get(combatTargetState.playerUid) ?? null);
   if (remotePlayer && remotePlayer.z === playerState.z) {
     const hpRatio = clamp(remotePlayer.hp / remotePlayer.maxHp, 0, 1);
     mobileTargetName.textContent = remotePlayer.name;
     mobileTargetValue.textContent = `${Math.max(remotePlayer.hp, 0)}/${remotePlayer.maxHp}`;
     mobileTargetHealthFill.style.width = `${hpRatio * 100}%`;
-    mobileTargetHealthFill.style.setProperty("--mobile-target-hp-color", getHpColor(remotePlayer.hp, remotePlayer.maxHp));
+    mobileTargetHealthFill.style.setProperty(
+      "--mobile-target-hp-color",
+      getHpColor(remotePlayer.hp, remotePlayer.maxHp),
+    );
     mobileTargetHud.toggleAttribute("hidden", false);
     return;
   }
-  const monster = combatTargetState.monsterUid === null ? null : (monstersByUid.get(combatTargetState.monsterUid) ?? null);
+  const monster =
+    combatTargetState.monsterUid === null ? null : (monstersByUid.get(combatTargetState.monsterUid) ?? null);
   if (!monster || monster.z !== playerState.z) {
     mobileTargetHud?.toggleAttribute("hidden", true);
     return;
@@ -4779,12 +4810,7 @@ const updateLight = (source) => {
 
   const playerScreenPosition = getLightSourceScreenPosition(source, getEntitySurfaceOffsetY(source));
   if (playerScreenPosition) {
-    drawDarknessCutout(
-      playerScreenPosition.screenX,
-      playerScreenPosition.screenY,
-      TORCH_PLAYER_REVEAL_RADIUS,
-      0.18,
-    );
+    drawDarknessCutout(playerScreenPosition.screenX, playerScreenPosition.screenY, TORCH_PLAYER_REVEAL_RADIUS, 0.18);
   }
 
   const spellLightRadius = getActivePlayerSpellLightRadius(Date.now());
@@ -4821,8 +4847,7 @@ const updateLight = (source) => {
 /* ==================================================== */
 const resetMobileJoystickDiagonalHold = () => mobileJoystickController.resetDiagonalHold();
 const resetMobileJoystick = () => mobileJoystickController.reset();
-const placeMobileJoystickAtPointer = (clientX, clientY) =>
-  mobileJoystickController.placeAtPointer(clientX, clientY);
+const placeMobileJoystickAtPointer = (clientX, clientY) => mobileJoystickController.placeAtPointer(clientX, clientY);
 const updateMobileJoystickFromPointer = (clientX, clientY) =>
   mobileJoystickController.updateFromPointer(clientX, clientY);
 
@@ -4901,7 +4926,6 @@ const updateMovement = (now) => {
   }
 
   if (didSubmitMove) {
-
     if (isNavigationMovement) {
       completePlayerNavigationStep();
     }
@@ -5435,8 +5459,7 @@ const handleItemUiMouseMove = (e) => {
   const item = getDragSourceItem(dragState.pendingSourceLocation);
   if (
     !item ||
-    (dragState.pendingSourceLocation.locationType === "worldItem" &&
-      !isWorldItemAvailableForInteraction(item))
+    (dragState.pendingSourceLocation.locationType === "worldItem" && !isWorldItemAvailableForInteraction(item))
   ) {
     resetDragState();
     resetDragStatePending();
@@ -5590,81 +5613,88 @@ const getMobileWorldContainerSourceAtTarget = (target) => {
   return canInteractWithWorldItemSource(source) ? source : null;
 };
 
-document.addEventListener("pointerdown", (event) => {
-  if (event.pointerType === "touch" && isMobileGameLayout() && mobileGameUiState.openPanel !== null) {
-    const openPanelElement = getMobilePanelElement(mobileGameUiState.openPanel);
-    const clickedPanelButton = event.target instanceof Element && event.target.closest(".mobile-panel-buttons");
-    const clickedContainerWindow = event.target instanceof Element && event.target.closest("#player-containers");
-    if (!openPanelElement?.contains(event.target) && !clickedPanelButton && !clickedContainerWindow) {
-      event.preventDefault();
-      setOpenMobilePanel(null);
-      return;
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "touch" && isMobileGameLayout() && mobileGameUiState.openPanel !== null) {
+      const openPanelElement = getMobilePanelElement(mobileGameUiState.openPanel);
+      const clickedPanelButton = event.target instanceof Element && event.target.closest(".mobile-panel-buttons");
+      const clickedContainerWindow = event.target instanceof Element && event.target.closest("#player-containers");
+      if (!openPanelElement?.contains(event.target) && !clickedPanelButton && !clickedContainerWindow) {
+        event.preventDefault();
+        setOpenMobilePanel(null);
+        return;
+      }
     }
-  }
 
-  if (
-    event.pointerType !== "touch" ||
-    !isMobileGameLayout() ||
-    !gameRuntimeState.isStarted ||
-    characterSelectorUiState.isOpen ||
-    mobileTouchInputState.pointerId !== null ||
-    !isMobileTouchGameTarget(event.target)
-  ) {
-    return;
-  }
-
-  event.preventDefault();
-  mobileTouchInputState.pointerId = event.pointerId;
-  mobileTouchInputState.startX = event.clientX;
-  mobileTouchInputState.startY = event.clientY;
-  mobileTouchInputState.didMove = false;
-  mobileTouchInputState.didLongPress = false;
-  updateMousePositionInfo(event.clientX, event.clientY);
-  updateInputStateOnMouseDown(event);
-
-  if (itemUseState.isUsingItem) {
-    inputState.shouldBlockNextWorldClick = true;
-    completeItemUseFromEvent(event);
-    resetMobileTouchInput();
-    return;
-  }
-
-  handleItemUiMouseDown(event);
-  mobileTouchInputState.longPressTimeoutId = setTimeout(() => {
     if (
-      mobileTouchInputState.pointerId !== event.pointerId ||
-      mobileTouchInputState.didMove ||
-      dragState.isDragging
+      event.pointerType !== "touch" ||
+      !isMobileGameLayout() ||
+      !gameRuntimeState.isStarted ||
+      characterSelectorUiState.isOpen ||
+      mobileTouchInputState.pointerId !== null ||
+      !isMobileTouchGameTarget(event.target)
     ) {
       return;
     }
-    if (handleNpcGreetingFromPointerTarget(inputState.lastDetectedTarget) || handleLookCombo()) {
-      mobileTouchInputState.didLongPress = true;
+
+    event.preventDefault();
+    mobileTouchInputState.pointerId = event.pointerId;
+    mobileTouchInputState.startX = event.clientX;
+    mobileTouchInputState.startY = event.clientY;
+    mobileTouchInputState.didMove = false;
+    mobileTouchInputState.didLongPress = false;
+    updateMousePositionInfo(event.clientX, event.clientY);
+    updateInputStateOnMouseDown(event);
+
+    if (itemUseState.isUsingItem) {
       inputState.shouldBlockNextWorldClick = true;
-      navigator.vibrate?.(12);
+      completeItemUseFromEvent(event);
+      resetMobileTouchInput();
+      return;
     }
-  }, 450);
-}, { passive: false });
 
-document.addEventListener("pointermove", (event) => {
-  if (event.pointerId !== mobileTouchInputState.pointerId) {
-    return;
-  }
+    handleItemUiMouseDown(event);
+    mobileTouchInputState.longPressTimeoutId = setTimeout(() => {
+      if (
+        mobileTouchInputState.pointerId !== event.pointerId ||
+        mobileTouchInputState.didMove ||
+        dragState.isDragging
+      ) {
+        return;
+      }
+      if (handleNpcGreetingFromPointerTarget(inputState.lastDetectedTarget) || handleLookCombo()) {
+        mobileTouchInputState.didLongPress = true;
+        inputState.shouldBlockNextWorldClick = true;
+        navigator.vibrate?.(12);
+      }
+    }, 450);
+  },
+  { passive: false },
+);
 
-  event.preventDefault();
-  updateMousePositionInfo(event.clientX, event.clientY);
-  const distance =
-    Math.abs(event.clientX - mobileTouchInputState.startX) +
-    Math.abs(event.clientY - mobileTouchInputState.startY);
-  if (distance >= 5) {
-    mobileTouchInputState.didMove = true;
-    if (mobileTouchInputState.longPressTimeoutId !== null) {
-      clearTimeout(mobileTouchInputState.longPressTimeoutId);
-      mobileTouchInputState.longPressTimeoutId = null;
+document.addEventListener(
+  "pointermove",
+  (event) => {
+    if (event.pointerId !== mobileTouchInputState.pointerId) {
+      return;
     }
-  }
-  handleItemUiMouseMove(event);
-}, { passive: false });
+
+    event.preventDefault();
+    updateMousePositionInfo(event.clientX, event.clientY);
+    const distance =
+      Math.abs(event.clientX - mobileTouchInputState.startX) + Math.abs(event.clientY - mobileTouchInputState.startY);
+    if (distance >= 5) {
+      mobileTouchInputState.didMove = true;
+      if (mobileTouchInputState.longPressTimeoutId !== null) {
+        clearTimeout(mobileTouchInputState.longPressTimeoutId);
+        mobileTouchInputState.longPressTimeoutId = null;
+      }
+    }
+    handleItemUiMouseMove(event);
+  },
+  { passive: false },
+);
 
 const finishMobileTouchInput = (event) => {
   if (event.pointerId !== mobileTouchInputState.pointerId) {
@@ -5705,14 +5735,18 @@ const finishMobileTouchInput = (event) => {
 };
 
 document.addEventListener("pointerup", finishMobileTouchInput, { passive: false });
-document.addEventListener("pointercancel", (event) => {
-  if (event.pointerId !== mobileTouchInputState.pointerId) {
-    return;
-  }
-  cancelItemDrag();
-  resetDragStatePending();
-  resetMobileTouchInput();
-}, { passive: false });
+document.addEventListener(
+  "pointercancel",
+  (event) => {
+    if (event.pointerId !== mobileTouchInputState.pointerId) {
+      return;
+    }
+    cancelItemDrag();
+    resetDragStatePending();
+    resetMobileTouchInput();
+  },
+  { passive: false },
+);
 
 mobileJoystickZone?.addEventListener("pointerdown", (event) => {
   if (event.pointerType !== "touch" && event.pointerType !== "pen") {
@@ -6218,8 +6252,7 @@ const updateNpcMovement = (now) => {
       continue;
     }
 
-    npc.nextWanderAt =
-      now + getRandomInt(npcData.movement.intervalMinMs, npcData.movement.intervalMaxMs);
+    npc.nextWanderAt = now + getRandomInt(npcData.movement.intervalMinMs, npcData.movement.intervalMaxMs);
     const nextTile = getRandomNpcWanderTile(npc);
     if (nextTile) {
       moveNpcToTile(npc, nextTile, now);
@@ -6233,12 +6266,9 @@ const getPlayerEntityByUid = (playerUid) => {
   return playerState.uid === playerUid ? playerState : null;
 };
 
-const isPlayerWithinNpcTalkRange = (player, npc) =>
-  npcConversationSystem.isPlayerWithinTalkRange(player, npc);
-const sayGreetingToNpc = (npc, player, now = Date.now()) =>
-  npcConversationSystem.sayGreeting(npc, player, now);
-const handleNpcGreetingFromPointerTarget = (target) =>
-  npcConversationSystem.handleGreetingFromPointerTarget(target);
+const isPlayerWithinNpcTalkRange = (player, npc) => npcConversationSystem.isPlayerWithinTalkRange(player, npc);
+const sayGreetingToNpc = (npc, player, now = Date.now()) => npcConversationSystem.sayGreeting(npc, player, now);
+const handleNpcGreetingFromPointerTarget = (target) => npcConversationSystem.handleGreetingFromPointerTarget(target);
 const getNpcReplySuggestions = (suggestions) => npcConversationSystem.getReplySuggestions(suggestions);
 const handleNpcPlayerSpeech = (text, player, now) => {
   const action = createSpeakToNpcAction(text, player?.uid, now);
@@ -6577,10 +6607,7 @@ const spawnInitialMonstersForWorldMap = (worldMap) => {
     for (let i = 0; i < spawnDefinition.maxCount; i++) {
       const monster = spawnMonsterFromZone(worldMap, spawnZone);
       if (!monster) {
-        scheduleMonsterRespawnAt(
-          spawnDefinition.spawnId,
-          Date.now() + MONSTER_RESPAWN_CONFIG.blockedRetryMs,
-        );
+        scheduleMonsterRespawnAt(spawnDefinition.spawnId, Date.now() + MONSTER_RESPAWN_CONFIG.blockedRetryMs);
       }
     }
   }
@@ -7249,8 +7276,7 @@ const attackMonster = (monster, now) => {
     renderY: monster.renderY,
   };
 
-  const damageResult =
-    attackResult.finalDamage > 0 ? applyDamageToMonster(monster, attackResult, now) : null;
+  const damageResult = attackResult.finalDamage > 0 ? applyDamageToMonster(monster, attackResult, now) : null;
   return {
     success: true,
     changes: {
@@ -7801,8 +7827,7 @@ inventoryMoveService = createInventoryMoveService({
   getRemainingCapacity: () => getPlayerRemainingCapacity(playerState),
   getItemTotalWeight,
   canEquipItem: canPlaceItemInEquipmentSlot,
-  canInteractWithWorldItem: (_source, item) =>
-    isWorldItemAvailableForInteraction(item) && isNearPlayer(item, 1),
+  canInteractWithWorldItem: (_source, item) => isWorldItemAvailableForInteraction(item) && isNearPlayer(item, 1),
   canPlaceWorldItem: (_source, _item, destination) =>
     isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) && hasPlayerLineOfSightToWorldPosition(destination),
   onItemLocationChanged: (item, destination) => {
@@ -8137,13 +8162,15 @@ gameSimulation = createGameSimulation({
       return {
         success: true,
         changes: { targetPlayerUid: targetPlayer.uid, hp: targetPlayer.hp },
-        events: [{
-          type: "player-pvp-attack-resolved",
-          playerUid: playerState.uid,
-          targetPlayerUid: targetPlayer.uid,
-          attackResult,
-          targetRenderSnapshot: structuredClone(targetPlayer),
-        }],
+        events: [
+          {
+            type: "player-pvp-attack-resolved",
+            playerUid: playerState.uid,
+            targetPlayerUid: targetPlayer.uid,
+            attackResult,
+            targetRenderSnapshot: structuredClone(targetPlayer),
+          },
+        ],
       };
     },
     executeSetPvpEnabled: (enabled) => {

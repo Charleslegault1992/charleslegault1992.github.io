@@ -24,6 +24,7 @@
   <body>
     <div id="game-welcome" class="game-welcome-overlay">
       <button id="game-welcome-play" class="game-welcome-play-button" type="button">PLAY</button>
+      <div class="game-welcome-version">V 0.3306</div>
       <div class="game-welcome-language" role="group" aria-label="Language">
         <button class="game-welcome-language-button" type="button" data-game-language="en">EN</button>
         <button class="game-welcome-language-button" type="button" data-game-language="fr">FR</button>
@@ -82,19 +83,39 @@
               <div class="minimap-header">
                 <div class="boite-jeux-titre" data-game-text="minimap">Minimap</div>
                 <div class="minimap-controls">
-                  <button id="minimap-zoom-out" class="minimap-control-button" type="button" data-game-title="zoomOut">-</button>
+                  <button id="minimap-zoom-out" class="minimap-control-button" type="button" data-game-title="zoomOut">
+                    -
+                  </button>
                   <span id="minimap-zoom-level" class="minimap-zoom-level">100%</span>
-                  <button id="minimap-zoom-in" class="minimap-control-button" type="button" data-game-title="zoomIn">+</button>
-                  <button id="minimap-center" class="minimap-control-button" type="button" data-game-title="centerMinimap">&#9678;</button>
+                  <button id="minimap-zoom-in" class="minimap-control-button" type="button" data-game-title="zoomIn">
+                    +
+                  </button>
+                  <button
+                    id="minimap-center"
+                    class="minimap-control-button"
+                    type="button"
+                    data-game-title="centerMinimap"
+                  >
+                    &#9678;
+                  </button>
                 </div>
               </div>
               <div class="separateur-panneau"></div>
               <div class="minimap-viewport">
                 <canvas id="minimap-canvas" width="210" height="150"></canvas>
                 <div class="minimap-floor-controls">
-                  <button id="minimap-floor-up" class="minimap-floor-button" type="button" data-game-title="floorUp">&#8593;</button>
+                  <button id="minimap-floor-up" class="minimap-floor-button" type="button" data-game-title="floorUp">
+                    &#8593;
+                  </button>
                   <span id="minimap-floor-level" class="minimap-floor-level">Z 0</span>
-                  <button id="minimap-floor-down" class="minimap-floor-button" type="button" data-game-title="floorDown">&#8595;</button>
+                  <button
+                    id="minimap-floor-down"
+                    class="minimap-floor-button"
+                    type="button"
+                    data-game-title="floorDown"
+                  >
+                    &#8595;
+                  </button>
                 </div>
               </div>
             </div>
@@ -156,14 +177,24 @@
               <span id="mobile-target-name" class="mobile-target-name"></span>
               <span id="mobile-target-value" class="mobile-target-value"></span>
             </div>
-            <div class="mobile-target-track"><div id="mobile-target-health-fill" class="mobile-target-health-fill"></div></div>
+            <div class="mobile-target-track">
+              <div id="mobile-target-health-fill" class="mobile-target-health-fill"></div>
+            </div>
           </div>
           <button id="mobile-item-use-indicator" class="mobile-item-use-indicator" type="button" hidden>
             <span id="mobile-item-use-icon" class="mobile-item-use-icon" aria-hidden="true"></span>
             <span id="mobile-item-use-label" class="mobile-item-use-label"></span>
             <span class="mobile-item-use-cancel" aria-hidden="true">&times;</span>
           </button>
-          <button id="mobile-panel-close" class="mobile-panel-close-button" type="button" aria-label="Close panel" hidden>&times;</button>
+          <button
+            id="mobile-panel-close"
+            class="mobile-panel-close-button"
+            type="button"
+            aria-label="Close panel"
+            hidden
+          >
+            &times;
+          </button>
           <div id="mobile-joystick-zone" class="mobile-joystick-zone">
             <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control">
               <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
@@ -178,11 +209,21 @@
               <span class="mobile-panel-icon mobile-panel-icon-stats" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="stats">Stats</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-panel="inventory" data-game-title="mobileEquipment">
+            <button
+              class="mobile-panel-button"
+              type="button"
+              data-mobile-panel="inventory"
+              data-game-title="mobileEquipment"
+            >
               <span class="mobile-panel-icon mobile-panel-icon-equipment" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="mobileEquipment">Gear</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-backpack" data-game-title="mobileBackpack">
+            <button
+              class="mobile-panel-button"
+              type="button"
+              data-mobile-action="toggle-backpack"
+              data-game-title="mobileBackpack"
+            >
               <span class="mobile-panel-icon mobile-panel-icon-backpack" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="mobileBackpack">Bag</span>
             </button>
@@ -190,15 +231,30 @@
               <span class="mobile-panel-icon mobile-panel-icon-chat" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="mobileChat">Chat</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-spells" data-game-title="spells" aria-haspopup="dialog" aria-controls="player-spells" aria-expanded="false">
+            <button
+              class="mobile-panel-button"
+              type="button"
+              data-mobile-action="toggle-spells"
+              data-game-title="spells"
+              aria-haspopup="dialog"
+              aria-controls="player-spells"
+              aria-expanded="false"
+            >
               <span class="mobile-panel-icon mobile-panel-icon-spells" aria-hidden="true">*</span>
               <span class="mobile-panel-label" data-game-text="spells">Spells</span>
             </button>
             <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
-              <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true">BAL</span>
+              <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true"
+                >BAL</span
+              >
               <span id="mobile-stance-label" class="mobile-panel-label">Balanced</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-follow" data-game-title="follow">
+            <button
+              class="mobile-panel-button"
+              type="button"
+              data-mobile-action="toggle-follow"
+              data-game-title="follow"
+            >
               <span class="mobile-panel-icon mobile-panel-icon-follow" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="follow">Follow</span>
             </button>
@@ -212,7 +268,9 @@
         <div class="mobile-orientation-arrow"></div>
       </div>
       <div class="mobile-orientation-title" data-game-text="rotateDeviceTitle">Rotate your phone</div>
-      <div class="mobile-orientation-text" data-game-text="rotateDeviceText">This game is played in landscape mode.</div>
+      <div class="mobile-orientation-text" data-game-text="rotateDeviceText">
+        This game is played in landscape mode.
+      </div>
     </div>
   </body>
 </html>

@@ -483,7 +483,10 @@ main {
   align-items: center;
   justify-content: center;
   color: #f2f2f2;
-  font: bold 13px/1 Verdana, Geneva, sans-serif;
+  font:
+    bold 13px/1 Verdana,
+    Geneva,
+    sans-serif;
   background: #25231f;
   border: 1px solid #777166;
   border-radius: 3px;
@@ -556,7 +559,10 @@ main {
   height: 18px;
   padding: 0;
   color: #f4e7b5;
-  font: bold 10px/1 Verdana, Geneva, sans-serif;
+  font:
+    bold 10px/1 Verdana,
+    Geneva,
+    sans-serif;
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -928,6 +934,17 @@ main {
   background: rgba(84, 63, 25, 0.9);
 }
 
+.game-welcome-version {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: monospace;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 @media (max-width: 420px) {
   .game-welcome-language {
     top: 80px;
@@ -1039,7 +1056,9 @@ main {
   margin: 0;
   overflow-y: auto;
   border-color: rgba(210, 192, 143, 0.72);
-  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.85), inset 0 0 18px rgba(255, 235, 180, 0.04);
+  box-shadow:
+    0 12px 38px rgba(0, 0, 0, 0.85),
+    inset 0 0 18px rgba(255, 235, 180, 0.04);
 }
 
 .character-selector-header {
@@ -2673,7 +2692,9 @@ body.item-drag-active * {
 
   #player-containers .container-window-world {
     border-color: rgba(218, 177, 91, 0.88);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.88), 0 0 0 1px rgba(125, 77, 25, 0.38);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.88),
+      0 0 0 1px rgba(125, 77, 25, 0.38);
   }
 
   #player-containers .container-window-world .container-window-header {
@@ -3007,8 +3028,13 @@ body.item-drag-active * {
     border: 1px solid rgba(238, 195, 91, 0.82);
     border-radius: 4px;
     background: rgba(18, 16, 11, 0.82);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 3px 12px rgba(0, 0, 0, 0.68);
-    font: 700 9px/12px Verdana, Geneva, sans-serif;
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.8),
+      0 3px 12px rgba(0, 0, 0, 0.68);
+    font:
+      700 9px/12px Verdana,
+      Geneva,
+      sans-serif;
     text-shadow: 1px 1px 2px #000;
     pointer-events: auto;
     touch-action: manipulation;
@@ -3041,7 +3067,9 @@ body.item-drag-active * {
   .container-slot.item-use-source-active,
   .equipment-slot.item-use-source-active {
     outline-color: rgba(255, 217, 105, 0.9);
-    box-shadow: inset 0 0 0 2px rgba(255, 217, 105, 0.58), 0 0 8px rgba(255, 190, 62, 0.72);
+    box-shadow:
+      inset 0 0 0 2px rgba(255, 217, 105, 0.58),
+      0 0 8px rgba(255, 190, 62, 0.72);
     filter: brightness(1.16);
     animation: mobile-item-source-pulse 1.15s ease-in-out infinite;
   }
@@ -3054,7 +3082,10 @@ body.item-drag-active * {
     min-width: 0;
     margin-bottom: 4px;
     gap: 6px;
-    font: 700 10px/12px Verdana, Geneva, sans-serif;
+    font:
+      700 10px/12px Verdana,
+      Geneva,
+      sans-serif;
     text-shadow: 1px 1px 2px #000;
   }
 
@@ -3079,7 +3110,10 @@ body.item-drag-active * {
     align-items: center;
     gap: 4px;
     min-height: 11px;
-    font: 700 7px/9px Verdana, Geneva, sans-serif;
+    font:
+      700 7px/9px Verdana,
+      Geneva,
+      sans-serif;
     text-shadow: 1px 1px 1px #000;
   }
 
@@ -3140,7 +3174,9 @@ body.item-drag-active * {
     border-radius: 4px;
     background: rgba(20, 20, 18, 0.92);
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.7);
-    font: 400 25px/34px Arial, sans-serif;
+    font:
+      400 25px/34px Arial,
+      sans-serif;
     pointer-events: auto;
     touch-action: manipulation;
   }
@@ -3164,7 +3200,9 @@ body.item-drag-active * {
     border: 1px solid rgba(255, 255, 255, 0.34);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(35, 32, 25, 0.3) 0 44%, rgba(8, 8, 8, 0.22) 45% 100%);
-    box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.08), 0 3px 12px rgba(0, 0, 0, 0.48);
+    box-shadow:
+      inset 0 0 18px rgba(255, 255, 255, 0.08),
+      0 3px 12px rgba(0, 0, 0, 0.48);
     backdrop-filter: blur(2px);
     pointer-events: auto;
     touch-action: none;
@@ -3217,7 +3255,9 @@ body.item-drag-active * {
 
   .mobile-joystick-diagonal-ready {
     border-color: rgba(115, 224, 139, 0.72);
-    box-shadow: inset 0 0 18px rgba(115, 224, 139, 0.12), 0 3px 12px rgba(0, 0, 0, 0.48);
+    box-shadow:
+      inset 0 0 18px rgba(115, 224, 139, 0.12),
+      0 3px 12px rgba(0, 0, 0, 0.48);
   }
 
   .mobile-panel-buttons {
@@ -3257,7 +3297,10 @@ body.item-drag-active * {
     color: #e5e0d2;
     background: linear-gradient(rgba(38, 37, 32, 0.9), rgba(14, 14, 13, 0.9));
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
-    font: 700 10px Verdana, Geneva, sans-serif;
+    font:
+      700 10px Verdana,
+      Geneva,
+      sans-serif;
     text-shadow: 1px 1px 2px #000;
     touch-action: manipulation;
   }
@@ -3389,7 +3432,9 @@ body.item-drag-active * {
     border: 1px solid currentColor;
     border-radius: 50%;
     color: #e5cc7b;
-    font: 700 18px/18px Georgia, serif;
+    font:
+      700 18px/18px Georgia,
+      serif;
     box-shadow: inset 0 0 5px rgba(229, 204, 123, 0.2);
   }
 
@@ -3404,7 +3449,10 @@ body.item-drag-active * {
     justify-content: center;
     border: 1px solid currentColor;
     border-radius: 50%;
-    font: 700 7px/18px Verdana, Geneva, sans-serif;
+    font:
+      700 7px/18px Verdana,
+      Geneva,
+      sans-serif;
   }
 
   .mobile-stance-button[data-combat-mode="fullAttack"] {
@@ -3716,11 +3764,8 @@ body.item-drag-active * {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding:
-      calc(24px + env(safe-area-inset-top))
-      calc(24px + env(safe-area-inset-right))
-      calc(24px + env(safe-area-inset-bottom))
-      calc(24px + env(safe-area-inset-left));
+    padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+      calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
     color: #f4efe2;
     background: rgba(7, 7, 7, 0.97);
     text-align: center;
@@ -3799,14 +3844,20 @@ body.item-drag-active * {
   .mobile-orientation-title {
     margin-bottom: 7px;
     color: #f6e9bd;
-    font: 700 19px/24px Verdana, Geneva, sans-serif;
+    font:
+      700 19px/24px Verdana,
+      Geneva,
+      sans-serif;
     text-shadow: 0 2px 3px #000;
   }
 
   .mobile-orientation-text {
     max-width: 290px;
     color: rgba(244, 239, 226, 0.78);
-    font: 400 12px/18px Verdana, Geneva, sans-serif;
+    font:
+      400 12px/18px Verdana,
+      Geneva,
+      sans-serif;
   }
 }
 
