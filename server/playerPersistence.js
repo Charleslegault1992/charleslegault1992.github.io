@@ -8,6 +8,7 @@ const PLAYER_SCALAR_FIELDS = [
   "sanity",
   "maxSanity",
   "level",
+  "speed",
   "experience",
   "classId",
   "carriedWeight",

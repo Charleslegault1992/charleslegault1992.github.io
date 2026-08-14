@@ -36,3 +36,16 @@ test("a rejected predicted movement is removed before replay", () => {
 
   assert.equal(prediction.reconcile({ x: 0, y: 0, z: 0 }).x, 0);
 });
+
+test("movement prediction keeps the local movement animation timing", () => {
+  const prediction = createPlayerMovementPrediction();
+  const movement = createMove(0, 64);
+  prediction.enqueue(movement);
+
+  const predictedPlayer = prediction.reconcile({ x: 0, y: 0, z: 0, level: 50, speed: 1 });
+
+  assert.equal(predictedPlayer.oldX, 0);
+  assert.equal(predictedPlayer.x, 64);
+  assert.equal(predictedPlayer.moveStartTime, movement.payload.requestedAt);
+  assert.equal(predictedPlayer.moveDuration, 149);
+});

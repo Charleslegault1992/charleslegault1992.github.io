@@ -61,6 +61,7 @@ export const serializePlayerPublicState = (player) => {
     hp: player.hp,
     maxHp: player.maxHp,
     level: player.level,
+    speed: player.speed,
     pvp: {
       enabled: player.pvp?.enabled === true,
       skullType: player.pvp?.skullType ?? "none",

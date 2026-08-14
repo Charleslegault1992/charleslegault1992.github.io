@@ -1,4 +1,5 @@
 import { GAMEPLAY_ACTION_TYPE } from "../actions/gameplayActions.js";
+import { getPlayerMovementTiming } from "../player/playerMovementTiming.js";
 
 const applyPredictedMovement = (player, action) => {
   const payload = action?.payload;
@@ -15,6 +16,9 @@ const applyPredictedMovement = (player, action) => {
   player.x = payload.toX;
   player.y = payload.toY;
   player.direction = payload.direction;
+  const moveTiming = getPlayerMovementTiming(player, payload);
+  player.moveStartTime = payload.requestedAt;
+  player.moveDuration = moveTiming?.duration ?? 0;
   return true;
 };
 

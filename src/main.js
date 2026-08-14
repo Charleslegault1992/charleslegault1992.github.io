@@ -70,7 +70,6 @@ import {
   MOVE_SPEED,
   NPC_DIALOGUE_CONFIG,
   PLAYER_ATTACK_COOLDOWN_MS,
-  PLAYER_MOVE_COOLDOWN_MS,
   SKILL_EXPERIENCE_GAIN_PER_TRY,
   SPELL_HOTKEY_KEYS,
   SPRITE_SIZE,
@@ -120,6 +119,7 @@ import { createUseItemAction } from "./items/itemUseActions.js";
 import { applyDamageToPlayer } from "./combat/playerHealth.js";
 import { applyDamageToMonsterHealth } from "./combat/monsterHealth.js";
 import { applyPlayerDeathState } from "./player/playerDeath.js";
+import { getPlayerMoveCooldown, getPlayerMovementTiming } from "./player/playerMovementTiming.js";
 import {
   getPlayerTileStackRenderOffset,
   getPlayerTileStackRenderOffsets,
@@ -4835,14 +4835,6 @@ const cancelPlayerNavigationForManualMovement = () => {
 };
 /* ---------- JOUEUR - COOLDOWN ET DIRECTION ---------- */
 
-const getPlayerMoveCooldown = () => {
-  if (playerState.level < 100) {
-    return PLAYER_MOVE_COOLDOWN_MS - playerState.level - playerState.speed;
-  } else {
-    return PLAYER_MOVE_COOLDOWN_MS - 100 - (playerState.level - 100) / 2 - playerState.speed;
-  }
-};
-
 const getWantedMovement = () => {
   const deltaCol = Number(keysPressed.right) - Number(keysPressed.left);
 
@@ -4896,7 +4888,7 @@ const updateMovement = (now) => {
 
   if (isPendingRemoteMove) {
     const moveTiming = getSimulationPlayerMoveTiming(moveAction.payload);
-    gameplayTimingState.nextPlayerMoveTime = now + (moveTiming?.cooldown ?? getPlayerMoveCooldown());
+    gameplayTimingState.nextPlayerMoveTime = now + (moveTiming?.cooldown ?? getPlayerMoveCooldown(playerState));
     handleGameActionResult(moveResult, (resolvedResult) => {
       if (!resolvedResult?.success && isNavigationMovement) {
         handleBlockedPlayerNavigationStep(Date.now());
@@ -7863,18 +7855,7 @@ const getSimulationContainerByUid = (containerUid) => {
 };
 
 const getSimulationPlayerMoveTiming = (payload) => {
-  const currentTile = getTilePosition({ x: payload.fromX, y: payload.fromY });
-  const nextTile = getTilePosition({ x: payload.toX, y: payload.toY });
-  const movementCost = getTileMovementCost(currentTile, nextTile);
-  const animationMultiplier = getTileMovementAnimationMultiplier(currentTile, nextTile);
-  if (!Number.isFinite(movementCost) || !Number.isFinite(animationMultiplier)) {
-    return null;
-  }
-  const baseMoveCooldown = getPlayerMoveCooldown();
-  return {
-    duration: baseMoveCooldown * animationMultiplier,
-    cooldown: baseMoveCooldown * movementCost,
-  };
+  return getPlayerMovementTiming(playerState, payload);
 };
 
 const canSimulationPlayerMove = (payload) => {

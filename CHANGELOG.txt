@@ -1,3 +1,6 @@
+0.3301 - Correction du mouvement online
+    - Le client et le serveur partagent maintenant la meme vitesse de marche sans refus ni retour en arriere.
+
 0.330 - Version online serveur autoritaire
     - Ajout de l'inscription et de la connexion HTTP avec mots de passe hashes et sales.
     - Ajout de la connexion Google avec validation du jeton par le serveur.

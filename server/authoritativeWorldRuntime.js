@@ -17,9 +17,9 @@ import {
   CORPSE_DECAY_COOLDOWN_MS,
   DECAY_REFRESH_COOLDOWN_MS,
   PLAYER_ATTACK_COOLDOWN_MS,
-  PLAYER_MOVE_COOLDOWN_MS,
   TILE_SIZE,
 } from "../src/core/gameConstants.js";
+import { getPlayerMovementTiming } from "../src/player/playerMovementTiming.js";
 import {
   calculateMonsterAttackResult,
   calculatePlayerAttackResult,
@@ -35,7 +35,6 @@ import { getItemData } from "../src/items/itemModel.js";
 import { getMonsterData } from "../src/monsters/monsterModel.js";
 import { applyMonsterExperienceReward, generateMonsterLoot } from "../src/monsters/monsterRewards.js";
 import {
-  getTileMovementAnimationMultiplier,
   getTileMovementCost,
   hasLineOfSightBetweenTiles,
 } from "../src/world/pathfinding.js";
@@ -673,18 +672,7 @@ export const createAuthoritativeWorldRuntime = ({
           !hasActivePlayerSkull(pvpPlayer, currentServerTime) && !isPlayerInPvpCombat(pvpPlayer.uid),
         canPlayerMove: (payload) => isPlayerDestinationAvailable(player, payload),
         canPlayerUseWorldTransition: (movingPlayer, transition) => isPlayerNearTiledObject(movingPlayer, transition, 1),
-        getPlayerMoveTiming: (payload) => {
-          const fromTile = { col: payload.fromX / TILE_SIZE, row: payload.fromY / TILE_SIZE };
-          const toTile = { col: payload.toX / TILE_SIZE, row: payload.toY / TILE_SIZE };
-          const movementCost = getTileMovementCost(fromTile, toTile);
-          const animationMultiplier = getTileMovementAnimationMultiplier(fromTile, toTile);
-          return movementCost === null || animationMultiplier === null
-            ? null
-            : {
-                duration: PLAYER_MOVE_COOLDOWN_MS * animationMultiplier,
-                cooldown: PLAYER_MOVE_COOLDOWN_MS * movementCost,
-              };
-        },
+        getPlayerMoveTiming: (payload) => getPlayerMovementTiming(player, payload),
         getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
       },
       commands: {
