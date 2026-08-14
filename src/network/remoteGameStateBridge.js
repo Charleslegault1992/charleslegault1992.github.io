@@ -32,6 +32,9 @@ const syncTorchStateFromItem = (item) => {
 };
 
 const syncTorchStatesFromContainer = (item) => {
+  if (!item) {
+    return;
+  }
   syncTorchStateFromItem(item);
   if (Array.isArray(item.content)) {
     for (const child of item.content) {

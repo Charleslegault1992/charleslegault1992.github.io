@@ -19,28 +19,42 @@ export const getTopPlayerAtTile = (players, x, y, z) => {
   return topPlayer;
 };
 
+const uniquePlayersByUid = new Map();
+const playersByTileKey = new Map();
+const tilePlayerListPool = [];
+const offsetsByUid = new Map();
+
 export const getPlayerTileStackRenderOffsets = (players) => {
-  const uniquePlayersByUid = new Map();
+  uniquePlayersByUid.clear();
+  offsetsByUid.clear();
+
   for (const player of players ?? []) {
     if (player?.uid != null) {
       uniquePlayersByUid.set(player.uid, player);
     }
   }
 
-  const playersByTileKey = new Map();
+  // Recycle array pool from previous call
+  for (const list of playersByTileKey.values()) {
+    list.length = 0;
+    tilePlayerListPool.push(list);
+  }
+  playersByTileKey.clear();
+
   for (const player of uniquePlayersByUid.values()) {
     const tileKey = `${player.z}:${player.x}:${player.y}`;
     let stackedPlayers = playersByTileKey.get(tileKey);
     if (!stackedPlayers) {
-      stackedPlayers = [];
+      stackedPlayers = tilePlayerListPool.pop() ?? [];
       playersByTileKey.set(tileKey, stackedPlayers);
     }
     stackedPlayers.push(player);
   }
 
-  const offsetsByUid = new Map();
   for (const stackedPlayers of playersByTileKey.values()) {
-    stackedPlayers.sort((first, second) => getPlayerTileStackOrder(first) - getPlayerTileStackOrder(second));
+    if (stackedPlayers.length > 1) {
+      stackedPlayers.sort((first, second) => getPlayerTileStackOrder(first) - getPlayerTileStackOrder(second));
+    }
     for (let index = 0; index < stackedPlayers.length; index++) {
       const offset = index === 0 ? 0 : (index / stackedPlayers.length) * 0.9;
       offsetsByUid.set(stackedPlayers[index].uid, offset);

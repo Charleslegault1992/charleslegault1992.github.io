@@ -414,13 +414,7 @@ export const setPixiPlayerFrame = ({ sourceX, sourceY, sourceWidth, sourceHeight
   }
 
   for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
-    const texture = getEntityFrameTexture(
-      `player:${layerName}`,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-    );
+    const texture = getEntityFrameTexture(`player:${layerName}`, sourceX, sourceY, sourceWidth, sourceHeight);
     if (!texture) {
       return false;
     }
@@ -443,9 +437,9 @@ export const updatePixiPlayerTransform = ({ x, y, zIndex }) => {
     return false;
   }
 
-  playerContainer.x = x;
-  playerContainer.y = y;
-  playerContainer.zIndex = zIndex;
+  if (playerContainer.x !== x) playerContainer.x = x;
+  if (playerContainer.y !== y) playerContainer.y = y;
+  if (playerContainer.zIndex !== zIndex) playerContainer.zIndex = zIndex;
   return true;
 };
 
@@ -593,9 +587,9 @@ export const updatePixiRemotePlayerVisual = ({
   if (refs.name.text !== nextName) {
     refs.name.text = nextName;
   }
-  refs.container.x = x;
-  refs.container.y = y;
-  refs.container.zIndex = zIndex;
+  if (refs.container.x !== x) refs.container.x = x;
+  if (refs.container.y !== y) refs.container.y = y;
+  if (refs.container.zIndex !== zIndex) refs.container.zIndex = zIndex;
   return true;
 };
 
@@ -667,9 +661,9 @@ export const updatePixiNpcTransform = (uid, x, y, zIndex) => {
   if (!refs || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zIndex)) {
     return false;
   }
-  refs.sprite.x = x;
-  refs.sprite.y = y;
-  refs.sprite.zIndex = zIndex;
+  if (refs.sprite.x !== x) refs.sprite.x = x;
+  if (refs.sprite.y !== y) refs.sprite.y = y;
+  if (refs.sprite.zIndex !== zIndex) refs.sprite.zIndex = zIndex;
   return true;
 };
 
@@ -750,9 +744,9 @@ export const updatePixiMonsterTransform = (uid, x, y, zIndex) => {
     return false;
   }
 
-  refs.container.x = x;
-  refs.container.y = y;
-  refs.container.zIndex = zIndex;
+  if (refs.container.x !== x) refs.container.x = x;
+  if (refs.container.y !== y) refs.container.y = y;
+  if (refs.container.zIndex !== zIndex) refs.container.zIndex = zIndex;
   return true;
 };
 
@@ -847,13 +841,7 @@ export const upsertPixiWorldItemVisual = ({ uid, parts, x, y, zIndex }) => {
 
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index];
-    const texture = getEntityFrameTexture(
-      "items",
-      part.sourceX,
-      part.sourceY,
-      part.sourceWidth,
-      part.sourceHeight,
-    );
+    const texture = getEntityFrameTexture("items", part.sourceX, part.sourceY, part.sourceWidth, part.sourceHeight);
     if (!texture) {
       return false;
     }
@@ -888,9 +876,9 @@ export const updatePixiWorldItemTransform = (uid, x, y, zIndex) => {
     return false;
   }
 
-  refs.container.x = x;
-  refs.container.y = y;
-  refs.container.zIndex = zIndex;
+  if (refs.container.x !== x) refs.container.x = x;
+  if (refs.container.y !== y) refs.container.y = y;
+  if (refs.container.zIndex !== zIndex) refs.container.zIndex = zIndex;
   return true;
 };
 
@@ -1252,7 +1240,7 @@ export const playPixiSpellEffect = ({ x, y, color = 0x8fdcff, success = true }) 
         const mark = marks[index];
         const distance = mark.distance * (1 - progress * 0.35);
         mark.graphic.x = Math.cos(mark.angle + progress * 0.45) * distance;
-        mark.graphic.y = Math.sin(mark.angle + progress * 0.45) * 10 - progress * (18 + index % 3);
+        mark.graphic.y = Math.sin(mark.angle + progress * 0.45) * 10 - progress * (18 + (index % 3));
         mark.graphic.alpha = 1 - progress;
       }
     } else {
@@ -1422,12 +1410,12 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
 export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gameHeight }) => {
   try {
     if (!htmlParentElement) {
-      console.error('[Pixi] No parent element provided for Pixi renderer');
+      console.error("[Pixi] No parent element provided for Pixi renderer");
       return false;
     }
 
     pixiApp = new Application();
-    console.log('[Pixi] Application created');
+    console.log("[Pixi] Application created");
 
     await pixiApp.init({
       width: gameWidth,
@@ -1435,16 +1423,16 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
       antialias: true,
       clearBeforeRender: true,
     });
-    console.log('[Pixi] Application initialized, canvas ready');
+    console.log("[Pixi] Application initialized, canvas ready");
 
     if (!pixiApp.canvas) {
-      console.error('[Pixi] Failed to create canvas');
+      console.error("[Pixi] Failed to create canvas");
       return false;
     }
 
     pixiApp.canvas.classList.add("pixi-canvas");
     htmlParentElement.appendChild(pixiApp.canvas);
-    console.log('[Pixi] Canvas appended to DOM');
+    console.log("[Pixi] Canvas appended to DOM");
 
     worldContainer = new Container();
     mapBelowContainer = new Container();
@@ -1465,7 +1453,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
     worldContainer.addChild(feedbackEffectContainer);
-    console.log('[Pixi] Stage hierarchy created');
+    console.log("[Pixi] Stage hierarchy created");
 
     for (const layerName of MAP_BELOW_LAYER_NAMES) {
       const layerContainer = new Container();
@@ -1485,25 +1473,20 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     playerContainer = null;
     playerSpritesByLayer = null;
     remotePlayerVisualsByUid = new Map();
-  monsterVisualsByUid = new Map();
-  npcVisualsByUid = new Map();
-  worldItemVisualsByUid = new Map();
-  groundEffectVisualsByUid = new Map();
-  itemUseTargetVisualsByKey = new Map();
-  itemUseTargetAnimationElapsedMs = 0;
-  minimapChunkCanvasesByWorldMap = new WeakMap();
-  worldItemSelectionFilter = new ColorMatrixFilter();
-  worldItemSelectionFilter.matrix = [
-    0, 0, 0, 0, 1,
-    0, 0, 0, 0, 1,
-    0, 0, 0, 0, 1,
-    0, 0, 0, 1, 0,
-  ];
-  pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
-  pixiApp.stop();
-  console.log('[Pixi] Initialization complete');
+    monsterVisualsByUid = new Map();
+    npcVisualsByUid = new Map();
+    worldItemVisualsByUid = new Map();
+    groundEffectVisualsByUid = new Map();
+    itemUseTargetVisualsByKey = new Map();
+    itemUseTargetAnimationElapsedMs = 0;
+    minimapChunkCanvasesByWorldMap = new WeakMap();
+    worldItemSelectionFilter = new ColorMatrixFilter();
+    worldItemSelectionFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+    pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
+    pixiApp.stop();
+    console.log("[Pixi] Initialization complete");
   } catch (error) {
-    console.error('[Pixi] Initialization failed:', error);
+    console.error("[Pixi] Initialization failed:", error);
     return false;
   }
 };

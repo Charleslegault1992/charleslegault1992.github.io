@@ -68,6 +68,10 @@ export const updatePlayerSprite = () => {
   });
 };
 
+let lastPlayerDomLeft = null;
+let lastPlayerDomTop = null;
+let lastPlayerDomZIndex = null;
+
 export const updatePlayerPosition = (camera, tileStackRenderOffset = 0) => {
   const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
   const renderX = playerState.renderX;
@@ -77,9 +81,24 @@ export const updatePlayerPosition = (camera, tileStackRenderOffset = 0) => {
 
   updatePixiPlayerTransform({ x: renderX, y: renderY, zIndex });
 
-  playerRenderRefs.root.style.left = `${renderX - camera.x}px`;
-  playerRenderRefs.root.style.top = `${renderY - camera.y}px`;
-  playerRenderRefs.root.style.zIndex = Math.floor(zIndex);
+  if (playerRenderRefs.root) {
+    const nextLeft = `${renderX - camera.x}px`;
+    const nextTop = `${renderY - camera.y}px`;
+    const nextZIndex = Math.floor(zIndex);
+
+    if (lastPlayerDomLeft !== nextLeft) {
+      playerRenderRefs.root.style.left = nextLeft;
+      lastPlayerDomLeft = nextLeft;
+    }
+    if (lastPlayerDomTop !== nextTop) {
+      playerRenderRefs.root.style.top = nextTop;
+      lastPlayerDomTop = nextTop;
+    }
+    if (lastPlayerDomZIndex !== nextZIndex) {
+      playerRenderRefs.root.style.zIndex = nextZIndex;
+      lastPlayerDomZIndex = nextZIndex;
+    }
+  }
 };
 
 export const refreshPlayerHpBar = () => {

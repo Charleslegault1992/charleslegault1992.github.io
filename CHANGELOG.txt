@@ -1,3 +1,10 @@
+0.3308 - Correction ecran noir & Optimisation du rendu
+    - Correction du crash a la connexion du personnage causé par les slots d'equipement vides dans syncTorchStatesFromContainer.
+    - Optimisation PixiJS : prevention des tris zIndex inutiles quand les coordonnees ne changent pas.
+    - Optimisation DOM : dirty-checking sur les positions des monstres, NPCs et joueur pour eviter le reflow.
+    - Optimisation memoire : suppression des allocations heap par frame dans la gestion de pile de joueurs et items au sol.
+    - Optimisation items sol : suppression des updates Pixi redondants et viewport culling sur les hitboxes DOM.
+
 0.3304 - Correction des items online
     - Les equipements, sacs et items gardent maintenant leurs bonnes references pendant la replication serveur.
     - Correction des items visibles dans un sac mais impossibles a utiliser ou deplacer.

@@ -1156,20 +1156,22 @@ const updateItemPosition = () => {
       removeGroundItemRender(item.uid);
       return;
     }
-    const stackOffsetY = getWorldItemStackOffsetY(item);
-    const stackIndex = getWorldItemStackIndex(item);
-    updatePixiWorldItemTransform(
-      item.uid,
-      item.x,
-      item.y - stackOffsetY,
-      getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
-    );
+    const screenLeft = item.x - camera.x;
+    const screenTop = item.y - camera.y;
+    if (
+      screenLeft + SPRITE_SIZE < -128 ||
+      screenLeft > GAME_WIDTH + 128 ||
+      screenTop + SPRITE_SIZE < -128 ||
+      screenTop > GAME_HEIGHT + 128
+    ) {
+      return;
+    }
 
     const itemHitboxElement = findWorldItemHitboxElement(item.uid);
     if (itemHitboxElement) {
       const positionHitbox = {
-        left: item.x - camera.x,
-        top: item.y - camera.y,
+        left: screenLeft,
+        top: screenTop,
         zIndex: getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_EFFECT),
         width: SPRITE_SIZE,
         height: SPRITE_SIZE,
@@ -6054,9 +6056,22 @@ const updateNpcPosition = () => {
     const renderY = npc.renderY - TILE_SIZE - surfaceOffsetY;
     const zIndex = getWorldRenderZIndex(getEntityRenderSortY(npc), WORLD_RENDER_LAYER_CREATURE);
     updatePixiNpcTransform(npc.uid, npc.renderX, renderY, zIndex);
-    refs.root.style.left = `${npc.renderX - camera.x}px`;
-    refs.root.style.top = `${renderY - camera.y}px`;
-    refs.root.style.zIndex = zIndex;
+    if (refs?.root) {
+      const nextLeft = `${npc.renderX - camera.x}px`;
+      const nextTop = `${renderY - camera.y}px`;
+      if (refs.lastLeft !== nextLeft) {
+        refs.root.style.left = nextLeft;
+        refs.lastLeft = nextLeft;
+      }
+      if (refs.lastTop !== nextTop) {
+        refs.root.style.top = nextTop;
+        refs.lastTop = nextTop;
+      }
+      if (refs.lastZIndex !== zIndex) {
+        refs.root.style.zIndex = zIndex;
+        refs.lastZIndex = zIndex;
+      }
+    }
   }
 };
 
@@ -6775,9 +6790,20 @@ const updateMonsterPosition = () => {
     updatePixiMonsterTransform(monster.uid, renderX, renderY, zIndex);
 
     if (monsterElement) {
-      monsterElement.style.left = `${renderX - camera.x}px`;
-      monsterElement.style.top = `${renderY - camera.y}px`;
-      monsterElement.style.zIndex = zIndex;
+      const nextLeft = `${renderX - camera.x}px`;
+      const nextTop = `${renderY - camera.y}px`;
+      if (refs.lastLeft !== nextLeft) {
+        monsterElement.style.left = nextLeft;
+        refs.lastLeft = nextLeft;
+      }
+      if (refs.lastTop !== nextTop) {
+        monsterElement.style.top = nextTop;
+        refs.lastTop = nextTop;
+      }
+      if (refs.lastZIndex !== zIndex) {
+        monsterElement.style.zIndex = zIndex;
+        refs.lastZIndex = zIndex;
+      }
     }
   }
 };
@@ -6871,10 +6897,16 @@ const updateRenderWorldItems = () => {
   updateItemPosition();
 };
 
+const creaturePlayerListBuffer = [];
 const updateRenderCreatures = () => {
   updateMonsterPosition();
   updateNpcPosition();
-  const tileStackRenderOffsets = getPlayerTileStackRenderOffsets([playerState, ...playersByUid.values()]);
+  creaturePlayerListBuffer.length = 0;
+  creaturePlayerListBuffer.push(playerState);
+  for (const remotePlayer of playersByUid.values()) {
+    creaturePlayerListBuffer.push(remotePlayer);
+  }
+  const tileStackRenderOffsets = getPlayerTileStackRenderOffsets(creaturePlayerListBuffer);
   for (const remotePlayer of playersByUid.values()) {
     updateRemotePlayerVisual(remotePlayer, tileStackRenderOffsets);
   }
