@@ -105,13 +105,36 @@ const copyFieldsInto = (target, source) => {
   return true;
 };
 
-const synchronizeEntityMap = (targetMap, replicatedEntities) => {
+const synchronizeEntityMap = (targetMap, replicatedEntities, options = {}) => {
+  const useClientMovementTiming = options.useClientMovementTiming === true;
   const visibleUids = new Set();
+
   for (const replicatedEntity of replicatedEntities) {
     visibleUids.add(replicatedEntity.uid);
+
     const currentEntity = targetMap.get(replicatedEntity.uid) ?? null;
+
     if (currentEntity) {
+      const previousX = currentEntity.x;
+      const previousY = currentEntity.y;
+      const previousRenderX = Number.isFinite(currentEntity.renderX) ? currentEntity.renderX : previousX;
+      const previousRenderY = Number.isFinite(currentEntity.renderY) ? currentEntity.renderY : previousY;
+
       copyFieldsInto(currentEntity, replicatedEntity);
+
+      if (useClientMovementTiming && (previousX !== currentEntity.x || previousY !== currentEntity.y)) {
+        const moveDuration =
+          Number.isFinite(replicatedEntity.moveDuration) && replicatedEntity.moveDuration > 0
+            ? replicatedEntity.moveDuration
+            : 120;
+
+        currentEntity.oldX = previousRenderX;
+        currentEntity.oldY = previousRenderY;
+        currentEntity.renderX = previousRenderX;
+        currentEntity.renderY = previousRenderY;
+        currentEntity.moveStartTime = Date.now();
+        currentEntity.moveDuration = moveDuration;
+      }
     } else {
       const nextEntity = structuredClone(replicatedEntity);
       nextEntity.renderX = nextEntity.x;
@@ -120,6 +143,7 @@ const synchronizeEntityMap = (targetMap, replicatedEntities) => {
       targetMap.set(replicatedEntity.uid, nextEntity);
     }
   }
+
   for (const entityUid of targetMap.keys()) {
     if (!visibleUids.has(entityUid)) {
       targetMap.delete(entityUid);
@@ -148,21 +172,23 @@ export const createRemoteGameStateBridge = ({
   const applyReplicatedState = (event) => {
     const nextSelf = event.predictedSelf ?? replicationStore.getSelf();
 
-    // Preserve old position for smooth interpolation before applying new state
     const previousX = playerState.x;
     const previousY = playerState.y;
+    const previousRenderX = Number.isFinite(playerState.renderX) ? playerState.renderX : previousX;
+    const previousRenderY = Number.isFinite(playerState.renderY) ? playerState.renderY : previousY;
 
     copyFieldsInto(playerState, nextSelf);
 
-    // If position changed and we're not in a snapshot, update oldX/oldY for interpolation
     if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
-      playerState.oldX = previousX;
-      playerState.oldY = previousY;
-      // Preserve valid movement timing from nextSelf/predictedSelf; only fall back if missing/invalid
-      if (!Number.isFinite(playerState.moveStartTime) || !Number.isFinite(playerState.moveDuration)) {
-        playerState.moveStartTime = Date.now();
-        playerState.moveDuration = 100; // Short interpolation for reconciliation
-      }
+      const moveDuration =
+        Number.isFinite(playerState.moveDuration) && playerState.moveDuration > 0 ? playerState.moveDuration : 120;
+
+      playerState.oldX = previousRenderX;
+      playerState.oldY = previousRenderY;
+      playerState.renderX = previousRenderX;
+      playerState.renderY = previousRenderY;
+      playerState.moveStartTime = Date.now();
+      playerState.moveDuration = moveDuration;
     }
 
     if (
@@ -174,7 +200,9 @@ export const createRemoteGameStateBridge = ({
       playerState.renderY = playerState.y;
     }
     for (const entityType of REPLICATED_ENTITY_TYPES) {
-      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType));
+      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType), {
+        useClientMovementTiming: entityType === "players" || entityType === "monsters" || entityType === "npcs",
+      });
     }
     onStateApplied?.({
       revision: replicationStore.getRevision(),
