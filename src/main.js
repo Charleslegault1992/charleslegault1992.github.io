@@ -358,7 +358,7 @@ import {
   hasLineOfSightBetweenTiles,
 } from "./world/pathfinding.js";
 
-import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapFloorUpButton, minimapFloorDownButton, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
+import { panneauGauche, panneauDroite, boitePrincipale, playerMinimap, minimapCanvas, minimapZoomOutButton, minimapZoomInButton, minimapCenterButton, minimapFloorUpButton, minimapFloorDownButton, playerStats, playerInventory, playerQuests, gameOptionsWindow, playerSpells, gameWelcome, gameWelcomePlayButton, gameWelcomeLanguageButtons, characterSelector, stackSplitMenu, playerContainers, player, game, boiteJeux, nav, boiteChat, chat, chatTabs, chatInput, boiteJeuxInner, lightCanvas, fpsCounter, versionCounter, gameStatusMessage, mobileGameControls, mobileJoystickZone, mobileJoystick, mobileJoystickKnob, mobilePanelButtons, mobileActionButtons, mobilePanelCloseButton, mobilePlayerName, mobilePlayerLevel, mobilePlayerHealthFill, mobilePlayerHealthValue, mobilePlayerManaFill, mobilePlayerManaValue, mobilePlayerSanityFill, mobilePlayerSanityValue, mobileTargetHud, mobileTargetName, mobileTargetValue, mobileTargetHealthFill, mobileItemUseIndicator, mobileItemUseIcon, mobileItemUseLabel, mobileStanceIcon, mobileStanceLabel } from "./ui/domRefs.js";
 
 
 /* ==================================================== */
@@ -8383,6 +8383,9 @@ clientBootstrap = createClientBootstrap({
     { name: "interface", run: initializeGameInterface },
   ],
   onStarted: () => {
+    if (versionCounter) {
+      versionCounter.textContent = "V 0.3306";
+    }
     preloadGameSfx();
     startGameMusic();
     if (!gameRuntimeState.isRemoteSession) {

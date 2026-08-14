@@ -192,6 +192,17 @@ main {
   pointer-events: none;
 }
 
+#version-counter {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  z-index: 10000000;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: monospace;
+  pointer-events: none;
+}
+
 .game-status-message {
   position: absolute;
   left: 50%;
