@@ -222,6 +222,7 @@ import {
   getMonstersInChunkRadius,
   isMonsterAtPosition,
   moveMonsterInTileIndex,
+  rebuildMonsterSpatialIndexes,
   removeMonsterFromState,
 } from "./monsters/monsterIndex.js";
 import { getNpcData, getNpcTextureUrlsById } from "./npcs/npcModel.js";
@@ -231,7 +232,10 @@ import {
   initializeNpcsForWorldMaps,
   isNpcAtPosition,
   moveNpcInTileIndex,
+  rebuildNpcSpatialIndexes,
 } from "./npcs/npcIndex.js";
+import { applyPlayerStarterKit } from "./player/playerStarterKit.js";
+import { createInitialWorldItems } from "./world/initialWorldItems.js";
 import {
   calculatePlayerAttackResult,
   calculateRuneAttackResult,
@@ -7553,21 +7557,13 @@ const renderGameFrame = (now) => gameSystemsOrchestrator.render(now);
 /* ==================================================== */
 /* ---------- INITIALISATION - DONNEES TEST ---------- */
 const setupTestWorld = () => {
-  addGroundItem(createGroundItem("smallBox", 1, 13 * TILE_SIZE, 10 * TILE_SIZE, playerState.z));
-  addGroundItem(createGroundItem("smallBox", 1, 14 * TILE_SIZE, 9 * TILE_SIZE, playerState.z));
-  addGroundItem(createGroundItem("box", 1, 14 * TILE_SIZE, 10 * TILE_SIZE, playerState.z));
-  addGroundItem(createGroundItem("fireRune", 1, 14 * TILE_SIZE, 10 * TILE_SIZE, playerState.z));
-  addGroundItem(createGroundItem("smallBox", 1, 14 * TILE_SIZE, 11 * TILE_SIZE, playerState.z));
-  addGroundItem(createGroundItem("smallBox", 1, 15 * TILE_SIZE, 10 * TILE_SIZE, playerState.z));
+  for (const worldItem of createInitialWorldItems(playerState.z)) {
+    addGroundItem(worldItem);
+  }
 };
 
 const setupTestPlayerInventory = () => {
-  playerState.equipment.backpack = createItemInstance("bag", 1);
-  playerState.equipment.backpack.content[0] = createItemInstance("apple", 1);
-  playerState.equipment.backpack.content[1] = createItemInstance("healthPotion", 1);
-  playerState.equipment.backpack.content[2] = createItemInstance("manaPotion", 1);
-  playerState.equipment.weapon = createItemInstance("mace", 1);
-  playerState.equipment.ammo = createItemInstance("torch", 1);
+  applyPlayerStarterKit(playerState);
 };
 
 /* ---------- INITIALISATION - UI JOUEUR ---------- */
@@ -8198,6 +8194,8 @@ const setGameTransport = (nextTransport, subscribeToActionResults) => {
 
 const synchronizeRemoteWorldRender = (event) => {
   rebuildWorldTileStacks();
+  rebuildMonsterSpatialIndexes();
+  rebuildNpcSpatialIndexes();
   const previousZ = pixiWorldRenderState.currentZ;
   pixiWorldRenderState.currentZ = playerState.z;
   if (!gameRuntimeState.isStarted) {

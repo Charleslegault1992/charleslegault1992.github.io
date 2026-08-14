@@ -1,3 +1,8 @@
+0.3302 - Contenu du monde online
+    - Correction du rendu des NPC et monstres recus par le serveur.
+    - Ajout du kit de depart online avec mace, torche, bag, pomme et potions.
+    - Ajout des boites et objets initiaux dans le monde autoritaire.
+
 0.3301 - Correction du mouvement online
     - Le client et le serveur partagent maintenant la meme vitesse de marche sans refus ni retour en arriere.
 

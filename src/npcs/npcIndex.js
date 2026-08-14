@@ -132,6 +132,27 @@ export const getNpcsInChunkRadius = (x, y, z, radiusChunks) => {
   return nearbyNpcs;
 };
 
+export const rebuildNpcSpatialIndexes = () => {
+  npcUidByTileKey.clear();
+  npcUidsByChunkKey.clear();
+  for (const npc of npcsByUid.values()) {
+    const tileKey = getNpcTileKey(npc?.x, npc?.y, npc?.z);
+    if (typeof npc?.uid !== "string" || !tileKey || npcUidByTileKey.has(tileKey)) {
+      continue;
+    }
+    npcUidByTileKey.set(tileKey, npc.uid);
+    addNpcUidToChunkIndex(npc);
+    if (!npcConversationStatesByUid.has(npc.uid)) {
+      npcConversationStatesByUid.set(npc.uid, createNpcConversationState());
+    }
+  }
+  for (const npcUid of npcConversationStatesByUid.keys()) {
+    if (!npcsByUid.has(npcUid)) {
+      npcConversationStatesByUid.delete(npcUid);
+    }
+  }
+};
+
 export const initializeNpcsForWorldMaps = (worldMapsByZ) => {
   if (!(worldMapsByZ instanceof Map)) {
     return false;

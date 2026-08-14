@@ -2,6 +2,7 @@ import { MONSTER_RESPAWN_CONFIG } from "../src/core/gameConstants.js";
 import { createMonster } from "../src/monsters/monsterModel.js";
 import { createMonsterRespawnSystem } from "../src/monsters/monsterRespawnSystem.js";
 import { createNpcFromWorldObject } from "../src/npcs/npcModel.js";
+import { createInitialWorldItems } from "../src/world/initialWorldItems.js";
 import { createSpatialEntityStore } from "./spatialEntityStore.js";
 
 export const createServerWorldEntities = (
@@ -19,6 +20,10 @@ export const createServerWorldEntities = (
   const spawnDefinitionsById = new Map();
   const spawnStateById = new Map();
   const eventOrderState = { nextEventOrder: 1 };
+
+  for (const worldItem of createInitialWorldItems(0)) {
+    worldItems.add(worldItem);
+  }
 
   for (const worldMap of worldMapsByZ.values()) {
     for (const chunk of worldMap.chunksByKey.values()) {

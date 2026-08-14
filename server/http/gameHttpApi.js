@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createPlayerState } from "../../src/state/playerState.js";
+import { applyPlayerStarterKit } from "../../src/player/playerStarterKit.js";
 import {
   normalizeCharacterAppearanceColors,
   normalizeCharacterAppearanceParts,
@@ -62,6 +63,7 @@ const createCharacterSnapshot = (body) => {
   if (body.appearanceColors && typeof body.appearanceColors === "object") {
     player.appearanceColors = normalizeCharacterAppearanceColors(body.appearanceColors);
   }
+  applyPlayerStarterKit(player);
   return player;
 };
 

@@ -94,6 +94,19 @@ export const getActiveMonstersAroundPlayer = () => {
   return getMonstersInChunkRadius(playerState.x, playerState.y, playerState.z, MONSTER_AI_CHUNK_RADIUS);
 };
 
+export const rebuildMonsterSpatialIndexes = () => {
+  monsterUidByTileKey.clear();
+  monsterUidsByChunkKey.clear();
+  for (const monster of monstersByUid.values()) {
+    const tileKey = getMonsterTileKey(monster?.x, monster?.y, monster?.z);
+    if (!Number.isInteger(monster?.uid) || !tileKey || monsterUidByTileKey.has(tileKey)) {
+      continue;
+    }
+    monsterUidByTileKey.set(tileKey, monster.uid);
+    addMonsterUidToChunkIndex(monster);
+  }
+};
+
 export const addMonsterToState = (monster) => {
   const tileKey = getMonsterTileKey(monster?.x, monster?.y, monster?.z);
   const chunkKey = getMonsterChunkKey(monster?.x, monster?.y, monster?.z);

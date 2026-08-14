@@ -20,6 +20,7 @@ import {
   TILE_SIZE,
 } from "../src/core/gameConstants.js";
 import { getPlayerMovementTiming } from "../src/player/playerMovementTiming.js";
+import { applyPlayerStarterKit } from "../src/player/playerStarterKit.js";
 import {
   calculateMonsterAttackResult,
   calculatePlayerAttackResult,
@@ -785,6 +786,7 @@ export const createAuthoritativeWorldRuntime = ({
     if (persistedCharacter) {
       hydratePlayerFromPersistence(player, persistedCharacter.snapshot);
     }
+    const starterKitStateChanged = applyPlayerStarterKit(player);
     const spawnWorldMap = worldMapsByZ.get(player.spawn.z);
     const savedWorldMap = worldMapsByZ.get(player.z);
     const spawn = findPlayerSpawn(spawnWorldMap, player.spawn.spawnId);
@@ -842,7 +844,7 @@ export const createAuthoritativeWorldRuntime = ({
       version: persistedCharacter?.version ?? null,
       lastSavedAt: currentServerTime,
       nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
-      isDirty: false,
+      isDirty: starterKitStateChanged,
     };
     sessionsByPlayerUid.set(playerUid, persistenceSession);
     simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse, persistenceSession));
