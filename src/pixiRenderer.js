@@ -1420,54 +1420,71 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
 /* ==================================================== */
 /* ---------- APPLICATION ET CONTAINERS ---------- */
 export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gameHeight }) => {
-  pixiApp = new Application();
-
-  await pixiApp.init({
-    width: gameWidth,
-    height: gameHeight,
-  });
-
-  pixiApp.canvas.classList.add("pixi-canvas");
-  htmlParentElement.appendChild(pixiApp.canvas);
-
-  worldContainer = new Container();
-  mapBelowContainer = new Container();
-  entityContainer = new Container();
-  groundEffectContainer = new Container();
-  itemUseTargetContainer = new Container();
-  projectileContainer = new Container();
-  topContainer = new Container();
-  feedbackEffectContainer = new Container();
-  mapLayerContainersByName = new Map();
-
-  entityContainer.sortableChildren = true;
-
-  pixiApp.stage.addChild(worldContainer);
-  worldContainer.addChild(mapBelowContainer);
-  worldContainer.addChild(itemUseTargetContainer);
-  worldContainer.addChild(entityContainer);
-  worldContainer.addChild(projectileContainer);
-  worldContainer.addChild(topContainer);
-  worldContainer.addChild(feedbackEffectContainer);
-
-  for (const layerName of MAP_BELOW_LAYER_NAMES) {
-    const layerContainer = new Container();
-    layerContainer.label = layerName;
-    mapBelowContainer.addChild(layerContainer);
-    mapLayerContainersByName.set(layerName, layerContainer);
-    if (layerName === "groundDetails") {
-      mapBelowContainer.addChild(groundEffectContainer);
+  try {
+    if (!htmlParentElement) {
+      console.error('[Pixi] No parent element provided for Pixi renderer');
+      return false;
     }
-  }
 
-  tilesetImageUrlByFileName = createTilesetImageUrlByFileName();
-  tileTextureByCacheKey = new Map();
-  renderedChunkContainersByKey = new Map();
-  worldEntityTextureByKey = new Map();
-  entityFrameTextureByCacheKey = new Map();
-  playerContainer = null;
-  playerSpritesByLayer = null;
-  remotePlayerVisualsByUid = new Map();
+    pixiApp = new Application();
+    console.log('[Pixi] Application created');
+
+    await pixiApp.init({
+      width: gameWidth,
+      height: gameHeight,
+      antialias: true,
+      clearBeforeRender: true,
+    });
+    console.log('[Pixi] Application initialized, canvas ready');
+
+    if (!pixiApp.canvas) {
+      console.error('[Pixi] Failed to create canvas');
+      return false;
+    }
+
+    pixiApp.canvas.classList.add("pixi-canvas");
+    htmlParentElement.appendChild(pixiApp.canvas);
+    console.log('[Pixi] Canvas appended to DOM');
+
+    worldContainer = new Container();
+    mapBelowContainer = new Container();
+    entityContainer = new Container();
+    groundEffectContainer = new Container();
+    itemUseTargetContainer = new Container();
+    projectileContainer = new Container();
+    topContainer = new Container();
+    feedbackEffectContainer = new Container();
+    mapLayerContainersByName = new Map();
+
+    entityContainer.sortableChildren = true;
+
+    pixiApp.stage.addChild(worldContainer);
+    worldContainer.addChild(mapBelowContainer);
+    worldContainer.addChild(itemUseTargetContainer);
+    worldContainer.addChild(entityContainer);
+    worldContainer.addChild(projectileContainer);
+    worldContainer.addChild(topContainer);
+    worldContainer.addChild(feedbackEffectContainer);
+    console.log('[Pixi] Stage hierarchy created');
+
+    for (const layerName of MAP_BELOW_LAYER_NAMES) {
+      const layerContainer = new Container();
+      layerContainer.label = layerName;
+      mapBelowContainer.addChild(layerContainer);
+      mapLayerContainersByName.set(layerName, layerContainer);
+      if (layerName === "groundDetails") {
+        mapBelowContainer.addChild(groundEffectContainer);
+      }
+    }
+
+    tilesetImageUrlByFileName = createTilesetImageUrlByFileName();
+    tileTextureByCacheKey = new Map();
+    renderedChunkContainersByKey = new Map();
+    worldEntityTextureByKey = new Map();
+    entityFrameTextureByCacheKey = new Map();
+    playerContainer = null;
+    playerSpritesByLayer = null;
+    remotePlayerVisualsByUid = new Map();
   monsterVisualsByUid = new Map();
   npcVisualsByUid = new Map();
   worldItemVisualsByUid = new Map();
@@ -1484,6 +1501,11 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
   ];
   pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
   pixiApp.stop();
+  console.log('[Pixi] Initialization complete');
+  } catch (error) {
+    console.error('[Pixi] Initialization failed:', error);
+    return false;
+  }
 };
 //#endregion  -----  PIXI - INITIALISATION  -----
 
