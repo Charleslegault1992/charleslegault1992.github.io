@@ -1,3 +1,6 @@
+import { getItemData } from "../items/itemModel.js";
+import { activeLitTorchesByUid } from "../state/worldState.js";
+
 const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects"]);
 
 const isItemState = (value) => Number.isInteger(value?.uid) && typeof value?.itemId === "string";
@@ -9,6 +12,31 @@ const collectItemReferences = (item, itemsByUid) => {
   itemsByUid.set(item.uid, item);
   for (const child of item.content ?? []) {
     collectItemReferences(child, itemsByUid);
+  }
+};
+
+const syncTorchStateFromItem = (item) => {
+  if (!isItemState(item)) {
+    return;
+  }
+  const itemData = getItemData(item.itemId);
+  if (!itemData?.lightSource) {
+    activeLitTorchesByUid.delete(item.uid);
+    return;
+  }
+  if (item.isLit === true && item.fuelRemainingMs > 0) {
+    activeLitTorchesByUid.set(item.uid, item);
+  } else {
+    activeLitTorchesByUid.delete(item.uid);
+  }
+};
+
+const syncTorchStatesFromContainer = (item) => {
+  syncTorchStateFromItem(item);
+  if (Array.isArray(item.content)) {
+    for (const child of item.content) {
+      syncTorchStatesFromContainer(child);
+    }
   }
 };
 
@@ -40,14 +68,17 @@ const synchronizeEquipmentState = (targetEquipment, sourceEquipment) => {
   }
   for (const slotName of Object.keys(targetEquipment)) {
     if (!(slotName in sourceEquipment)) {
+      const removedItem = targetEquipment[slotName];
+      syncTorchStatesFromContainer(removedItem);
       delete targetEquipment[slotName];
     }
   }
   for (const [slotName, sourceItem] of Object.entries(sourceEquipment)) {
-    const currentItem = isItemState(sourceItem) ? itemsByUid.get(sourceItem.uid) ?? null : null;
+    const currentItem = isItemState(sourceItem) ? (itemsByUid.get(sourceItem.uid) ?? null) : null;
     targetEquipment[slotName] = currentItem
       ? synchronizeItemState(currentItem, sourceItem, itemsByUid)
       : structuredClone(sourceItem);
+    syncTorchStatesFromContainer(targetEquipment[slotName]);
   }
 };
 
@@ -113,8 +144,26 @@ export const createRemoteGameStateBridge = ({
 
   const applyReplicatedState = (event) => {
     const nextSelf = event.predictedSelf ?? replicationStore.getSelf();
+
+    // Preserve old position for smooth interpolation before applying new state
+    const previousX = playerState.x;
+    const previousY = playerState.y;
+
     copyFieldsInto(playerState, nextSelf);
-    if (event.type === "server.snapshot" || !Number.isFinite(playerState.renderX) || !Number.isFinite(playerState.renderY)) {
+
+    // If position changed and we're not in a snapshot, update oldX/oldY for interpolation
+    if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
+      playerState.oldX = previousX;
+      playerState.oldY = previousY;
+      playerState.moveStartTime = Date.now();
+      playerState.moveDuration = 100; // Short interpolation for reconciliation
+    }
+
+    if (
+      event.type === "server.snapshot" ||
+      !Number.isFinite(playerState.renderX) ||
+      !Number.isFinite(playerState.renderY)
+    ) {
       playerState.renderX = playerState.x;
       playerState.renderY = playerState.y;
     }
