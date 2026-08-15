@@ -19,6 +19,8 @@ const REQUIRED_RUNTIME_METHODS = [
   "update",
 ];
 const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
+const DEFAULT_NETWORK_RATE_HZ = 20;
+const DEFAULT_MAX_DELTAS_PER_FLUSH = 8;
 
 export const createGameServer = ({
   runtime,
@@ -28,6 +30,8 @@ export const createGameServer = ({
   host = "127.0.0.1",
   port = 8080,
   tickRateHz = 30,
+  networkRateHz = DEFAULT_NETWORK_RATE_HZ,
+  maxDeltasPerFlush = DEFAULT_MAX_DELTAS_PER_FLUSH,
 } = {}) => {
   if (
     !runtime ||
@@ -36,6 +40,13 @@ export const createGameServer = ({
   ) {
     throw new TypeError("The game server requires a complete authoritative runtime.");
   }
+  const safeNetworkRateHz =
+    Number.isFinite(networkRateHz) && networkRateHz > 0 ? Math.min(networkRateHz, tickRateHz) : DEFAULT_NETWORK_RATE_HZ;
+
+  const networkFlushIntervalMs = 1000 / safeNetworkRateHz;
+
+  const safeMaxDeltasPerFlush =
+    Number.isInteger(maxDeltasPerFlush) && maxDeltasPerFlush > 0 ? maxDeltasPerFlush : DEFAULT_MAX_DELTAS_PER_FLUSH;
 
   const httpServer = createServer(async (request, response) => {
     if (request.url === "/health") {
@@ -93,6 +104,37 @@ export const createGameServer = ({
     }
     session.lastSentRevision = snapshot.revision;
     return send(session, SERVER_MESSAGE_TYPE.snapshot, snapshot);
+  };
+
+  const flushSessionDeltas = (session) => {
+    if (!session?.isAuthenticated) {
+      return false;
+    }
+
+    const deltas = runtime.getDeltasForClient(session, session.lastSentRevision);
+
+    if (deltas === null) {
+      return sendSnapshot(session);
+    }
+
+    if (!Array.isArray(deltas) || deltas.length <= 0) {
+      return false;
+    }
+
+    if (deltas.length > safeMaxDeltasPerFlush) {
+      return sendSnapshot(session);
+    }
+
+    let didSendDelta = false;
+
+    for (const delta of deltas) {
+      if (send(session, SERVER_MESSAGE_TYPE.delta, delta)) {
+        session.lastSentRevision = delta.revision;
+        didSendDelta = true;
+      }
+    }
+
+    return didSendDelta;
   };
 
   const closeSession = (session) => {
@@ -158,7 +200,10 @@ export const createGameServer = ({
       return;
     }
     if (message.type === CLIENT_MESSAGE_TYPE.ping) {
-      send(session, SERVER_MESSAGE_TYPE.pong, { clientTime: message.payload?.clientTime ?? null, serverTime: Date.now() });
+      send(session, SERVER_MESSAGE_TYPE.pong, {
+        clientTime: message.payload?.clientTime ?? null,
+        serverTime: Date.now(),
+      });
       return;
     }
     if (message.type === CLIENT_MESSAGE_TYPE.acknowledge) {
@@ -190,10 +235,20 @@ export const createGameServer = ({
       }
       const result = runtime.dispatchAction(session, action);
       session.actionResultsByRequestId.set(action.requestId, { fingerprint: actionFingerprint, result });
+
       while (session.actionResultsByRequestId.size > 256) {
         session.actionResultsByRequestId.delete(session.actionResultsByRequestId.keys().next().value);
       }
+
       send(session, SERVER_MESSAGE_TYPE.actionResult, result);
+
+      if (result?.success) {
+        flushSessionDeltas(session);
+        session.nextNetworkFlushAt = Date.now() + networkFlushIntervalMs;
+      }
+
+      return;
+
       return;
     }
     send(session, SERVER_MESSAGE_TYPE.error, { reason: "unsupported-message" });
@@ -212,6 +267,7 @@ export const createGameServer = ({
       actionResultsByRequestId: new Map(),
       rateLimitWindowStartedAt: Date.now(),
       messagesInWindow: 0,
+      nextNetworkFlushAt: 0,
     };
     sessionsBySocket.set(socket, session);
     socket.on("message", (message, isBinary) => handleClientMessage(session, message, isBinary));
@@ -238,16 +294,13 @@ export const createGameServer = ({
         if (!session.isAuthenticated) {
           continue;
         }
-        const deltas = runtime.getDeltasForClient(session, session.lastSentRevision);
-        if (deltas === null) {
-          sendSnapshot(session);
+
+        if (now < session.nextNetworkFlushAt) {
           continue;
         }
-        for (const delta of deltas) {
-          if (send(session, SERVER_MESSAGE_TYPE.delta, delta)) {
-            session.lastSentRevision = delta.revision;
-          }
-        }
+
+        flushSessionDeltas(session);
+        session.nextNetworkFlushAt = now + networkFlushIntervalMs;
       }
     },
   });

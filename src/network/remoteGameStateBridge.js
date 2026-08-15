@@ -1,8 +1,25 @@
+import { TILE_SIZE } from "../core/gameConstants.js";
 import { getItemData } from "../items/itemModel.js";
 import { activeLitTorchesByUid } from "../state/worldState.js";
+import {
+  REMOTE_INTERPOLATED_ENTITY_TYPES,
+  REMOTE_INTERPOLATION_IGNORED_FIELDS,
+  remoteEntityInterpolationStore,
+} from "./remoteEntityInterpolationStore.js";
 
 const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects"]);
 const VISUAL_ONLY_ENTITY_FIELDS = new Set(["renderX", "renderY"]);
+const LOCAL_PLAYER_SERVER_IGNORED_FIELDS = new Set([
+  "renderX",
+  "renderY",
+  "oldX",
+  "oldY",
+  "moveStartTime",
+  "moveDuration",
+]);
+
+const LOCAL_PLAYER_MAX_SMOOTH_CORRECTION_DISTANCE = TILE_SIZE * 1.5;
+const LOCAL_PLAYER_CORRECTION_DURATION_MS = 70;
 
 const isItemState = (value) => Number.isInteger(value?.uid) && typeof value?.itemId === "string";
 
@@ -86,17 +103,25 @@ const synchronizeEquipmentState = (targetEquipment, sourceEquipment) => {
   }
 };
 
-const copyFieldsInto = (target, source) => {
+const copyFieldsInto = (target, source, options = {}) => {
   if (!target || !source) {
     return false;
   }
+
   if (isItemState(target) && isItemState(source) && target.uid === source.uid) {
     const itemsByUid = new Map();
     collectItemReferences(target, itemsByUid);
     synchronizeItemState(target, source, itemsByUid);
     return true;
   }
+
+  const ignoredFields = options.ignoredFields instanceof Set ? options.ignoredFields : null;
+
   for (const [key, value] of Object.entries(source)) {
+    if (ignoredFields?.has(key)) {
+      continue;
+    }
+
     if (VISUAL_ONLY_ENTITY_FIELDS.has(key) && "renderX" in target && "renderY" in target) {
       continue;
     }
@@ -108,24 +133,94 @@ const copyFieldsInto = (target, source) => {
 
     target[key] = structuredClone(value);
   }
+
   return true;
 };
 
-const synchronizeEntityMap = (targetMap, replicatedEntities) => {
+const getEventServerTime = (event) => {
+  const payloadServerTime = event?.payload?.serverTime;
+  if (Number.isFinite(payloadServerTime)) {
+    return payloadServerTime;
+  }
+
+  const eventServerTime = event?.serverTime;
+  if (Number.isFinite(eventServerTime)) {
+    return eventServerTime;
+  }
+
+  return null;
+};
+
+const shouldUseRemoteInterpolation = (entityType, replicatedEntity, playerState, serverTime) => {
+  if (!REMOTE_INTERPOLATED_ENTITY_TYPES.has(entityType)) {
+    return false;
+  }
+
+  if (!Number.isFinite(serverTime)) {
+    return false;
+  }
+
+  if (entityType === "players" && replicatedEntity?.uid === playerState?.uid) {
+    return false;
+  }
+
+  return true;
+};
+
+const initializeReplicatedEntity = (replicatedEntity, interpolationEnabled) => {
+  const nextEntity = structuredClone(replicatedEntity);
+
+  nextEntity.renderX = nextEntity.x;
+  nextEntity.renderY = nextEntity.y;
+  nextEntity.oldX = nextEntity.x;
+  nextEntity.oldY = nextEntity.y;
+
+  if (interpolationEnabled) {
+    nextEntity.moveStartTime = 0;
+    nextEntity.moveDuration = 0;
+  }
+
+  if (!Number.isInteger(nextEntity.walkFrame)) {
+    nextEntity.walkFrame = 1;
+  }
+
+  return nextEntity;
+};
+
+const synchronizeEntityMap = (targetMap, replicatedEntities, options = {}) => {
+  const entityType = options.entityType;
+  const playerState = options.playerState;
+  const serverTime = options.serverTime;
+  const sequence = options.sequence;
   const visibleUids = new Set();
 
   for (const replicatedEntity of replicatedEntities) {
     visibleUids.add(replicatedEntity.uid);
 
+    const interpolationEnabled = shouldUseRemoteInterpolation(entityType, replicatedEntity, playerState, serverTime);
+
     const currentEntity = targetMap.get(replicatedEntity.uid) ?? null;
 
     if (currentEntity) {
-      copyFieldsInto(currentEntity, replicatedEntity);
+      if (interpolationEnabled) {
+        remoteEntityInterpolationStore.pushSnapshot(entityType, replicatedEntity, { serverTime, sequence });
+        copyFieldsInto(currentEntity, replicatedEntity, { ignoredFields: REMOTE_INTERPOLATION_IGNORED_FIELDS });
+        currentEntity.moveStartTime = 0;
+        currentEntity.moveDuration = 0;
+      } else {
+        remoteEntityInterpolationStore.removeEntity(entityType, replicatedEntity.uid);
+        copyFieldsInto(currentEntity, replicatedEntity);
+      }
     } else {
-      const nextEntity = structuredClone(replicatedEntity);
-      nextEntity.renderX = nextEntity.x;
-      nextEntity.renderY = nextEntity.y;
-      nextEntity.walkFrame = 1;
+      const nextEntity = initializeReplicatedEntity(replicatedEntity, interpolationEnabled);
+
+      if (interpolationEnabled) {
+        remoteEntityInterpolationStore.pushSnapshot(entityType, replicatedEntity, {
+          serverTime,
+          sequence,
+        });
+      }
+
       targetMap.set(replicatedEntity.uid, nextEntity);
     }
   }
@@ -133,9 +228,51 @@ const synchronizeEntityMap = (targetMap, replicatedEntities) => {
   for (const entityUid of targetMap.keys()) {
     if (!visibleUids.has(entityUid)) {
       targetMap.delete(entityUid);
+      remoteEntityInterpolationStore.removeEntity(entityType, entityUid);
     }
   }
+
+  remoteEntityInterpolationStore.retainVisibleEntities(entityType, visibleUids);
 };
+
+const shouldSnapLocalPlayerCorrection = (playerState, previousX, previousY, previousZ) => {
+  if (playerState.z !== previousZ) {
+    return true;
+  }
+
+  const correctionDistance = Math.hypot(playerState.x - previousX, playerState.y - previousY);
+
+  return correctionDistance > LOCAL_PLAYER_MAX_SMOOTH_CORRECTION_DISTANCE;
+};
+
+const applyLocalPlayerServerCorrectionTiming = ({
+  playerState,
+  previousX,
+  previousY,
+  previousZ,
+  previousRenderX,
+  previousRenderY,
+}) => {
+  if (previousX === playerState.x && previousY === playerState.y && previousZ === playerState.z) {
+    return;
+  }
+
+  if (shouldSnapLocalPlayerCorrection(playerState, previousX, previousY, previousZ)) {
+    playerState.oldX = playerState.x;
+    playerState.oldY = playerState.y;
+    playerState.renderX = playerState.x;
+    playerState.renderY = playerState.y;
+    playerState.moveStartTime = 0;
+    playerState.moveDuration = 0;
+    return;
+  }
+
+  playerState.oldX = Number.isFinite(previousRenderX) ? previousRenderX : previousX;
+  playerState.oldY = Number.isFinite(previousRenderY) ? previousRenderY : previousY;
+  playerState.moveStartTime = Date.now();
+  playerState.moveDuration = LOCAL_PLAYER_CORRECTION_DURATION_MS;
+};
+
 export const createRemoteGameStateBridge = ({
   transport,
   playerState,
@@ -156,28 +293,58 @@ export const createRemoteGameStateBridge = ({
 
   const applyReplicatedState = (event) => {
     const nextSelf = event.predictedSelf ?? replicationStore.getSelf();
+    const isPredictedSelf = event.predictedSelf !== undefined && event.predictedSelf !== null;
 
     const previousX = playerState.x;
     const previousY = playerState.y;
+    const previousZ = playerState.z;
+    const previousRenderX = Number.isFinite(playerState.renderX) ? playerState.renderX : previousX;
+    const previousRenderY = Number.isFinite(playerState.renderY) ? playerState.renderY : previousY;
 
-    copyFieldsInto(playerState, nextSelf);
+    copyFieldsInto(playerState, nextSelf, {
+      ignoredFields: isPredictedSelf ? null : LOCAL_PLAYER_SERVER_IGNORED_FIELDS,
+    });
 
-    if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
-      playerState.oldX = previousX;
-      playerState.oldY = previousY;
+    if (isPredictedSelf) {
+      if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
+        playerState.oldX = previousX;
+        playerState.oldY = previousY;
 
-      if (!Number.isFinite(playerState.moveStartTime) || !Number.isFinite(playerState.moveDuration)) {
-        playerState.moveStartTime = Date.now();
-        playerState.moveDuration = 100;
+        if (!Number.isFinite(playerState.moveStartTime) || !Number.isFinite(playerState.moveDuration)) {
+          playerState.moveStartTime = Date.now();
+          playerState.moveDuration = 100;
+        }
       }
+    } else {
+      applyLocalPlayerServerCorrectionTiming({
+        playerState,
+        previousX,
+        previousY,
+        previousZ,
+        previousRenderX,
+        previousRenderY,
+      });
     }
 
     if (!Number.isFinite(playerState.renderX) || !Number.isFinite(playerState.renderY)) {
       playerState.renderX = playerState.x;
       playerState.renderY = playerState.y;
     }
+
+    const serverTime = getEventServerTime(event);
+    const receivedAt = Date.now();
+
+    remoteEntityInterpolationStore.recordServerTime(serverTime, receivedAt);
+
+    const revision = replicationStore.getRevision();
+
     for (const entityType of REPLICATED_ENTITY_TYPES) {
-      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType));
+      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType), {
+        entityType,
+        playerState,
+        serverTime,
+        sequence: revision,
+      });
     }
     onStateApplied?.({
       revision: replicationStore.getRevision(),
@@ -195,6 +362,10 @@ export const createRemoteGameStateBridge = ({
       return;
     }
     if (event.type === "connection-state") {
+      if (event.state === "disconnected" || event.status === "disconnected") {
+        remoteEntityInterpolationStore.clear();
+      }
+
       onConnectionStateChanged?.(event);
     }
   });

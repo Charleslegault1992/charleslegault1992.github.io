@@ -22,10 +22,23 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
   const systemsByZ = new Map();
   let activePlayersByZ = new Map();
   let occupiedPlayerTileKeysByZ = new Map();
+  let reservedMonsterTileKeysByZ = new Map();
 
   const getSurfaceHeight = (x, y, z) =>
     worldItems.getAllAt(x, y, z).reduce((height, item) => height + getItemSurfaceHeight(item), 0);
 
+  const getTileKey = (col, row) => `${col}:${row}`;
+
+  const getTileKeyFromWorldPosition = (x, y) => {
+    const col = x / TILE_SIZE;
+    const row = y / TILE_SIZE;
+
+    if (!Number.isInteger(col) || !Number.isInteger(row)) {
+      return null;
+    }
+
+    return getTileKey(col, row);
+  };
   for (const [z, worldMap] of worldMapsByZ.entries()) {
     const isTilePathTraversable = (row, col, fromTile = null) => {
       if (
@@ -53,8 +66,13 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
     const isTileOccupiedByCreature = (row, col) => {
       const x = col * TILE_SIZE;
       const y = row * TILE_SIZE;
+      const tileKey = getTileKey(col, row);
+
       return Boolean(
-        monsters.getAt(x, y, z) || npcs.getAt(x, y, z) || occupiedPlayerTileKeysByZ.get(z)?.has(`${col}:${row}`),
+        monsters.getAt(x, y, z) ||
+        npcs.getAt(x, y, z) ||
+        occupiedPlayerTileKeysByZ.get(z)?.has(tileKey) ||
+        reservedMonsterTileKeysByZ.get(z)?.has(tileKey),
       );
     };
     const pathfinder = createPathfinder({ isTilePathTraversable, isTileOccupiedByCreature });
@@ -76,12 +94,48 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
       moveMonsterInTileIndex: (monster, x, y) => {
         const previousX = monster.x;
         const previousY = monster.y;
+        const previousTile = getTilePosition(monster);
+        const destinationTile = getTilePosition({ x, y, z: monster.z });
+        const destinationKey = getTileKeyFromWorldPosition(x, y);
+
+        if (!destinationKey || !previousTile || !destinationTile) {
+          return false;
+        }
+
+        if (previousX === x && previousY === y) {
+          return false;
+        }
+
+        if (!isTilePathTraversable(destinationTile.row, destinationTile.col, previousTile)) {
+          return false;
+        }
+
+        if (isTileOccupiedByCreature(destinationTile.row, destinationTile.col)) {
+          return false;
+        }
+
+        let reservedTileKeys = reservedMonsterTileKeysByZ.get(monster.z);
+
+        if (!reservedTileKeys) {
+          reservedTileKeys = new Set();
+          reservedMonsterTileKeysByZ.set(monster.z, reservedTileKeys);
+        }
+
+        reservedTileKeys.add(destinationKey);
+
         const moved = monsters.updatePosition(monster.uid, x, y, monster.z);
+
+        if (!moved) {
+          reservedTileKeys.delete(destinationKey);
+          return false;
+        }
+
         // Restore old position so updateMonsterDirection can compute the correct delta;
         // the AI system sets monster.x/y to the new position right after.
         monster.x = previousX;
         monster.y = previousY;
-        return moved;
+
+        return true;
       },
       syncMonsterRenderVisibility: () => {},
       updateMonsterDirection: (monster, tile) => {
@@ -107,6 +161,7 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
     const nextActivePlayersByZ = new Map();
     const nextOccupiedPlayerTileKeysByZ = new Map();
     const activeMonsterChunkKeysByZ = new Map();
+    reservedMonsterTileKeysByZ = new Map();
 
     for (const player of playersByUid.values()) {
       let players = nextActivePlayersByZ.get(player.z);

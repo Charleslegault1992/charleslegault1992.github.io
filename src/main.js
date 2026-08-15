@@ -411,7 +411,10 @@ import {
   mobileStanceIcon,
   mobileStanceLabel,
 } from "./ui/domRefs.js";
-
+import {
+  REMOTE_INTERPOLATED_ENTITY_TYPES,
+  remoteEntityInterpolationStore,
+} from "./network/remoteEntityInterpolationStore.js";
 /* ==================================================== */
 //#region     -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 /* ==================================================== */
@@ -454,6 +457,8 @@ const CHARACTER_AUTOSAVE_INTERVAL_MS = 30000;
 const ACCOUNT_TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const REMOTE_GAME_SERVER_URL = import.meta.env.VITE_GAME_SERVER_URL?.trim() ?? "";
 const REMOTE_GAME_AUTH_TOKEN = import.meta.env.VITE_GAME_AUTH_TOKEN?.trim() ?? "";
+const ENABLE_REMOTE_INTERPOLATION_DEBUG = import.meta.env.VITE_REMOTE_INTERPOLATION_DEBUG === "true";
+remoteEntityInterpolationStore.setDebugEnabled(ENABLE_REMOTE_INTERPOLATION_DEBUG);
 const configuredGameApiUrl = import.meta.env.VITE_GAME_API_URL?.trim() ?? "";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? "";
 const REMOTE_GAME_API_URL =
@@ -5025,6 +5030,22 @@ const updateMovement = (now) => {
   const nextX = playerState.x + movement.deltaCol * MOVE_SPEED;
   const nextY = playerState.y + movement.deltaRow * MOVE_SPEED;
 
+  if (!canMoveTo(playerState.x, playerState.y, nextX, nextY)) {
+    if (isNavigationMovement) {
+      handleBlockedPlayerNavigationStep(now);
+    }
+
+    playerState.oldX = playerState.x;
+    playerState.oldY = playerState.y;
+    playerState.renderX = playerState.x;
+    playerState.renderY = playerState.y;
+    playerState.moveStartTime = 0;
+    playerState.moveDuration = 0;
+    updatePlayerSprite();
+
+    return;
+  }
+
   const moveAction = createMovePlayerAction({
     fromX: playerState.x,
     fromY: playerState.y,
@@ -6113,7 +6134,7 @@ const renderNpc = (npc) => {
     return;
   }
 
-  if (updateEntityRenderPosition(npc, Date.now())) {
+  if (updateEntityRenderPosition(npc, Date.now(), "npcs")) {
     npc.walkFrame = 1;
   }
 
@@ -6492,9 +6513,7 @@ const renderMonsters = (monstersList) => {
     if (!isMonsterInsideVisibleChunkRange(monster) || monsterElementsByUid.has(monster.uid)) {
       continue;
     }
-    if (updateEntityRenderPosition(monster, Date.now())) {
-      monster.walkFrame = 1;
-    }
+   
     const div = document.createElement("div");
     const monsterData = getMonsterData(monster.monsterId);
     div.classList.add("monster");
@@ -6956,10 +6975,117 @@ const renderInitialWorld = () => {
 
 /* ---------- RENDER - INTERPOLATION VISUELLE ---------- */
 
-const updateEntityRenderPosition = (entity, now) => {
+const isValidRemoteRenderState = (renderState) => {
+  return (
+    renderState &&
+    Number.isFinite(renderState.renderX) &&
+    Number.isFinite(renderState.renderY) &&
+    Number.isInteger(renderState.z)
+  );
+};
+
+const snapEntityRenderToLogicalPosition = (entity) => {
+  if (!entity || !Number.isFinite(entity.x) || !Number.isFinite(entity.y)) {
+    return false;
+  }
+
+  entity.renderX = entity.x;
+  entity.renderY = entity.y;
+  entity.oldX = entity.x;
+  entity.oldY = entity.y;
+  entity.moveStartTime = 0;
+  entity.moveDuration = 0;
+
+  return true;
+};
+
+const isValidRemoteEntityUid = (uid) => Number.isInteger(uid) || (typeof uid === "string" && uid !== "");
+
+const getRemoteEntityAnimationFrameCount = (entity, entityType) => {
+  if (entityType === "monsters") {
+    const monsterData = getMonsterData(entity?.monsterId);
+
+    if (Number.isInteger(monsterData?.animationFrames) && monsterData.animationFrames > 0) {
+      return monsterData.animationFrames;
+    }
+
+    return 1;
+  }
+
+  if (entityType === "players" || entityType === "npcs") {
+    return PLAYER_ANIMATION_FRAMES;
+  }
+
+  return 1;
+};
+
+const updateRemoteNetworkWalkFrame = (entity, entityType) => {
+  if (!entity || !Number.isFinite(entity.networkMoveProgress)) {
+    return false;
+  }
+
+  const frameCount = getRemoteEntityAnimationFrameCount(entity, entityType);
+
+  if (!Number.isInteger(frameCount) || frameCount <= 1) {
+    if (entity.walkFrame !== 0) {
+      entity.walkFrame = 0;
+      return true;
+    }
+
+    return false;
+  }
+
+  const progress = clamp(entity.networkMoveProgress, 0, 0.999);
+  const nextWalkFrame = Math.min(frameCount - 1, Math.floor(progress * frameCount));
+
+  if (entity.walkFrame === nextWalkFrame) {
+    return false;
+  }
+
+  entity.walkFrame = nextWalkFrame;
+  return true;
+};
+
+const applyRemoteInterpolatedRenderState = (entity, entityType, now) => {
+  if (
+    !gameRuntimeState.isRemoteSession ||
+    !REMOTE_INTERPOLATED_ENTITY_TYPES.has(entityType) ||
+    !isValidRemoteEntityUid(entity?.uid)
+  ) {
+    return false;
+  }
+
+  const wasApplied = remoteEntityInterpolationStore.applyRenderState(entityType, entity, now);
+
+  if (!wasApplied) {
+    return false;
+  }
+
+  if (!Number.isFinite(entity.renderX) || !Number.isFinite(entity.renderY) || !Number.isInteger(entity.z)) {
+    snapEntityRenderToLogicalPosition(entity);
+    return true;
+  }
+
+  const didChangeWalkFrame = updateRemoteNetworkWalkFrame(entity, entityType);
+
+  if (didChangeWalkFrame) {
+    if (entityType === "monsters") {
+      updateMonsterSprite(entity);
+    } else if (entityType === "npcs") {
+      updateNpcSprite(entity);
+    }
+  }
+
+  return true;
+};
+
+const updateEntityRenderPosition = (entity, now, entityType = null) => {
+  if (entityType && applyRemoteInterpolatedRenderState(entity, entityType, now)) {
+    return false;
+  }
+
   if (entity.moveDuration <= 0) {
-    entity.renderX = entity.x;
-    entity.renderY = entity.y;
+    snapEntityRenderToLogicalPosition(entity);
     return false;
   } else {
     const rawProgress = (now - entity.moveStartTime) / entity.moveDuration;
@@ -6968,11 +7094,13 @@ const updateEntityRenderPosition = (entity, now) => {
     const distanceY = entity.y - entity.oldY;
     entity.renderX = entity.oldX + distanceX * progress;
     entity.renderY = entity.oldY + distanceY * progress;
+
     if (progress >= 1) {
       entity.moveDuration = 0;
       return true;
     }
   }
+
   return false;
 };
 
@@ -6982,7 +7110,8 @@ const updateRenderPositions = (now) => {
   for (const monsterUid of monsterElementsByUid.keys()) {
     const monster = monstersByUid.get(monsterUid);
     if (monster) {
-      const didFinishMoving = updateEntityRenderPosition(monster, now);
+      const didFinishMoving = updateEntityRenderPosition(monster, now, "monsters");
+
       if (didFinishMoving && monster.walkFrame !== 1) {
         monster.walkFrame = 1;
         updateMonsterSprite(monster);
@@ -6993,7 +7122,8 @@ const updateRenderPositions = (now) => {
   for (const npcUid of npcElementsByUid.keys()) {
     const npc = npcsByUid.get(npcUid);
     if (npc) {
-      const didFinishMoving = updateEntityRenderPosition(npc, now);
+      const didFinishMoving = updateEntityRenderPosition(npc, now, "npcs");
+
       if (didFinishMoving && npc.walkFrame !== 1) {
         npc.walkFrame = 1;
         updateNpcSprite(npc);
@@ -7002,7 +7132,8 @@ const updateRenderPositions = (now) => {
   }
 
   for (const remotePlayer of playersByUid.values()) {
-    const didFinishMoving = updateEntityRenderPosition(remotePlayer, now);
+    const didFinishMoving = updateEntityRenderPosition(remotePlayer, now, "players");
+
     if (didFinishMoving) {
       remotePlayer.walkFrame = 1;
     } else if (remotePlayer.moveDuration > 0) {
@@ -7775,6 +7906,11 @@ gameSystemsOrchestrator = createGameSystemsOrchestrator({
   ],
   renderSystems: [
     ({ now }) => updateRenderPositions(now),
+    ({ now }) => {
+      if (ENABLE_REMOTE_INTERPOLATION_DEBUG) {
+        remoteEntityInterpolationStore.logDebugState(now);
+      }
+    },
     () => updateWorldRender(),
     ({ now }) => updateItemCooldownOverlays(now),
   ],
