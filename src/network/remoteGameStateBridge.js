@@ -2,6 +2,7 @@ import { getItemData } from "../items/itemModel.js";
 import { activeLitTorchesByUid } from "../state/worldState.js";
 
 const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects"]);
+const VISUAL_ONLY_ENTITY_FIELDS = new Set(["renderX", "renderY"]);
 
 const isItemState = (value) => Number.isInteger(value?.uid) && typeof value?.itemId === "string";
 
@@ -96,10 +97,15 @@ const copyFieldsInto = (target, source) => {
     return true;
   }
   for (const [key, value] of Object.entries(source)) {
+    if (VISUAL_ONLY_ENTITY_FIELDS.has(key) && "renderX" in target && "renderY" in target) {
+      continue;
+    }
+
     if (key === "equipment" && target.equipment && value && typeof value === "object") {
       synchronizeEquipmentState(target.equipment, value);
       continue;
     }
+
     target[key] = structuredClone(value);
   }
   return true;
