@@ -105,8 +105,7 @@ const copyFieldsInto = (target, source) => {
   return true;
 };
 
-const synchronizeEntityMap = (targetMap, replicatedEntities, options = {}) => {
-  const useClientMovementTiming = options.useClientMovementTiming === true;
+const synchronizeEntityMap = (targetMap, replicatedEntities) => {
   const visibleUids = new Set();
 
   for (const replicatedEntity of replicatedEntities) {
@@ -115,26 +114,7 @@ const synchronizeEntityMap = (targetMap, replicatedEntities, options = {}) => {
     const currentEntity = targetMap.get(replicatedEntity.uid) ?? null;
 
     if (currentEntity) {
-      const previousX = currentEntity.x;
-      const previousY = currentEntity.y;
-      const previousRenderX = Number.isFinite(currentEntity.renderX) ? currentEntity.renderX : previousX;
-      const previousRenderY = Number.isFinite(currentEntity.renderY) ? currentEntity.renderY : previousY;
-
       copyFieldsInto(currentEntity, replicatedEntity);
-
-      if (useClientMovementTiming && (previousX !== currentEntity.x || previousY !== currentEntity.y)) {
-        const moveDuration =
-          Number.isFinite(replicatedEntity.moveDuration) && replicatedEntity.moveDuration > 0
-            ? replicatedEntity.moveDuration
-            : 120;
-
-        currentEntity.oldX = previousRenderX;
-        currentEntity.oldY = previousRenderY;
-        currentEntity.renderX = previousRenderX;
-        currentEntity.renderY = previousRenderY;
-        currentEntity.moveStartTime = Date.now();
-        currentEntity.moveDuration = moveDuration;
-      }
     } else {
       const nextEntity = structuredClone(replicatedEntity);
       nextEntity.renderX = nextEntity.x;
@@ -150,7 +130,6 @@ const synchronizeEntityMap = (targetMap, replicatedEntities, options = {}) => {
     }
   }
 };
-
 export const createRemoteGameStateBridge = ({
   transport,
   playerState,
@@ -192,9 +171,7 @@ export const createRemoteGameStateBridge = ({
       playerState.renderY = playerState.y;
     }
     for (const entityType of REPLICATED_ENTITY_TYPES) {
-      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType), {
-        useClientMovementTiming: entityType === "players" || entityType === "monsters" || entityType === "npcs",
-      });
+      synchronizeEntityMap(entityMaps[entityType], replicationStore.getEntities(entityType));
     }
     onStateApplied?.({
       revision: replicationStore.getRevision(),
