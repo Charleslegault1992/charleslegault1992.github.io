@@ -174,28 +174,20 @@ export const createRemoteGameStateBridge = ({
 
     const previousX = playerState.x;
     const previousY = playerState.y;
-    const previousRenderX = Number.isFinite(playerState.renderX) ? playerState.renderX : previousX;
-    const previousRenderY = Number.isFinite(playerState.renderY) ? playerState.renderY : previousY;
 
     copyFieldsInto(playerState, nextSelf);
 
     if (event.type !== "server.snapshot" && (previousX !== playerState.x || previousY !== playerState.y)) {
-      const moveDuration =
-        Number.isFinite(playerState.moveDuration) && playerState.moveDuration > 0 ? playerState.moveDuration : 120;
+      playerState.oldX = previousX;
+      playerState.oldY = previousY;
 
-      playerState.oldX = previousRenderX;
-      playerState.oldY = previousRenderY;
-      playerState.renderX = previousRenderX;
-      playerState.renderY = previousRenderY;
-      playerState.moveStartTime = Date.now();
-      playerState.moveDuration = moveDuration;
+      if (!Number.isFinite(playerState.moveStartTime) || !Number.isFinite(playerState.moveDuration)) {
+        playerState.moveStartTime = Date.now();
+        playerState.moveDuration = 100;
+      }
     }
 
-    if (
-      event.type === "server.snapshot" ||
-      !Number.isFinite(playerState.renderX) ||
-      !Number.isFinite(playerState.renderY)
-    ) {
+    if (!Number.isFinite(playerState.renderX) || !Number.isFinite(playerState.renderY)) {
       playerState.renderX = playerState.x;
       playerState.renderY = playerState.y;
     }
