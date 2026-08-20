@@ -14,7 +14,7 @@ export const createServerWorldEntities = (
   }
   const monsters = createSpatialEntityStore();
   const npcs = createSpatialEntityStore();
-  const worldItems = createSpatialEntityStore();
+  const worldItems = createSpatialEntityStore({ stackOrderField: "tileStackOrder" });
   const groundEffects = createSpatialEntityStore();
   const decayingItems = [];
   const spawnDefinitionsById = new Map();

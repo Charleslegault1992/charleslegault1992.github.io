@@ -20,6 +20,7 @@ export const INVENTORY_ACTION_REASON = Object.freeze({
   invalidDestination: "invalid-destination",
   itemChanged: "item-changed",
   moveRejected: "move-rejected",
+  notTopOfStack: "not-top-of-stack",
 });
 
 export const createMoveItemAction = (source, destination, itemUid) => {

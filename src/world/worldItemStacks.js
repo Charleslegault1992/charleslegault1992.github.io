@@ -66,6 +66,16 @@ export const rebuildWorldTileStacks = () => {
   for (const item of worldItemsByUid.values()) {
     addItemUidToWorldTileStack(item);
   }
+  for (const tileStack of worldTileStacksByKey.values()) {
+    tileStack.itemUids.sort((firstUid, secondUid) => {
+      const firstOrder = worldItemsByUid.get(firstUid)?.tileStackOrder;
+      const secondOrder = worldItemsByUid.get(secondUid)?.tileStackOrder;
+      if (!Number.isSafeInteger(firstOrder) || !Number.isSafeInteger(secondOrder)) {
+        return 0;
+      }
+      return firstOrder - secondOrder;
+    });
+  }
 };
 
 export const removeItemUidFromWorldTileStack = (item) => {

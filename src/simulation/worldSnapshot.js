@@ -36,7 +36,13 @@ export const serializeWorldItem = (item) => {
   if (!serializedItem || !Number.isInteger(item.x) || !Number.isInteger(item.y) || !Number.isInteger(item.z)) {
     return null;
   }
-  return { ...serializedItem, x: item.x, y: item.y, z: item.z };
+  return {
+    ...serializedItem,
+    x: item.x,
+    y: item.y,
+    z: item.z,
+    tileStackOrder: Number.isSafeInteger(item.tileStackOrder) ? item.tileStackOrder : 0,
+  };
 };
 
 export const serializePlayerPublicState = (player) => {

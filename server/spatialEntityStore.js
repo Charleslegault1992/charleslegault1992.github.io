@@ -5,9 +5,13 @@ const getEntityChunkKey = (entity) => {
   return chunk && Number.isInteger(entity?.z) ? `${entity.z}:${chunk.chunkX}:${chunk.chunkY}` : null;
 };
 
-export const createSpatialEntityStore = () => {
+export const createSpatialEntityStore = ({ stackOrderField = null } = {}) => {
+  if (stackOrderField !== null && (typeof stackOrderField !== "string" || stackOrderField === "")) {
+    throw new TypeError("A spatial entity stack order field must be a non-empty string.");
+  }
   const entitiesByUid = new Map();
   const entityUidsByChunkKey = new Map();
+  let nextStackOrder = 1;
 
   const addToChunk = (entity, chunkKey) => {
     let uids = entityUidsByChunkKey.get(chunkKey);
@@ -34,6 +38,9 @@ export const createSpatialEntityStore = () => {
       const chunkKey = getEntityChunkKey(entity);
       if ((typeof entity?.uid !== "string" && !Number.isInteger(entity?.uid)) || !chunkKey || entitiesByUid.has(entity.uid)) {
         return false;
+      }
+      if (stackOrderField !== null) {
+        entity[stackOrderField] = nextStackOrder++;
       }
       entitiesByUid.set(entity.uid, entity);
       addToChunk(entity, chunkKey);

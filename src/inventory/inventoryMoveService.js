@@ -7,6 +7,7 @@ export const INVENTORY_MOVE_REASON = Object.freeze({
   invalidSource: "invalid-source",
   itemChanged: "item-changed",
   moveRejected: "move-rejected",
+  notTopOfStack: "not-top-of-stack",
 });
 
 const createFailure = (reason) => ({ success: false, reason });
@@ -302,8 +303,15 @@ export const createInventoryMoveService = ({
     if (!sourceItem || sourceItem.uid !== itemUid) {
       return createFailure(INVENTORY_MOVE_REASON.itemChanged);
     }
-    if (source.locationType === "worldItem" && canInteractWithWorldItem?.(source, sourceItem) !== true) {
-      return createFailure(INVENTORY_MOVE_REASON.invalidSource);
+    if (source.locationType === "worldItem") {
+      const interactionResult = canInteractWithWorldItem?.(source, sourceItem);
+      if (interactionResult !== true) {
+        return createFailure(
+          interactionResult === INVENTORY_MOVE_REASON.notTopOfStack
+            ? INVENTORY_MOVE_REASON.notTopOfStack
+            : INVENTORY_MOVE_REASON.invalidSource,
+        );
+      }
     }
     if (canAccessLocation && canAccessLocation(source, sourceItem) !== true) {
       return createFailure(INVENTORY_MOVE_REASON.invalidSource);

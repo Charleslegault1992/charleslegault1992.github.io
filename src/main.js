@@ -2450,6 +2450,8 @@ const executeInventoryMoveRequest = ({ source, destination, itemUid }) => {
   }
   if (result.reason === INVENTORY_ACTION_REASON.capacityExceeded) {
     showGameStatusMessage(getGameUiText("notEnoughCapacity"));
+  } else if (result.reason === INVENTORY_ACTION_REASON.notTopOfStack) {
+    showGameStatusMessage(getGameUiText("itemNotTopOfStack"));
   } else if (
     result.reason === INVENTORY_ACTION_REASON.invalidDestination ||
     result.reason === INVENTORY_ACTION_REASON.moveRejected
@@ -2481,11 +2483,11 @@ const completeItemDrag = (destination) => {
     cancelItemDrag();
     handleGameActionResult(result, (resolvedResult) => {
       if (!resolvedResult?.success) {
-        showGameStatusMessage(
-          resolvedResult?.reason === INVENTORY_ACTION_REASON.capacityExceeded
-            ? getGameUiText("notEnoughCapacity")
-            : getGameUiText("cannotPlaceItem"),
-        );
+        const messageKeyByReason = {
+          [INVENTORY_ACTION_REASON.capacityExceeded]: "notEnoughCapacity",
+          [INVENTORY_ACTION_REASON.notTopOfStack]: "itemNotTopOfStack",
+        };
+        showGameStatusMessage(getGameUiText(messageKeyByReason[resolvedResult?.reason] ?? "cannotPlaceItem"));
         return;
       }
 
@@ -8172,7 +8174,12 @@ inventoryMoveService = createInventoryMoveService({
   getRemainingCapacity: () => getPlayerRemainingCapacity(playerState),
   getItemTotalWeight,
   canEquipItem: canPlaceItemInEquipmentSlot,
-  canInteractWithWorldItem: (_source, item) => isWorldItemAvailableForInteraction(item) && isNearPlayer(item, 1),
+  canInteractWithWorldItem: (_source, item) => {
+    if (!isNearPlayer(item, 1)) {
+      return false;
+    }
+    return isWorldItemAvailableForInteraction(item) ? true : INVENTORY_ACTION_REASON.notTopOfStack;
+  },
   canPlaceWorldItem: (_source, _item, destination) =>
     isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) && hasPlayerLineOfSightToWorldPosition(destination),
   onItemLocationChanged: (item, destination) => {

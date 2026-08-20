@@ -215,7 +215,12 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     },
     getItemTotalWeight,
     canEquipItem: (item, slotName) => canPlayerEquipItemInSlot(player, item, slotName),
-    canInteractWithWorldItem: (_source, item) => isNear(player, item, 1) && isTopWorldItem(item),
+    canInteractWithWorldItem: (_source, item) => {
+      if (!isNear(player, item, 1)) {
+        return false;
+      }
+      return isTopWorldItem(item) ? true : "not-top-of-stack";
+    },
     canAccessLocation,
     canPlaceWorldItem,
   });

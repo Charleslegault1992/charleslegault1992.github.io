@@ -466,6 +466,56 @@ test("the authoritative server owns world-to-inventory item moves", async () => 
   assert.equal(result.changes.equipment.backpack.content[0].uid, apple.uid);
 });
 
+test("moving an older world item onto another item makes it the authoritative stack top", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "stack", characterId: "ordering" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const worldMap = worldMapsByZ.get(player.z);
+  const destination = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]
+    .map(([colOffset, rowOffset]) => ({
+      x: player.x + colOffset * TILE_SIZE,
+      y: player.y + rowOffset * TILE_SIZE,
+      z: player.z,
+    }))
+    .find(({ x, y }) => {
+      const col = x / TILE_SIZE;
+      const row = y / TILE_SIZE;
+      return getWorldChunkForTilePosition(worldMap, col, row) && !isTiledCollisionAtTile(worldMap, col, row);
+    });
+  assert.ok(destination);
+
+  const movedItem = createGroundItem("apple", 1, player.x, player.y, player.z);
+  const destinationItem = createGroundItem("cheese", 1, destination.x, destination.y, destination.z);
+  const worldItems = runtime.getWorldEntities().worldItems;
+  assert.equal(worldItems.add(movedItem), true);
+  assert.equal(worldItems.add(destinationItem), true);
+  const snapshot = runtime.createSnapshotForClient(session);
+
+  const result = runtime.dispatchAction(
+    session,
+    createMoveItemAction(
+      { locationType: "worldItem", itemUid: movedItem.uid },
+      { locationType: "worldTile", ...destination },
+      movedItem.uid,
+    ),
+  );
+  const delta = runtime.getDeltasForClient(session, snapshot.revision).at(-1);
+  const replicatedMovedItem = delta.upserts.worldItems.find((item) => item.uid === movedItem.uid);
+
+  assert.equal(result.success, true);
+  assert.equal(worldItems.getAllAt(destination.x, destination.y, destination.z).at(-1)?.uid, movedItem.uid);
+  assert.ok(movedItem.tileStackOrder > destinationItem.tileStackOrder);
+  assert.equal(replicatedMovedItem.tileStackOrder, movedItem.tileStackOrder);
+});
+
 test("split corpse stacks remain authoritative, movable and immediately usable", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;
