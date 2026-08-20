@@ -8555,16 +8555,78 @@ const setGameTransport = (nextTransport, subscribeToActionResults) => {
   unsubscribeGameTransportEffects = subscribeToActionResults ? gameTransport.subscribe(gameActionEffectRouter) : null;
 };
 
+const remoteSelfUiSignatures = {
+  inventory: null,
+  vitals: null,
+  experience: null,
+};
+
+const hasReplicatedEntityChanges = (event, entityType) => {
+  return (
+    (Array.isArray(event?.payload?.upserts?.[entityType]) && event.payload.upserts[entityType].length > 0) ||
+    (Array.isArray(event?.payload?.removals?.[entityType]) && event.payload.removals[entityType].length > 0)
+  );
+};
+
+const synchronizeRemoteSelfUi = (forceRefresh = false) => {
+  const inventorySignature = JSON.stringify({
+    equipment: playerState.equipment,
+    carriedWeight: playerState.carriedWeight,
+    capacity: playerState.capacity,
+    combatMode: playerState.combatMode,
+  });
+  const vitalsSignature = `${playerState.hp}:${playerState.maxHp}:${playerState.mana}:${playerState.maxMana}:${playerState.sanity}:${playerState.maxSanity}`;
+  const experienceSignature = JSON.stringify({
+    level: playerState.level,
+    experience: playerState.experience,
+    classId: playerState.classId,
+    skills: playerState.skills,
+  });
+
+  if (forceRefresh || inventorySignature !== remoteSelfUiSignatures.inventory) {
+    remoteSelfUiSignatures.inventory = inventorySignature;
+    refreshInventoryUi();
+  }
+  if (forceRefresh || vitalsSignature !== remoteSelfUiSignatures.vitals) {
+    remoteSelfUiSignatures.vitals = vitalsSignature;
+    refreshPlayerVitalsUi();
+  }
+  if (forceRefresh || experienceSignature !== remoteSelfUiSignatures.experience) {
+    remoteSelfUiSignatures.experience = experienceSignature;
+    updatePlayerExperience();
+  }
+};
+
 const synchronizeRemoteWorldRender = (event) => {
-  rebuildWorldTileStacks();
-  rebuildMonsterSpatialIndexes();
-  rebuildNpcSpatialIndexes();
+  if (event?.type === "prediction-updated") {
+    return;
+  }
+
+  const isSnapshot = event?.type === "server.snapshot";
+  const didSelfChange = isSnapshot || Boolean(event?.payload?.upserts?.self);
+  const didWorldItemsChange = isSnapshot || hasReplicatedEntityChanges(event, "worldItems");
+  const didGroundEffectsChange = isSnapshot || hasReplicatedEntityChanges(event, "groundEffects");
+  const didMonstersChange = isSnapshot || hasReplicatedEntityChanges(event, "monsters");
+  const didNpcsChange = isSnapshot || hasReplicatedEntityChanges(event, "npcs");
+  const didRemotePlayersChange = isSnapshot || hasReplicatedEntityChanges(event, "players");
   const previousZ = pixiWorldRenderState.currentZ;
   pixiWorldRenderState.currentZ = playerState.z;
   if (!gameRuntimeState.isStarted) {
     return;
   }
-  if (previousZ !== playerState.z) {
+  const didChangeFloor = previousZ !== playerState.z;
+
+  if (didWorldItemsChange || didChangeFloor) {
+    rebuildWorldTileStacks();
+  }
+  if (didMonstersChange || didChangeFloor) {
+    rebuildMonsterSpatialIndexes();
+  }
+  if (didNpcsChange || didChangeFloor) {
+    rebuildNpcSpatialIndexes();
+  }
+
+  if (didChangeFloor) {
     clearGroundItemRender();
     clearMonsters();
     for (const npcUid of [...npcElementsByUid.keys()]) {
@@ -8574,23 +8636,32 @@ const synchronizeRemoteWorldRender = (event) => {
     remotePlayerRenderUids.clear();
     updatePixiVisibleChunksAroundPlayer();
   }
-  for (const itemUid of [...worldItemElementsByUid.keys()]) {
-    const item = worldItemsByUid.get(itemUid);
-    if (!item || item.z !== playerState.z) {
-      removeGroundItemRender(itemUid);
+
+  if (didWorldItemsChange || didChangeFloor) {
+    for (const itemUid of [...worldItemElementsByUid.keys()]) {
+      const item = worldItemsByUid.get(itemUid);
+      if (!item || item.z !== playerState.z) {
+        removeGroundItemRender(itemUid);
+      }
     }
+    renderGroundItems([...worldItemsByUid.values()].filter((item) => item.z === playerState.z));
   }
-  renderGroundItems([...worldItemsByUid.values()].filter((item) => item.z === playerState.z));
-  syncGroundEffectRenderForCurrentZ();
-  syncVisibleMonsterRendersAroundPlayer();
-  syncVisibleNpcRendersAroundPlayer();
-  syncVisibleRemotePlayerRenders();
-  if (event.type === "server.snapshot" || event.payload?.upserts?.self) {
-    refreshInventoryUi();
-    refreshPlayerVitalsUi();
-    updatePlayerExperience();
+  if (didGroundEffectsChange || didChangeFloor) {
+    syncGroundEffectRenderForCurrentZ();
   }
-  const didWorldItemsChange = event.payload?.upserts?.worldItems || event.payload?.removals?.worldItems;
+  if (didMonstersChange || didChangeFloor) {
+    syncVisibleMonsterRendersAroundPlayer();
+  }
+  if (didNpcsChange || didChangeFloor) {
+    syncVisibleNpcRendersAroundPlayer();
+  }
+  if (didRemotePlayersChange || didChangeFloor) {
+    syncVisibleRemotePlayerRenders();
+  }
+  if (didSelfChange) {
+    synchronizeRemoteSelfUi(isSnapshot);
+    updatePixiVisibleChunksAroundPlayer();
+  }
   const isItemInteractionInProgress =
     dragState.isDragging || dragState.pendingSourceLocation !== null || dragState.pendingSlotElement !== null;
 

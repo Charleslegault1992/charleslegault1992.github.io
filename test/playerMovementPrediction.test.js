@@ -49,3 +49,18 @@ test("movement prediction keeps the local movement animation timing", () => {
   assert.equal(predictedPlayer.moveStartTime, movement.payload.requestedAt);
   assert.equal(predictedPlayer.moveDuration, 149);
 });
+
+test("movement prediction reports when a pending chain can no longer be replayed", () => {
+  const prediction = createPlayerMovementPrediction();
+  const first = createMove(0, 64);
+  const second = createMove(64, 128);
+  prediction.enqueue(first);
+  prediction.enqueue(second);
+  prediction.reject(first.requestId);
+
+  const predictionState = prediction.reconcileWithState({ x: 0, y: 0, z: 0 });
+
+  assert.equal(predictionState.player.x, 0);
+  assert.equal(predictionState.appliedActionCount, 0);
+  assert.deepEqual(prediction.getPendingRequestIds(), [second.requestId]);
+});

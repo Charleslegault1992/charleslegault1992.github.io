@@ -51,6 +51,12 @@ test("the WebSocket transport synchronizes a snapshot and resolves an action", a
     });
   assert.ok(destination);
 
+  const movementEvents = [];
+  const unsubscribeMovementEvents = transport.subscribe((event) => {
+    if (event.type === "prediction-updated" || event.type === SERVER_MESSAGE_TYPE.delta) {
+      movementEvents.push(event);
+    }
+  });
   const deltaReceived = new Promise((resolve) => {
     const unsubscribe = transport.subscribe((event) => {
       if (event.type === SERVER_MESSAGE_TYPE.delta && event.payload?.upserts?.self?.x === destination.x) {
@@ -74,7 +80,26 @@ test("the WebSocket transport synchronizes a snapshot and resolves an action", a
 
   assert.equal(result.success, true);
   await deltaReceived;
+  unsubscribeMovementEvents();
   assert.equal(transport.getReplicationStore().getSelf().x, destination.x);
+  assert.equal(
+    movementEvents.some(
+      (event) =>
+        event.type === "prediction-updated" &&
+        event.hasPendingMovementPredictions === true &&
+        event.hasEffectiveMovementPrediction === true,
+    ),
+    true,
+  );
+  assert.equal(
+    movementEvents.some(
+      (event) =>
+        event.type === SERVER_MESSAGE_TYPE.delta &&
+        event.hasPendingMovementPredictions === false &&
+        event.hasEffectiveMovementPrediction === false,
+    ),
+    true,
+  );
 });
 
 class FakeSocket {

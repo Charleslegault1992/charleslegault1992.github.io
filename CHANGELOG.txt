@@ -1,3 +1,9 @@
+0.3317 - Correction du mouvement online sous latence
+    - La confirmation du serveur ne redemarre plus l'animation locale d'un mouvement deja predit.
+    - Les predictions locales ne reinitialisent plus l'interpolation des monstres, NPC et joueurs distants.
+    - La replication et le rendu mettent maintenant a jour seulement les groupes d'entites reellement modifies.
+    - Les panneaux du joueur ne sont plus reconstruits a chaque pas et l'interpolation reseau est maintenant testee.
+
 0.3308 - Correction ecran noir & Optimisation du rendu
     - Correction du crash a la connexion du personnage causé par les slots d'equipement vides dans syncTorchStatesFromContainer.
     - Optimisation PixiJS : prevention des tris zIndex inutiles quand les coordonnees ne changent pas.

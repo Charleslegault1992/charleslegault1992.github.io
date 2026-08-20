@@ -248,8 +248,6 @@ export const createGameServer = ({
       }
 
       return;
-
-      return;
     }
     send(session, SERVER_MESSAGE_TYPE.error, { reason: "unsupported-message" });
   };

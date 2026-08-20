@@ -25,15 +25,18 @@ const applyPredictedMovement = (player, action) => {
 export const createPlayerMovementPrediction = () => {
   const pendingActions = [];
 
-  const replay = (authoritativePlayer) => {
+  const replayWithState = (authoritativePlayer) => {
     if (!authoritativePlayer) {
-      return null;
+      return { player: null, appliedActionCount: 0 };
     }
     const predictedPlayer = structuredClone(authoritativePlayer);
+    let appliedActionCount = 0;
     for (const action of pendingActions) {
-      applyPredictedMovement(predictedPlayer, action);
+      if (applyPredictedMovement(predictedPlayer, action)) {
+        appliedActionCount += 1;
+      }
     }
-    return predictedPlayer;
+    return { player: predictedPlayer, appliedActionCount };
   };
 
   const acknowledge = (requestId) => {
@@ -70,7 +73,11 @@ export const createPlayerMovementPrediction = () => {
     },
     reconcile(authoritativePlayer, acknowledgedRequestId = null) {
       acknowledge(acknowledgedRequestId);
-      return replay(authoritativePlayer);
+      return replayWithState(authoritativePlayer).player;
+    },
+    reconcileWithState(authoritativePlayer, acknowledgedRequestId = null) {
+      acknowledge(acknowledgedRequestId);
+      return replayWithState(authoritativePlayer);
     },
     getPendingRequestIds: () => pendingActions.map((action) => action.requestId),
   });

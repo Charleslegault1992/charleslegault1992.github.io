@@ -56,6 +56,18 @@ export const createWebSocketGameTransport = ({
   let shouldReconnect = false;
   let socketGeneration = 0;
 
+  const getMovementPredictionState = (acknowledgedRequestId = null) => {
+    const predictionState = movementPrediction.reconcileWithState(
+      replicationStore.getSelf(),
+      acknowledgedRequestId,
+    );
+    return {
+      predictedSelf: predictionState.player,
+      hasPendingMovementPredictions: movementPrediction.getPendingRequestIds().length > 0,
+      hasEffectiveMovementPrediction: predictionState.appliedActionCount > 0,
+    };
+  };
+
   const publish = (event) => {
     for (const listener of listeners) {
       listener(structuredClone(event));
@@ -99,11 +111,15 @@ export const createWebSocketGameTransport = ({
       return;
     }
     acknowledgeRevision();
-    const predictedSelf = movementPrediction.reconcile(
-      replicationStore.getSelf(),
+    const movementPredictionState = getMovementPredictionState(
       replicationStore.getAcknowledgedActionRequestId(),
     );
-    publish({ type: message.type, payload: message.payload, result, predictedSelf });
+    publish({
+      type: message.type,
+      payload: message.payload,
+      result,
+      ...movementPredictionState,
+    });
     if (message.type === SERVER_MESSAGE_TYPE.snapshot) {
       reconnectAttempt = 0;
       setConnectionState("ready", { playerUid });
@@ -135,12 +151,12 @@ export const createWebSocketGameTransport = ({
       const pending = pendingActionsByRequestId.get(message.payload?.requestId) ?? null;
       if (pending) {
         pendingActionsByRequestId.delete(message.payload.requestId);
-        if (!message.payload.success) {
-          movementPrediction.reject(message.payload.requestId);
+        if (!message.payload.success && movementPrediction.reject(message.payload.requestId)) {
+          const movementPredictionState = getMovementPredictionState();
           publish({
             type: "prediction-updated",
             actionResult: structuredClone(message.payload),
-            predictedSelf: movementPrediction.reconcile(replicationStore.getSelf()),
+            ...movementPredictionState,
           });
         }
         pending.resolve(structuredClone(message.payload));
@@ -246,19 +262,24 @@ export const createWebSocketGameTransport = ({
       return Promise.reject(new TypeError("A unique valid game action is required."));
     }
     return new Promise((resolve, reject) => {
-      movementPrediction.enqueue(action);
+      const movementWasPredicted = movementPrediction.enqueue(action);
       pendingActionsByRequestId.set(action.requestId, { resolve, reject });
       if (!sendMessage(CLIENT_MESSAGE_TYPE.action, { action })) {
         pendingActionsByRequestId.delete(action.requestId);
-        movementPrediction.reject(action.requestId);
+        if (movementWasPredicted) {
+          movementPrediction.reject(action.requestId);
+        }
         reject(new Error("The game connection is not ready."));
         return;
       }
-      publish({
-        type: "prediction-updated",
-        action: structuredClone(action),
-        predictedSelf: movementPrediction.reconcile(replicationStore.getSelf()),
-      });
+      if (movementWasPredicted) {
+        const movementPredictionState = getMovementPredictionState();
+        publish({
+          type: "prediction-updated",
+          action: structuredClone(action),
+          ...movementPredictionState,
+        });
+      }
     });
   };
 
@@ -301,7 +322,7 @@ export const createWebSocketGameTransport = ({
     subscribe,
     getPlayerUid: () => playerUid,
     getConnectionState: () => connectionState,
-    getPredictedSelf: () => movementPrediction.reconcile(replicationStore.getSelf()),
+    getPredictedSelf: () => getMovementPredictionState().predictedSelf,
     getReplicationStore: () => replicationStore,
   });
 };

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { GAMEPLAY_ACTION_TYPE } from "../src/actions/gameplayActions.js";
 import { createClientReplicationStore } from "../src/network/clientReplicationStore.js";
 import { createRemoteGameStateBridge } from "../src/network/remoteGameStateBridge.js";
+import { remoteEntityInterpolationStore } from "../src/network/remoteEntityInterpolationStore.js";
 
 const createTransportHarness = (replicationStore) => {
   const listeners = new Set();
@@ -126,4 +128,154 @@ test("the remote state bridge preserves equipment and container references while
   assert.equal(playerState.equipment.backpack, backpack);
   assert.equal(playerState.equipment.backpack.content[1], apple);
   assert.equal(playerState.equipment.backpack.content[0], null);
+});
+
+test("an acknowledged movement keeps the local prediction animation timing", () => {
+  const replicationStore = createClientReplicationStore();
+  const harness = createTransportHarness(replicationStore);
+  const playerState = { uid: "local", x: 0, y: 0, z: 0, renderX: 0, renderY: 0 };
+  const entityMaps = {
+    players: new Map(),
+    monsters: new Map(),
+    npcs: new Map(),
+    worldItems: new Map(),
+    groundEffects: new Map(),
+  };
+  createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
+
+  let result = replicationStore.applySnapshot({
+    revision: 1,
+    self: { uid: "player:one", x: 0, y: 0, z: 0 },
+    entities: { players: [], monsters: [], npcs: [], worldItems: [], groundEffects: [] },
+    chunks: [],
+  });
+  harness.publish({ type: "server.snapshot", result, hasPendingMovementPredictions: false });
+
+  harness.publish({
+    type: "prediction-updated",
+    action: { type: GAMEPLAY_ACTION_TYPE.movePlayer },
+    predictedSelf: {
+      uid: "player:one",
+      x: 64,
+      y: 0,
+      z: 0,
+      oldX: 0,
+      oldY: 0,
+      moveStartTime: 1000,
+      moveDuration: 200,
+      direction: "right",
+    },
+    hasPendingMovementPredictions: true,
+  });
+  playerState.renderX = 24;
+
+  result = replicationStore.applyDelta({
+    baseRevision: 1,
+    revision: 2,
+    acknowledgedActionRequestId: "move-1",
+    upserts: {
+      self: {
+        uid: "player:one",
+        x: 64,
+        y: 0,
+        z: 0,
+        oldX: 0,
+        oldY: 0,
+        moveStartTime: 1180,
+        moveDuration: 200,
+        direction: "right",
+      },
+    },
+    removals: {},
+    events: [{ type: "player-moved" }],
+  });
+  harness.publish({
+    type: "server.delta",
+    result,
+    predictedSelf: replicationStore.getSelf(),
+    hasPendingMovementPredictions: false,
+  });
+
+  assert.equal(playerState.x, 64);
+  assert.equal(playerState.renderX, 24);
+  assert.equal(playerState.oldX, 0);
+  assert.equal(playerState.moveStartTime, 1000);
+  assert.equal(playerState.moveDuration, 200);
+});
+
+test("a local movement prediction does not clear remote interpolation buffers", () => {
+  remoteEntityInterpolationStore.clear();
+  const replicationStore = createClientReplicationStore();
+  const harness = createTransportHarness(replicationStore);
+  const playerState = { uid: "player:one", x: 0, y: 0, z: 0, renderX: 0, renderY: 0 };
+  const entityMaps = {
+    players: new Map(),
+    monsters: new Map(),
+    npcs: new Map(),
+    worldItems: new Map(),
+    groundEffects: new Map(),
+  };
+  createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
+
+  const result = replicationStore.applySnapshot({
+    revision: 1,
+    serverTime: 1000,
+    self: { uid: "player:one", x: 0, y: 0, z: 0 },
+    entities: {
+      players: [],
+      monsters: [{ uid: 8, monsterId: "rat", x: 64, y: 0, z: 0 }],
+      npcs: [],
+      worldItems: [],
+      groundEffects: [],
+    },
+    chunks: [],
+  });
+  harness.publish({
+    type: "server.snapshot",
+    payload: { serverTime: 1000 },
+    result,
+    hasPendingMovementPredictions: false,
+  });
+  const snapshotsBeforePrediction = remoteEntityInterpolationStore.getDebugState().snapshotCountsByType.monsters;
+
+  harness.publish({
+    type: "prediction-updated",
+    action: { type: GAMEPLAY_ACTION_TYPE.movePlayer },
+    predictedSelf: {
+      uid: "player:one",
+      x: 64,
+      y: 0,
+      z: 0,
+      oldX: 0,
+      oldY: 0,
+      moveStartTime: 1000,
+      moveDuration: 200,
+      direction: "right",
+    },
+    hasPendingMovementPredictions: true,
+  });
+
+  assert.equal(remoteEntityInterpolationStore.getDebugState().snapshotCountsByType.monsters, snapshotsBeforePrediction);
+
+  const selfOnlyResult = replicationStore.applyDelta({
+    baseRevision: 1,
+    revision: 2,
+    serverTime: 1100,
+    upserts: { self: { uid: "player:one", x: 64, y: 0, z: 0 } },
+    removals: {},
+    events: [{ type: "player-moved" }],
+  });
+  harness.publish({
+    type: "server.delta",
+    payload: {
+      serverTime: 1100,
+      upserts: { self: { uid: "player:one", x: 64, y: 0, z: 0 } },
+      removals: {},
+    },
+    result: selfOnlyResult,
+    hasPendingMovementPredictions: false,
+  });
+
+  assert.equal(remoteEntityInterpolationStore.getDebugState().snapshotCountsByType.monsters, snapshotsBeforePrediction);
+  remoteEntityInterpolationStore.clear();
 });
