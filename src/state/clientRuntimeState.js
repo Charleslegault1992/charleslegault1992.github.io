@@ -73,7 +73,7 @@ export const spellUiState = {
 
 export const characterSelectorUiState = {
   isOpen: false,
-  view: "list",
+  view: "auth-choice",
 };
 
 export const gameRuntimeState = {

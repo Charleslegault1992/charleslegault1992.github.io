@@ -53,10 +53,11 @@ test("the HTTP account flow owns character creation and deletion", async (testCo
   });
   const client = createGameAccountApiClient({ baseUrl: `http://127.0.0.1:${server.getAddress().port}` });
 
-  const registration = await client.register("Charles_92", "strong-password");
+  const registration = await client.register("Charles_92", "charles92@example.com", "strong-password");
+  const duplicateEmail = await client.register("Charles_93", "charles92@example.com", "strong-password");
   client.clearToken();
   const rejectedLogin = await client.login("Charles_92", "wrong-password");
-  const login = await client.login("Charles_92", "strong-password");
+  const login = await client.login("charles92@example.com", "strong-password");
   const refreshedSession = await client.refreshToken();
   const created = await client.createCharacter({ name: "Ari Vale", appearanceId: "female" });
   const duplicateName = await client.createCharacter({ name: "ari vale", appearanceId: "male" });
@@ -69,6 +70,7 @@ test("the HTTP account flow owns character creation and deletion", async (testCo
 
   assert.equal(registration.success, true);
   assert.equal(registration.accountId, "charles_92");
+  assert.equal(duplicateEmail.reason, "email-already-exists");
   assert.equal(rejectedLogin.statusCode, 401);
   assert.equal(login.success, true);
   assert.equal(refreshedSession.success, true);

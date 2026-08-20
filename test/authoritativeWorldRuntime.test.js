@@ -206,7 +206,7 @@ test("normal movement cannot enter another player's tile", async () => {
   assert.equal(result.reason, "movement-blocked");
 });
 
-test("PVP requires consent from both players and applies damage on the server", async () => {
+test("PVP lets an aggressor attack an innocent player and opens skull targets to everyone", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;
   const runtime = createAuthoritativeWorldRuntime({
@@ -219,6 +219,7 @@ test("PVP requires consent from both players and applies damage on the server", 
   });
   const attackerSession = {};
   const targetSession = {};
+  const bystanderSession = {};
   attackerSession.playerUid = runtime.connectClient(attackerSession, {
     accountId: "pvp",
     characterId: "attacker",
@@ -229,16 +230,22 @@ test("PVP requires consent from both players and applies damage on the server", 
     characterId: "target",
     name: "Target",
   }).playerUid;
+  bystanderSession.playerUid = runtime.connectClient(bystanderSession, {
+    accountId: "pvp",
+    characterId: "bystander",
+    name: "Bystander",
+  }).playerUid;
   const attacker = runtime.getPlayer(attackerSession.playerUid);
   const target = runtime.getPlayer(targetSession.playerUid);
+  const bystander = runtime.getPlayer(bystanderSession.playerUid);
   Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
+  Object.assign(bystander, { x: attacker.x, y: attacker.y + TILE_SIZE, z: attacker.z });
 
   const rejected = runtime.dispatchAction(
     attackerSession,
     createAttackPlayerAction(target.uid, serverTime),
   );
   runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
-  runtime.dispatchAction(targetSession, createSetPvpEnabledAction(true, serverTime));
   serverTime += 1000;
   runtime.update(serverTime);
   const healthBeforeAttack = target.hp;
@@ -252,6 +259,7 @@ test("PVP requires consent from both players and applies damage on the server", 
   assert.ok(target.hp < healthBeforeAttack);
   assert.equal(accepted.changes.targetPlayerUid, target.uid);
   assert.equal(attacker.pvp.skullType, "white");
+  assert.equal(target.pvp.enabled, false);
 
   const lockedToggle = runtime.dispatchAction(
     attackerSession,
@@ -261,10 +269,92 @@ test("PVP requires consent from both players and applies damage on the server", 
     targetSession,
     createAttackPlayerAction(attacker.uid, serverTime),
   );
+  const bystanderAttack = runtime.dispatchAction(
+    bystanderSession,
+    createAttackPlayerAction(attacker.uid, serverTime),
+  );
 
   assert.equal(lockedToggle.reason, "pvp-locked-by-skull");
   assert.equal(retaliation.success, true);
   assert.equal(target.pvp.skullType, "none");
+  assert.equal(bystanderAttack.success, true);
+  assert.equal(bystander.pvp.enabled, false);
+  assert.equal(bystander.pvp.skullType, "none");
+});
+
+test("PVP runes follow the authoritative aggressor and skull target rules", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    now: () => serverTime,
+    combatRandom: {
+      getInt: () => 1,
+      getFloat: (_minimum, maximum) => maximum,
+    },
+  });
+  const attackerSession = {};
+  const targetSession = {};
+  const bystanderSession = {};
+  attackerSession.playerUid = runtime.connectClient(attackerSession, {
+    accountId: "pvp-rune",
+    characterId: "attacker",
+  }).playerUid;
+  targetSession.playerUid = runtime.connectClient(targetSession, {
+    accountId: "pvp-rune",
+    characterId: "target",
+  }).playerUid;
+  bystanderSession.playerUid = runtime.connectClient(bystanderSession, {
+    accountId: "pvp-rune",
+    characterId: "bystander",
+  }).playerUid;
+  const attacker = runtime.getPlayer(attackerSession.playerUid);
+  const target = runtime.getPlayer(targetSession.playerUid);
+  const bystander = runtime.getPlayer(bystanderSession.playerUid);
+  Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
+  Object.assign(bystander, { x: attacker.x, y: attacker.y + TILE_SIZE, z: attacker.z });
+
+  const equipRune = (player) => {
+    const backpack = createItemInstance("bag", 1);
+    const rune = createItemInstance("fireRune", 1);
+    backpack.content[0] = rune;
+    player.equipment.backpack = backpack;
+    return { backpack, rune };
+  };
+  const attackerInventory = equipRune(attacker);
+  const bystanderInventory = equipRune(bystander);
+  const useRune = (session, inventory, targetPlayer) => runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: {
+        locationType: "containerSlot",
+        parentContainerUid: inventory.backpack.uid,
+        slotIndex: 0,
+      },
+      itemUid: inventory.rune.uid,
+      target: { targetType: "player", playerUid: targetPlayer.uid },
+      requestedAt: serverTime,
+    }),
+  );
+
+  const initialCharges = attackerInventory.rune.charges;
+  const rejected = useRune(attackerSession, attackerInventory, target);
+  runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
+  const targetHealthBeforeAttack = target.hp;
+  const accepted = useRune(attackerSession, attackerInventory, target);
+  const attackerHealthBeforeRetaliation = attacker.hp;
+  const openTargetAttack = useRune(bystanderSession, bystanderInventory, attacker);
+
+  assert.equal(rejected.reason, "pvp-disabled");
+  assert.equal(attackerInventory.rune.charges, initialCharges - 1);
+  assert.equal(accepted.success, true);
+  assert.ok(target.hp < targetHealthBeforeAttack);
+  assert.equal(accepted.events.some((event) => event.type === "player-pvp-rune-resolved"), true);
+  assert.equal(attacker.pvp.skullType, "white");
+  assert.equal(openTargetAttack.success, true);
+  assert.ok(attacker.hp < attackerHealthBeforeRetaliation);
+  assert.equal(bystander.pvp.enabled, false);
+  assert.equal(bystander.pvp.skullType, "none");
 });
 
 test("a disconnected character reloads its authoritative saved position", async () => {

@@ -3,22 +3,29 @@ import { createHash } from "node:crypto";
 import { openGameDatabase } from "./sqliteDatabase.js";
 
 const ACCOUNT_ID_PATTERN = /^[a-z0-9_-]{3,40}$/;
+const ACCOUNT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EXTERNAL_PROVIDER_PATTERN = /^[a-z0-9_-]{1,30}$/;
 const EXTERNAL_PASSWORD_HASH = "external-login-only";
 
 export const normalizeAccountId = (accountId) => String(accountId ?? "").trim().toLocaleLowerCase();
+export const normalizeAccountEmail = (email) => String(email ?? "").trim().toLocaleLowerCase();
 
 export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlite" } = {}) => {
   const database = openGameDatabase({ databasePath });
   const insertAccount = database.prepare(`
-    INSERT INTO accounts (account_id, password_hash, created_at)
-    VALUES (?, ?, ?)
+    INSERT INTO accounts (account_id, email, password_hash, created_at)
+    VALUES (?, ?, ?, ?)
     ON CONFLICT (account_id) DO NOTHING
   `);
   const selectAccount = database.prepare(`
-    SELECT account_id, password_hash, created_at
+    SELECT account_id, email, password_hash, created_at
     FROM accounts
     WHERE account_id = ?
+  `);
+  const selectAccountByEmail = database.prepare(`
+    SELECT account_id, email, password_hash, created_at
+    FROM accounts
+    WHERE email = ?
   `);
   const selectExternalIdentity = database.prepare(`
     SELECT account_id, email, display_name, created_at, updated_at
@@ -50,19 +57,24 @@ export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlit
   };
 
   return Object.freeze({
-    create(accountId, passwordHash, now = Date.now()) {
+    create(accountId, email, passwordHash, now = Date.now()) {
       const normalizedAccountId = normalizeAccountId(accountId);
-      if (
-        !ACCOUNT_ID_PATTERN.test(normalizedAccountId) ||
-        typeof passwordHash !== "string" ||
-        passwordHash === "" ||
-        !Number.isFinite(now)
-      ) {
+      const normalizedEmail = normalizeAccountEmail(email);
+      if (!ACCOUNT_ID_PATTERN.test(normalizedAccountId)) {
         return { success: false, reason: "invalid-account" };
       }
-      const result = insertAccount.run(normalizedAccountId, passwordHash, now);
+      if (!ACCOUNT_EMAIL_PATTERN.test(normalizedEmail) || normalizedEmail.length > 320) {
+        return { success: false, reason: "invalid-email" };
+      }
+      if (typeof passwordHash !== "string" || passwordHash === "" || !Number.isFinite(now)) {
+        return { success: false, reason: "invalid-credentials" };
+      }
+      if (selectAccountByEmail.get(normalizedEmail)) {
+        return { success: false, reason: "email-already-exists" };
+      }
+      const result = insertAccount.run(normalizedAccountId, normalizedEmail, passwordHash, now);
       return result.changes === 1
-        ? { success: true, accountId: normalizedAccountId }
+        ? { success: true, accountId: normalizedAccountId, email: normalizedEmail }
         : { success: false, reason: "account-already-exists" };
     },
     find(accountId) {
@@ -72,7 +84,16 @@ export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlit
       }
       const row = selectAccount.get(normalizedAccountId);
       return row
-        ? { accountId: row.account_id, passwordHash: row.password_hash, createdAt: row.created_at }
+        ? { accountId: row.account_id, email: row.email, passwordHash: row.password_hash, createdAt: row.created_at }
+        : null;
+    },
+    findByLogin(login) {
+      const normalizedLogin = String(login ?? "").trim().toLocaleLowerCase();
+      const row = ACCOUNT_EMAIL_PATTERN.test(normalizedLogin)
+        ? selectAccountByEmail.get(normalizedLogin)
+        : selectAccount.get(normalizedLogin);
+      return row
+        ? { accountId: row.account_id, email: row.email, passwordHash: row.password_hash, createdAt: row.created_at }
         : null;
     },
     findOrCreateExternalIdentity(identity, now = Date.now()) {
@@ -104,7 +125,7 @@ export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlit
           database.exec("COMMIT;");
           return { success: true, accountId: identityCreatedWhileWaiting.accountId, wasCreated: false };
         }
-        if (insertAccount.run(accountId, EXTERNAL_PASSWORD_HASH, now).changes !== 1) {
+        if (insertAccount.run(accountId, "", EXTERNAL_PASSWORD_HASH, now).changes !== 1) {
           throw new Error("External account identifier collision.");
         }
         insertExternalIdentity.run(provider, subject, accountId, email, displayName, now, now);

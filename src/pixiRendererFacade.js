@@ -76,3 +76,4 @@ export const playPixiRewardChestEffect = (...args) => callPixiRenderer("playPixi
 export const playPixiSpellEffect = (...args) => callPixiRenderer("playPixiSpellEffect", args, false);
 export const renderPixiFrame = (...args) => callPixiRenderer("renderPixiFrame", args);
 export const updatePixiCamera = (...args) => callPixiRenderer("updatePixiCamera", args);
+export const updatePixiLighting = (frame) => pixiRenderer?.updatePixiLighting(frame) ?? false;

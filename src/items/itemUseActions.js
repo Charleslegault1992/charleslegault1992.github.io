@@ -30,6 +30,9 @@ const isValidItemUseTarget = (target) => {
   if (target.targetType === "monster") {
     return Number.isInteger(target.monsterUid);
   }
+  if (target.targetType === "player") {
+    return typeof target.playerUid === "string" && target.playerUid !== "";
+  }
   if (target.targetType === "tile") {
     return Number.isInteger(target.x) && Number.isInteger(target.y) && Number.isInteger(target.z);
   }

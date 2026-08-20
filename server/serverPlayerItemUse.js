@@ -24,6 +24,7 @@ export const createServerPlayerItemUse = ({
   worldMapsByZ,
   groundEffects,
   monsters,
+  players,
   executeRuneDamage,
 }) => {
   const cooldowns = createItemCooldownState(player.cooldowns);
@@ -157,19 +158,23 @@ export const createServerPlayerItemUse = ({
   };
 
   const executeRune = (item, source, useData, target) => {
-    const monster = monsters.get(target?.monsterUid);
-    if (target?.targetType !== "monster" || !monster || monster.hp <= 0 || !isNear(player, monster, useData.range)) {
+    const targetEntity = target?.targetType === "monster"
+      ? monsters.get(target.monsterUid)
+      : target?.targetType === "player"
+        ? players.get(target.playerUid)
+        : null;
+    if (!targetEntity || targetEntity === player || targetEntity.hp <= 0 || !isNear(player, targetEntity, useData.range)) {
       return { success: false, reason: "target-out-of-range" };
     }
     const worldMap = worldMapsByZ.get(player.z);
     if (!hasLineOfSightBetweenTiles(
       worldMap,
       { col: player.x / TILE_SIZE, row: player.y / TILE_SIZE },
-      { col: monster.x / TILE_SIZE, row: monster.y / TILE_SIZE },
+      { col: targetEntity.x / TILE_SIZE, row: targetEntity.y / TILE_SIZE },
     )) {
       return { success: false, reason: "line-of-sight-blocked" };
     }
-    const damageResult = executeRuneDamage(monster, useData);
+    const damageResult = executeRuneDamage(targetEntity, useData, target.targetType);
     if (!damageResult?.success) {
       return damageResult ?? { success: false, reason: "damage-failed" };
     }

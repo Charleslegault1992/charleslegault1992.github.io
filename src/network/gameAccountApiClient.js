@@ -24,8 +24,8 @@ export const createGameAccountApiClient = ({ baseUrl, fetchRequest = globalThis.
     return { ...payload, statusCode: response.status };
   };
 
-  const authenticate = async (path, accountId, password) => {
-    const result = await request(path, { method: "POST", body: { accountId, password } });
+  const authenticate = async (path, body) => {
+    const result = await request(path, { method: "POST", body });
     if (result.success && typeof result.token === "string") {
       authToken = result.token;
     }
@@ -41,8 +41,8 @@ export const createGameAccountApiClient = ({ baseUrl, fetchRequest = globalThis.
   };
 
   return Object.freeze({
-    register: (accountId, password) => authenticate("/auth/register", accountId, password),
-    login: (accountId, password) => authenticate("/auth/login", accountId, password),
+    register: (accountId, email, password) => authenticate("/auth/register", { accountId, email, password }),
+    login: (login, password) => authenticate("/auth/login", { login, password }),
     loginWithGoogle: authenticateWithGoogle,
     refreshToken: async () => {
       const result = await request("/auth/refresh", { method: "POST", authenticated: true });

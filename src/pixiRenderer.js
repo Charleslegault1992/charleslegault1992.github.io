@@ -1,9 +1,22 @@
 /* ==================================================== */
 //#region     -----  IMPORTS  -----
 /* ==================================================== */
-import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text, Texture } from "pixi.js";
+import {
+  Application,
+  Assets,
+  BufferImageSource,
+  ColorMatrixFilter,
+  Container,
+  Graphics,
+  Rectangle,
+  RenderTexture,
+  Sprite,
+  Text,
+  Texture,
+} from "pixi.js";
 import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
+import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
@@ -22,6 +35,43 @@ const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, 1],
   [0, 1],
   [1, 1],
+];
+const LIGHT_TEXTURE_SIZE = 256;
+const LIGHT_SOURCE_STRIDE = 3;
+const LIGHT_POOL_INITIAL_CAPACITY = 32;
+const LIGHT_POOL_GROWTH = 16;
+const LIGHT_DARKNESS_ALPHA = 0.995;
+const LIGHT_TORCH_CUTOUT_OPACITY = 0.69;
+const LIGHT_TORCH_GLOW_RADIUS_SCALE = 0.85;
+const LIGHT_MAGIC_GLOW_RADIUS_SCALE = 0.75;
+const LIGHT_PLAYER_CUTOUT_STOPS = [
+  [0, 0, 0, 0, 0.18],
+  [0.65, 0, 0, 0, 0.036],
+  [1, 0, 0, 0, 0],
+];
+const LIGHT_SPELL_CUTOUT_STOPS = [
+  [0, 0, 0, 0, 0.7],
+  [0.65, 0, 0, 0, 0.14],
+  [1, 0, 0, 0, 0],
+];
+const LIGHT_TORCH_CUTOUT_STOPS = [
+  [0, 0, 0, 0, LIGHT_TORCH_CUTOUT_OPACITY],
+  [0.65, 0, 0, 0, LIGHT_TORCH_CUTOUT_OPACITY * 0.2],
+  [1, 0, 0, 0, 0],
+];
+const LIGHT_TORCH_GLOW_STOPS = [
+  [0, 255, 246, 169, 0.015],
+  [0.55, 255, 174, 45, 0.055],
+  [1, 255, 70, 0, 0],
+];
+const LIGHT_MAGIC_GLOW_STOPS = [
+  [0, 222, 239, 255, 0.04],
+  [0.6, 139, 194, 255, 0.025],
+  [1, 90, 150, 255, 0],
+];
+const LIGHT_SUN_STOPS = [
+  [0, 255, 246, 197, 0.055],
+  [1, 255, 236, 167, 0.012],
 ];
 //#endregion  -----  CONFIG  -----
 
@@ -50,6 +100,7 @@ let feedbackEffectContainer = null;
 let mapLayerContainersByName = null;
 let tilesetImageUrlByFileName = null;
 let tilesetTextureByImageFileName = null;
+let tilesetTextureLoadPromiseByImageFileName = null;
 let tileTextureByCacheKey = null;
 let renderedChunkContainersByKey = null;
 let worldEntityTextureByKey = null;
@@ -65,7 +116,379 @@ let itemUseTargetVisualsByKey = null;
 let itemUseTargetAnimationElapsedMs = 0;
 let worldItemSelectionFilter = null;
 let minimapChunkCanvasesByWorldMap = null;
+let visibleChunkRenderGeneration = 0;
+let lightingRenderTexture = null;
+let lightingOverlaySprite = null;
+let lightingRenderContainer = null;
+let lightingCutoutContainer = null;
+let lightingGlowContainer = null;
+let lightingDarknessSprite = null;
+let lightingSunlightSprite = null;
+let lightingPlayerCutoutSprite = null;
+let lightingSpellCutoutSprite = null;
+let lightingSpellGlowSprite = null;
+let lightingTorchVisualPool = null;
+let lightingTorchCutoutTextureByRadius = null;
+let lightingTorchGlowTextureByRadius = null;
+let lightingSpellCutoutTextureByRadius = null;
+let lightingSpellGlowTextureByRadius = null;
+let lightingPlayerCutoutTexture = null;
+let lightingSunlightTexture = null;
+let lightingRenderOptions = null;
+let lightingGameWidth = 0;
+let lightingGameHeight = 0;
+let lightingIsOutdoor = null;
+let lightingActiveTorchCount = 0;
+let requestedPixiRenderer = null;
 //#endregion  -----  PIXI - ETAT  -----
+
+/* ==================================================== */
+//#region     -----  PIXI - LUMIERE  -----
+/* ==================================================== */
+const createRadialLightTexture = (outerRadius, innerRadius, colorStops) => {
+  const pixels = new Uint8Array(LIGHT_TEXTURE_SIZE * LIGHT_TEXTURE_SIZE * 4);
+  const center = (LIGHT_TEXTURE_SIZE - 1) / 2;
+  const maxTextureRadius = LIGHT_TEXTURE_SIZE / 2;
+  const gradientRange = Math.max(outerRadius - innerRadius, 1);
+
+  for (let y = 0; y < LIGHT_TEXTURE_SIZE; y++) {
+    const normalizedY = (y - center) / maxTextureRadius;
+    for (let x = 0; x < LIGHT_TEXTURE_SIZE; x++) {
+      const normalizedX = (x - center) / maxTextureRadius;
+      const normalizedDistance = Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY);
+      if (normalizedDistance >= 1) {
+        continue;
+      }
+
+      const worldDistance = normalizedDistance * outerRadius;
+      const gradientPosition = Math.max(0, Math.min((worldDistance - innerRadius) / gradientRange, 1));
+      let upperStopIndex = 1;
+      while (upperStopIndex < colorStops.length - 1 && gradientPosition > colorStops[upperStopIndex][0]) {
+        upperStopIndex++;
+      }
+
+      const lowerStop = colorStops[upperStopIndex - 1];
+      const upperStop = colorStops[upperStopIndex];
+      const stopRange = upperStop[0] - lowerStop[0];
+      const mix = stopRange > 0 ? (gradientPosition - lowerStop[0]) / stopRange : 0;
+      const lowerAlpha = lowerStop[4];
+      const upperAlpha = upperStop[4];
+      const alpha = lowerAlpha + (upperAlpha - lowerAlpha) * mix;
+      const pixelIndex = (y * LIGHT_TEXTURE_SIZE + x) * 4;
+
+      pixels[pixelIndex] = Math.round(
+        lowerStop[1] * lowerAlpha + (upperStop[1] * upperAlpha - lowerStop[1] * lowerAlpha) * mix,
+      );
+      pixels[pixelIndex + 1] = Math.round(
+        lowerStop[2] * lowerAlpha + (upperStop[2] * upperAlpha - lowerStop[2] * lowerAlpha) * mix,
+      );
+      pixels[pixelIndex + 2] = Math.round(
+        lowerStop[3] * lowerAlpha + (upperStop[3] * upperAlpha - lowerStop[3] * lowerAlpha) * mix,
+      );
+      pixels[pixelIndex + 3] = Math.round(alpha * 255);
+    }
+  }
+
+  const source = new BufferImageSource({
+    resource: pixels,
+    width: LIGHT_TEXTURE_SIZE,
+    height: LIGHT_TEXTURE_SIZE,
+    format: "rgba8unorm",
+    alphaMode: "premultiplied-alpha",
+    scaleMode: "linear",
+    autoGarbageCollect: false,
+  });
+  return new Texture({ source });
+};
+
+const createLightingSprite = (blendMode = "normal") => {
+  const sprite = new Sprite(Texture.EMPTY);
+  sprite.anchor.set(0.5);
+  sprite.blendMode = blendMode;
+  sprite.visible = false;
+  sprite.eventMode = "none";
+  return sprite;
+};
+
+const getOrCreateTorchCutoutTexture = (radius) => {
+  let texture = lightingTorchCutoutTextureByRadius.get(radius);
+  if (!texture) {
+    texture = createRadialLightTexture(radius, 12, LIGHT_TORCH_CUTOUT_STOPS);
+    lightingTorchCutoutTextureByRadius.set(radius, texture);
+  }
+  return texture;
+};
+
+const getOrCreateTorchGlowTexture = (radius) => {
+  let texture = lightingTorchGlowTextureByRadius.get(radius);
+  if (!texture) {
+    const glowRadius = radius * LIGHT_TORCH_GLOW_RADIUS_SCALE;
+    texture = createRadialLightTexture(glowRadius, 16, LIGHT_TORCH_GLOW_STOPS);
+    lightingTorchGlowTextureByRadius.set(radius, texture);
+  }
+  return texture;
+};
+
+const getOrCreateSpellCutoutTexture = (radius) => {
+  let texture = lightingSpellCutoutTextureByRadius.get(radius);
+  if (!texture) {
+    texture = createRadialLightTexture(radius, 12, LIGHT_SPELL_CUTOUT_STOPS);
+    lightingSpellCutoutTextureByRadius.set(radius, texture);
+  }
+  return texture;
+};
+
+const getOrCreateSpellGlowTexture = (radius) => {
+  let texture = lightingSpellGlowTextureByRadius.get(radius);
+  if (!texture) {
+    const glowRadius = radius * LIGHT_MAGIC_GLOW_RADIUS_SCALE;
+    texture = createRadialLightTexture(glowRadius, 12, LIGHT_MAGIC_GLOW_STOPS);
+    lightingSpellGlowTextureByRadius.set(radius, texture);
+  }
+  return texture;
+};
+
+const appendLightingTorchVisual = () => {
+  const cutoutSprite = createLightingSprite("erase");
+  const glowSprite = createLightingSprite();
+  lightingCutoutContainer.addChild(cutoutSprite);
+  lightingGlowContainer.addChild(glowSprite);
+  lightingTorchVisualPool.push({ cutoutSprite, glowSprite });
+};
+
+const ensureLightingTorchPoolCapacity = (requiredCapacity) => {
+  while (lightingTorchVisualPool.length < requiredCapacity) {
+    const targetCapacity = Math.max(requiredCapacity, lightingTorchVisualPool.length + LIGHT_POOL_GROWTH);
+    while (lightingTorchVisualPool.length < targetCapacity) {
+      appendLightingTorchVisual();
+    }
+  }
+};
+
+const setLightingSpriteState = (sprite, texture, x, y, diameter, visible) => {
+  let didChange = false;
+  if (sprite.visible !== visible) {
+    sprite.visible = visible;
+    didChange = true;
+  }
+  if (!visible) {
+    return didChange;
+  }
+  if (sprite.texture !== texture) {
+    sprite.texture = texture;
+    didChange = true;
+  }
+  if (sprite.x !== x) {
+    sprite.x = x;
+    didChange = true;
+  }
+  if (sprite.y !== y) {
+    sprite.y = y;
+    didChange = true;
+  }
+  if (sprite.width !== diameter) {
+    sprite.width = diameter;
+    didChange = true;
+  }
+  if (sprite.height !== diameter) {
+    sprite.height = diameter;
+    didChange = true;
+  }
+  return didChange;
+};
+
+const initializePixiLighting = ({ gameWidth, gameHeight, lightingPresets }) => {
+  lightingGameWidth = gameWidth;
+  lightingGameHeight = gameHeight;
+  lightingTorchCutoutTextureByRadius = new Map();
+  lightingTorchGlowTextureByRadius = new Map();
+  lightingSpellCutoutTextureByRadius = new Map();
+  lightingSpellGlowTextureByRadius = new Map();
+  lightingTorchVisualPool = [];
+  lightingIsOutdoor = null;
+  lightingActiveTorchCount = 0;
+
+  const playerRevealRadius = lightingPresets?.playerRevealRadius ?? 64;
+  lightingPlayerCutoutTexture = createRadialLightTexture(playerRevealRadius, 12, LIGHT_PLAYER_CUTOUT_STOPS);
+  const sunlightRadius = Math.max(gameWidth, gameHeight);
+  lightingSunlightTexture = createRadialLightTexture(sunlightRadius, 0, LIGHT_SUN_STOPS);
+
+  for (const radius of lightingPresets?.torchRadii ?? []) {
+    if (Number.isFinite(radius) && radius > 0) {
+      getOrCreateTorchCutoutTexture(radius);
+      getOrCreateTorchGlowTexture(radius);
+    }
+  }
+  for (const radius of lightingPresets?.spellRadii ?? []) {
+    if (Number.isFinite(radius) && radius > 0) {
+      getOrCreateSpellCutoutTexture(radius);
+      getOrCreateSpellGlowTexture(radius);
+    }
+  }
+
+  lightingRenderTexture = RenderTexture.create({
+    width: gameWidth,
+    height: gameHeight,
+    resolution: 1,
+    format: "rgba8unorm",
+    alphaMode: "premultiplied-alpha",
+  });
+  lightingOverlaySprite = new Sprite(lightingRenderTexture);
+  lightingOverlaySprite.eventMode = "none";
+
+  lightingRenderContainer = new Container();
+  lightingCutoutContainer = new Container();
+  lightingGlowContainer = new Container();
+  lightingDarknessSprite = new Sprite(Texture.WHITE);
+  lightingDarknessSprite.tint = 0x000000;
+  lightingDarknessSprite.alpha = LIGHT_DARKNESS_ALPHA;
+  lightingDarknessSprite.width = gameWidth;
+  lightingDarknessSprite.height = gameHeight;
+  lightingDarknessSprite.eventMode = "none";
+
+  lightingSunlightSprite = new Sprite(lightingSunlightTexture);
+  lightingSunlightSprite.anchor.set(0.5);
+  lightingSunlightSprite.x = gameWidth * 0.18;
+  lightingSunlightSprite.y = 0;
+  lightingSunlightSprite.width = sunlightRadius * 2;
+  lightingSunlightSprite.height = sunlightRadius * 2;
+  lightingSunlightSprite.eventMode = "none";
+
+  lightingPlayerCutoutSprite = createLightingSprite("erase");
+  lightingSpellCutoutSprite = createLightingSprite("erase");
+  lightingSpellGlowSprite = createLightingSprite();
+  lightingCutoutContainer.addChild(lightingPlayerCutoutSprite);
+  lightingCutoutContainer.addChild(lightingSpellCutoutSprite);
+  lightingGlowContainer.addChild(lightingSpellGlowSprite);
+
+  lightingRenderContainer.addChild(lightingSunlightSprite);
+  lightingRenderContainer.addChild(lightingDarknessSprite);
+  lightingRenderContainer.addChild(lightingCutoutContainer);
+  lightingRenderContainer.addChild(lightingGlowContainer);
+  pixiApp.stage.addChild(lightingOverlaySprite);
+
+  ensureLightingTorchPoolCapacity(LIGHT_POOL_INITIAL_CAPACITY);
+  lightingRenderOptions = {
+    container: lightingRenderContainer,
+    target: lightingRenderTexture,
+    clear: true,
+    clearColor: [0, 0, 0, 0],
+  };
+};
+
+const isLightingCircleVisible = (screenX, screenY, radius) => {
+  return (
+    screenX + radius >= 0 &&
+    screenX - radius <= lightingGameWidth &&
+    screenY + radius >= 0 &&
+    screenY - radius <= lightingGameHeight
+  );
+};
+
+export const updatePixiLighting = (frame) => {
+  if (!pixiApp || !lightingRenderOptions || !frame) {
+    return false;
+  }
+
+  let didChange = false;
+  const isOutdoor = frame.isOutdoor === true;
+  if (lightingIsOutdoor !== isOutdoor) {
+    lightingIsOutdoor = isOutdoor;
+    lightingSunlightSprite.visible = isOutdoor;
+    lightingDarknessSprite.visible = !isOutdoor;
+    lightingCutoutContainer.visible = !isOutdoor;
+    lightingGlowContainer.visible = !isOutdoor;
+    didChange = true;
+  }
+
+  if (!isOutdoor) {
+    const playerVisible =
+      Number.isFinite(frame.playerScreenX) &&
+      Number.isFinite(frame.playerScreenY) &&
+      Number.isFinite(frame.playerRevealRadius) &&
+      frame.playerRevealRadius > 0;
+    didChange =
+      setLightingSpriteState(
+        lightingPlayerCutoutSprite,
+        lightingPlayerCutoutTexture,
+        frame.playerScreenX,
+        frame.playerScreenY,
+        frame.playerRevealRadius * 2,
+        playerVisible,
+      ) || didChange;
+
+    const spellRadius = Number.isFinite(frame.spellRadius) ? frame.spellRadius : 0;
+    const spellVisible = playerVisible && spellRadius > 0;
+    const spellCutoutTexture = spellVisible ? getOrCreateSpellCutoutTexture(spellRadius) : Texture.EMPTY;
+    const spellGlowTexture = spellVisible ? getOrCreateSpellGlowTexture(spellRadius) : Texture.EMPTY;
+    didChange =
+      setLightingSpriteState(
+        lightingSpellCutoutSprite,
+        spellCutoutTexture,
+        frame.playerScreenX,
+        frame.playerScreenY,
+        spellRadius * 2,
+        spellVisible,
+      ) || didChange;
+    didChange =
+      setLightingSpriteState(
+        lightingSpellGlowSprite,
+        spellGlowTexture,
+        frame.playerScreenX,
+        frame.playerScreenY,
+        spellRadius * LIGHT_MAGIC_GLOW_RADIUS_SCALE * 2,
+        spellVisible,
+      ) || didChange;
+
+    const torchData = frame.torchData;
+    const requestedTorchCount = Number.isInteger(frame.torchCount) ? frame.torchCount : 0;
+    const torchCount = torchData instanceof Float32Array ? requestedTorchCount : 0;
+    ensureLightingTorchPoolCapacity(torchCount);
+
+    for (let index = 0; index < torchCount; index++) {
+      const dataIndex = index * LIGHT_SOURCE_STRIDE;
+      const screenX = torchData[dataIndex];
+      const screenY = torchData[dataIndex + 1];
+      const radius = torchData[dataIndex + 2];
+      const visible =
+        Number.isFinite(screenX) &&
+        Number.isFinite(screenY) &&
+        Number.isFinite(radius) &&
+        radius > 0 &&
+        isLightingCircleVisible(screenX, screenY, radius);
+      const visual = lightingTorchVisualPool[index];
+      const cutoutTexture = visible ? getOrCreateTorchCutoutTexture(radius) : Texture.EMPTY;
+      const glowTexture = visible ? getOrCreateTorchGlowTexture(radius) : Texture.EMPTY;
+      didChange =
+        setLightingSpriteState(visual.cutoutSprite, cutoutTexture, screenX, screenY, radius * 2, visible) || didChange;
+      didChange =
+        setLightingSpriteState(
+          visual.glowSprite,
+          glowTexture,
+          screenX,
+          screenY,
+          radius * LIGHT_TORCH_GLOW_RADIUS_SCALE * 2,
+          visible,
+        ) || didChange;
+    }
+
+    for (let index = torchCount; index < lightingActiveTorchCount; index++) {
+      const visual = lightingTorchVisualPool[index];
+      if (visual.cutoutSprite.visible || visual.glowSprite.visible) {
+        visual.cutoutSprite.visible = false;
+        visual.glowSprite.visible = false;
+        didChange = true;
+      }
+    }
+    lightingActiveTorchCount = torchCount;
+  }
+
+  if (didChange) {
+    pixiApp.renderer.render(lightingRenderOptions);
+  }
+  return didChange;
+};
+//#endregion  -----  PIXI - LUMIERE  -----
 
 /* ==================================================== */
 //#region     -----  OUTILS - PATHS  -----
@@ -102,20 +525,67 @@ const getTilesetImageUrl = (tileset) => {
 
 const loadTilesetTextures = async (tilesets) => {
   const tilesetTextures = new Map();
-  if (Array.isArray(tilesets)) {
-    for (const tileset of tilesets) {
-      if (!tileset?.image) {
+  if (!Array.isArray(tilesets)) {
+    return tilesetTextures;
+  }
+  const textureEntries = tilesets
+    .map((tileset) => ({ image: tileset?.image, imageUrl: getTilesetImageUrl(tileset) }))
+    .filter(({ image, imageUrl }) => typeof image === "string" && typeof imageUrl === "string");
+  const textures = await Promise.all(textureEntries.map(({ imageUrl }) => Assets.load(imageUrl)));
+  textureEntries.forEach(({ image }, index) => tilesetTextures.set(image, textures[index]));
+  return tilesetTextures;
+};
+
+const getTilesetsUsedByChunks = (worldMap, chunkKeys) => {
+  const tilesetsByImage = new Map();
+  if (!(worldMap?.chunksByKey instanceof Map) || !Array.isArray(worldMap?.tilesets)) {
+    return [];
+  }
+  for (const chunkKey of chunkKeys) {
+    const chunk = worldMap.chunksByKey.get(chunkKey);
+    for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME]) {
+      const gids = chunk?.layers?.[layerName];
+      if (!Array.isArray(gids)) {
         continue;
       }
-      const imageUrl = getTilesetImageUrl(tileset);
-      if (!imageUrl) {
-        continue;
+      for (const gid of gids) {
+        if (!Number.isFinite(gid) || gid <= 0) {
+          continue;
+        }
+        const tileset = getTileRenderDataFromGid(worldMap.tilesets, gid)?.tileset;
+        if (tileset?.image) {
+          tilesetsByImage.set(tileset.image, tileset);
+        }
       }
-      const texture = await Assets.load(imageUrl);
-      tilesetTextures.set(tileset.image, texture);
     }
   }
-  return tilesetTextures;
+  return [...tilesetsByImage.values()];
+};
+
+const loadTilesetTexturesForChunks = async (worldMap, chunkKeys) => {
+  if (!(tilesetTextureByImageFileName instanceof Map)) {
+    tilesetTextureByImageFileName = new Map();
+  }
+  if (!(tilesetTextureLoadPromiseByImageFileName instanceof Map)) {
+    tilesetTextureLoadPromiseByImageFileName = new Map();
+  }
+  const pendingTextures = getTilesetsUsedByChunks(worldMap, chunkKeys).map(async (tileset) => {
+    if (tilesetTextureByImageFileName.has(tileset.image)) {
+      return;
+    }
+    let loadPromise = tilesetTextureLoadPromiseByImageFileName.get(tileset.image);
+    if (!loadPromise) {
+      const imageUrl = getTilesetImageUrl(tileset);
+      if (!imageUrl) {
+        return;
+      }
+      loadPromise = Assets.load(imageUrl);
+      tilesetTextureLoadPromiseByImageFileName.set(tileset.image, loadPromise);
+    }
+    const texture = await loadPromise;
+    tilesetTextureByImageFileName.set(tileset.image, texture);
+  });
+  await Promise.all(pendingTextures);
 };
 
 const getTilesetTexture = (tileset) => {
@@ -361,41 +831,48 @@ const getEntityFrameTexture = (textureKey, sourceX, sourceY, sourceWidth, source
 };
 
 export const loadPixiWorldEntityTextures = async ({
-  playerTextureUrlsByLayer,
-  itemTextureUrl,
-  monsterTextureUrl,
+  playerTextureUrlsByLayer = null,
+  itemTextureUrl = null,
+  monsterTextureUrl = null,
   npcTextureUrlsById = {},
 }) => {
   if (!(worldEntityTextureByKey instanceof Map)) {
     return false;
   }
 
-  const textureUrlsByKey = new Map([
-    ["items", itemTextureUrl],
-    ["monsters", monsterTextureUrl],
-  ]);
-
-  for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
-    const textureUrl = playerTextureUrlsByLayer?.[layerName];
-    if (typeof textureUrl !== "string" || textureUrl === "") {
+  const textureUrlsByKey = new Map();
+  if (playerTextureUrlsByLayer !== null) {
+    for (const layerName of PLAYER_APPEARANCE_LAYER_ORDER) {
+      const textureUrl = playerTextureUrlsByLayer?.[layerName];
+      if (typeof textureUrl !== "string" || textureUrl === "") {
+        return false;
+      }
+      textureUrlsByKey.set(`player:${layerName}`, textureUrl);
+    }
+  }
+  if (itemTextureUrl !== null) {
+    if (typeof itemTextureUrl !== "string" || itemTextureUrl === "") {
       return false;
     }
-    worldEntityTextureByKey.set(`player:${layerName}`, await Assets.load(textureUrl));
+    textureUrlsByKey.set("items", itemTextureUrl);
   }
-
-  for (const [textureKey, textureUrl] of textureUrlsByKey.entries()) {
-    if (typeof textureUrl !== "string" || textureUrl === "") {
+  if (monsterTextureUrl !== null) {
+    if (typeof monsterTextureUrl !== "string" || monsterTextureUrl === "") {
       return false;
     }
-    worldEntityTextureByKey.set(textureKey, await Assets.load(textureUrl));
+    textureUrlsByKey.set("monsters", monsterTextureUrl);
   }
-
   for (const [npcId, textureUrl] of Object.entries(npcTextureUrlsById)) {
     if (typeof npcId !== "string" || npcId === "" || typeof textureUrl !== "string" || textureUrl === "") {
       return false;
     }
-    worldEntityTextureByKey.set(`npc:${npcId}`, await Assets.load(textureUrl));
+    textureUrlsByKey.set(`npc:${npcId}`, textureUrl);
   }
+
+  const unloadedEntries = [...textureUrlsByKey.entries()]
+    .filter(([textureKey]) => !worldEntityTextureByKey.has(textureKey));
+  const textures = await Promise.all(unloadedEntries.map(([, textureUrl]) => Assets.load(textureUrl)));
+  unloadedEntries.forEach(([textureKey], index) => worldEntityTextureByKey.set(textureKey, textures[index]));
 
   entityFrameTextureByCacheKey = new Map();
   return true;
@@ -481,8 +958,6 @@ export const upsertPixiRemotePlayerAppearance = async ({ uid, appearanceKey, tex
       .fill(0x181818);
     selection.visible = false;
     skull.visible = false;
-    skull.x = TILE_SIZE / 2;
-    skull.y = -26;
     skull.addChild(skullHead, skullFace);
     name.anchor.set(0.5, 1);
     name.x = TILE_SIZE / 2;
@@ -587,6 +1062,10 @@ export const updatePixiRemotePlayerVisual = ({
   if (refs.name.text !== nextName) {
     refs.name.text = nextName;
   }
+  const skullX = refs.name.x + refs.name.width / 2 + 10;
+  const skullY = refs.name.y - refs.name.height / 2;
+  if (refs.skull.x !== skullX) refs.skull.x = skullX;
+  if (refs.skull.y !== skullY) refs.skull.y = skullY;
   if (refs.container.x !== x) refs.container.x = x;
   if (refs.container.y !== y) refs.container.y = y;
   if (refs.container.zIndex !== zIndex) refs.container.zIndex = zIndex;
@@ -1407,8 +1886,11 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
 //#region     -----  PIXI - INITIALISATION  -----
 /* ==================================================== */
 /* ---------- APPLICATION ET CONTAINERS ---------- */
-export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gameHeight }) => {
+export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gameHeight, lightingPresets }) => {
   try {
+    if (pixiApp) {
+      return true;
+    }
     if (!htmlParentElement) {
       console.error("[Pixi] No parent element provided for Pixi renderer");
       return false;
@@ -1417,13 +1899,17 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     pixiApp = new Application();
     console.log("[Pixi] Application created");
 
+    requestedPixiRenderer = getRequestedPixiRenderer(globalThis.location?.search ?? "");
+
     await pixiApp.init({
       width: gameWidth,
       height: gameHeight,
       antialias: true,
       clearBeforeRender: true,
+      preference: getPixiRendererPreference(requestedPixiRenderer),
+      powerPreference: "high-performance",
     });
-    console.log("[Pixi] Application initialized, canvas ready");
+    console.log(`[Pixi] ${pixiApp.renderer.name} renderer initialized, canvas ready`);
 
     if (!pixiApp.canvas) {
       console.error("[Pixi] Failed to create canvas");
@@ -1431,6 +1917,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     }
 
     pixiApp.canvas.classList.add("pixi-canvas");
+    pixiApp.canvas.dataset.pixiRenderer = pixiApp.renderer.name;
     htmlParentElement.appendChild(pixiApp.canvas);
     console.log("[Pixi] Canvas appended to DOM");
 
@@ -1466,6 +1953,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     }
 
     tilesetImageUrlByFileName = createTilesetImageUrlByFileName();
+    tilesetTextureLoadPromiseByImageFileName = new Map();
     tileTextureByCacheKey = new Map();
     renderedChunkContainersByKey = new Map();
     worldEntityTextureByKey = new Map();
@@ -1482,15 +1970,35 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     minimapChunkCanvasesByWorldMap = new WeakMap();
     worldItemSelectionFilter = new ColorMatrixFilter();
     worldItemSelectionFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+    initializePixiLighting({ gameWidth, gameHeight, lightingPresets });
     pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
     pixiApp.stop();
     console.log("[Pixi] Initialization complete");
+    return true;
   } catch (error) {
     console.error("[Pixi] Initialization failed:", error);
     return false;
   }
 };
 //#endregion  -----  PIXI - INITIALISATION  -----
+
+export const getPixiRendererDiagnostics = () => {
+  const selectedRenderer = pixiApp?.renderer?.name ?? null;
+  return {
+    requestedRenderer: requestedPixiRenderer,
+    selectedRenderer,
+    didFallback: requestedPixiRenderer !== null && selectedRenderer !== requestedPixiRenderer,
+    lightingReady: Boolean(lightingRenderTexture && lightingRenderOptions && lightingOverlaySprite),
+    lighting: {
+      activeTorchCount: lightingActiveTorchCount,
+      pooledTorchCount: lightingTorchVisualPool?.length ?? 0,
+      torchCutoutTextureCount: lightingTorchCutoutTextureByRadius?.size ?? 0,
+      torchGlowTextureCount: lightingTorchGlowTextureByRadius?.size ?? 0,
+      spellCutoutTextureCount: lightingSpellCutoutTextureByRadius?.size ?? 0,
+      spellGlowTextureCount: lightingSpellGlowTextureByRadius?.size ?? 0,
+    },
+  };
+};
 
 export const renderPixiFrame = (frameTime) => {
   if (!pixiApp || !Number.isFinite(frameTime)) {
@@ -1544,14 +2052,16 @@ export const renderPixiVisibleWorldChunks = async (worldMap, centerChunkX, cente
     return;
   }
 
-  if (!(tilesetTextureByImageFileName instanceof Map)) {
-    tilesetTextureByImageFileName = await loadTilesetTextures(worldMap.tilesets);
+  const renderGeneration = ++visibleChunkRenderGeneration;
+  const visibleChunkKeys = getVisibleChunkKeys(worldMap, centerChunkX, centerChunkY, radiusChunks);
+  await loadTilesetTexturesForChunks(worldMap, visibleChunkKeys);
+  if (renderGeneration !== visibleChunkRenderGeneration) {
+    return;
   }
 
   if (!(tileTextureByCacheKey instanceof Map)) {
     tileTextureByCacheKey = new Map();
   }
-  const visibleChunkKeys = getVisibleChunkKeys(worldMap, centerChunkX, centerChunkY, radiusChunks);
   removeHiddenChunkContainers(visibleChunkKeys);
   addVisibleChunkContainers(worldMap, visibleChunkKeys);
 };

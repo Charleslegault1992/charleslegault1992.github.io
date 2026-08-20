@@ -1,4 +1,10 @@
-export const createClientBootstrap = ({ runtimeState, phases, onStarted = null }) => {
+export const createClientBootstrap = ({
+  runtimeState,
+  phases,
+  onPhaseStarted = null,
+  onPhaseCompleted = null,
+  onStarted = null,
+}) => {
   if (!runtimeState || !Array.isArray(phases)) {
     throw new TypeError("A runtime state and bootstrap phases are required.");
   }
@@ -11,14 +17,17 @@ export const createClientBootstrap = ({ runtimeState, phases, onStarted = null }
     runtimeState.isStarting = true;
     const context = {};
     try {
-      for (const phase of phases) {
+      for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex++) {
+        const phase = phases[phaseIndex];
         if (typeof phase?.run !== "function") {
           throw new TypeError(`Invalid bootstrap phase: ${phase?.name ?? "unknown"}`);
         }
+        onPhaseStarted?.({ phase, phaseIndex, phaseCount: phases.length });
         const phaseResult = await phase.run(context);
         if (phaseResult && typeof phaseResult === "object") {
           Object.assign(context, phaseResult);
         }
+        onPhaseCompleted?.({ phase, phaseIndex, phaseCount: phases.length });
       }
       runtimeState.isStarted = true;
       if (typeof onStarted === "function") {

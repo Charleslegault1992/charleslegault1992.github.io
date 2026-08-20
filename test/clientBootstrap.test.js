@@ -8,6 +8,8 @@ test("the client bootstrap runs phases in order and shares their context", async
   const calls = [];
   const bootstrap = createClientBootstrap({
     runtimeState,
+    onPhaseStarted: ({ phase }) => calls.push(`start:${phase.name}`),
+    onPhaseCompleted: ({ phase }) => calls.push(`done:${phase.name}`),
     phases: [
       {
         name: "data",
@@ -32,7 +34,15 @@ test("the client bootstrap runs phases in order and shares their context", async
   const result = await bootstrap.start();
 
   assert.equal(result.success, true);
-  assert.deepEqual(calls, ["data", "loaded", "ready"]);
+  assert.deepEqual(calls, [
+    "start:data",
+    "data",
+    "done:data",
+    "start:renderer",
+    "loaded",
+    "done:renderer",
+    "ready",
+  ]);
   assert.equal(runtimeState.isStarted, true);
   assert.equal(runtimeState.isStarting, false);
 });
@@ -60,4 +70,3 @@ test("the client bootstrap rejects a duplicate start", async () => {
   assert.equal(duplicateResult.success, false);
   assert.equal(duplicateResult.reason, "already-started");
 });
-

@@ -14,7 +14,6 @@ import {
   gameOptionsWindow,
   gameWelcomeLanguageButtons,
   gameWelcomePlayButton,
-  lightCanvas,
 } from "./domRefs.js";
 
 const BOOLEAN_OPTIONS = [
@@ -75,7 +74,6 @@ export const createGameOptionsController = ({
     if (fpsCounter) {
       fpsCounter.style.display = gameOptionsUiState.values.showFps ? "" : "none";
     }
-    lightCanvas?.style.removeProperty("display");
     game?.classList.toggle("game-hide-creature-names", !gameOptionsUiState.values.showCreatureNames);
     game?.classList.toggle("game-hide-health-bars", !gameOptionsUiState.values.showHealthBars);
     setAudioSettings(gameOptionsUiState.values);

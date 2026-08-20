@@ -88,6 +88,17 @@ export const SQLITE_MIGRATIONS = Object.freeze([
       ON external_identities(account_id);
     `,
   },
+  {
+    version: 6,
+    name: "account-emails",
+    sql: `
+      ALTER TABLE accounts ADD COLUMN email TEXT NOT NULL DEFAULT '';
+
+      CREATE UNIQUE INDEX accounts_email_unique_index
+      ON accounts(email)
+      WHERE email <> '';
+    `,
+  },
 ]);
 
 export const runSqliteMigrations = (database, migrations = SQLITE_MIGRATIONS, now = Date.now()) => {

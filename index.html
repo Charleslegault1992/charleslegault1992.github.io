@@ -31,6 +31,16 @@
       </div>
     </div>
     <div id="character-selector" class="character-selector-overlay" hidden></div>
+    <div id="game-loading" class="game-loading-overlay" hidden aria-live="polite" aria-busy="true">
+      <section class="game-loading-window">
+        <div class="game-loading-brand">NO NAME YET</div>
+        <div class="game-loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="game-loading-progress-fill" class="game-loading-progress-fill"></div>
+        </div>
+        <div id="game-loading-status" class="game-loading-status">Preparing the world...</div>
+        <button id="game-loading-retry" class="game-loading-retry" type="button" hidden>Retry</button>
+      </section>
+    </div>
     <div id="stack-split-menu" class="stack-split-overlay" hidden></div>
     <header>
       <nav class="navbar navbar-expand-lg">
@@ -129,7 +139,6 @@
               <div id="player-quests" class="boite-panneau quest-window" hidden></div>
               <div id="game-options" class="boite-panneau options-window" hidden></div>
               <div id="player-spells" class="boite-panneau spell-window" hidden></div>
-              <canvas id="light-canvas"></canvas>
               <div id="player">
                 <div class="player-floating-text-layer"></div>
                 <div class="php-bar">

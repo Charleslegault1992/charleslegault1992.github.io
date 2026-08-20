@@ -64,6 +64,7 @@ import { GROUND_EFFECT_DECAY_STAGE_MS } from "../src/data/groundEffectsDatabase.
 import {
   PVP_AGGRESSION_DURATION_MS,
   applyUnjustifiedPvpAggression,
+  canInitiatePlayerPvpAttack,
   clearWhiteSkullOnDeath,
   expirePlayerPvpState,
   hasActivePlayerSkull,
@@ -509,10 +510,7 @@ export const createAuthoritativeWorldRuntime = ({
     };
   };
 
-  const executePlayerPvpAttack = (player, target) => {
-    if (!consumePlayerAttackAmmunition(player)) {
-      return { success: false, reason: "ammunition-required" };
-    }
+  const resolvePlayerPvpDamage = (player, target, attackResult, eventType) => {
     const targetRenderSnapshot = {
       uid: target.uid,
       x: target.x,
@@ -528,7 +526,6 @@ export const createAuthoritativeWorldRuntime = ({
     if (isUnjustifiedAttack) {
       applyUnjustifiedPvpAggression(player, currentServerTime);
     }
-    const attackResult = calculatePlayerAttackResult(target, player, combatRandom ?? undefined);
     if (attackResult.finalDamage > 0) {
       applyDamageToPlayer(target, attackResult.finalDamage);
     }
@@ -549,7 +546,7 @@ export const createAuthoritativeWorldRuntime = ({
       },
       events: [
         {
-          type: "player-pvp-attack-resolved",
+          type: eventType,
           playerUid: player.uid,
           targetPlayerUid: target.uid,
           attackResult,
@@ -560,6 +557,18 @@ export const createAuthoritativeWorldRuntime = ({
         ...(deathResult ? [deathResult.event] : []),
       ],
     };
+  };
+
+  const executePlayerPvpAttack = (player, target) => {
+    if (!consumePlayerAttackAmmunition(player)) {
+      return { success: false, reason: "ammunition-required" };
+    }
+    return resolvePlayerPvpDamage(
+      player,
+      target,
+      calculatePlayerAttackResult(target, player, combatRandom ?? undefined),
+      "player-pvp-attack-resolved",
+    );
   };
 
   const updateMonsterCombat = () => {
@@ -682,6 +691,8 @@ export const createAuthoritativeWorldRuntime = ({
       rules: {
         canPlayerAttackMonster,
         canPlayerAttackPlayer,
+        canInitiatePlayerPvpAttack: (attacker, target) =>
+          canInitiatePlayerPvpAttack(attacker, target, currentServerTime),
         canPlayerDisablePvp: (pvpPlayer) =>
           !hasActivePlayerSkull(pvpPlayer, currentServerTime) && !isPlayerInPvpCombat(pvpPlayer.uid),
         canPlayerMove: (payload) => isPlayerDestinationAvailable(player, payload),
@@ -851,12 +862,17 @@ export const createAuthoritativeWorldRuntime = ({
       worldMapsByZ,
       groundEffects: worldEntities.groundEffects,
       monsters: worldEntities.monsters,
-      executeRuneDamage: (monster, useData) =>
-        resolvePlayerDamageToMonster(
-          player,
-          monster,
-          calculateRuneAttackResult(useData, player, combatRandom ?? undefined),
-        ),
+      players: playersByUid,
+      executeRuneDamage: (target, useData, targetType) => {
+        const attackResult = calculateRuneAttackResult(useData, player, combatRandom ?? undefined);
+        if (targetType === "player") {
+          if (!canInitiatePlayerPvpAttack(player, target, currentServerTime)) {
+            return { success: false, reason: "pvp-disabled" };
+          }
+          return resolvePlayerPvpDamage(player, target, attackResult, "player-pvp-rune-resolved");
+        }
+        return resolvePlayerDamageToMonster(player, target, attackResult);
+      },
     });
     inventoriesByPlayerUid.set(playerUid, inventory);
     const persistenceSession = {

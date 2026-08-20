@@ -47,6 +47,10 @@ export const hasActivePlayerSkull = (player, now) => {
   );
 };
 
+export const canInitiatePlayerPvpAttack = (attacker, target, now) => {
+  return attacker?.pvp?.enabled === true || hasActivePlayerSkull(target, now);
+};
+
 export const applyUnjustifiedPvpAggression = (player, now) => {
   if (!player?.pvp || !Number.isFinite(now)) {
     return false;

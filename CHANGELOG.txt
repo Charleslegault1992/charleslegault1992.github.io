@@ -1,3 +1,11 @@
+0.3319 - Lumiere Pixi, connexion et PVP
+    - Remplacement complet de la lumiere Canvas2D par un rendu Pixi persistant optimise pour WebGL, WebGPU et mobile.
+    - Ajout du chargement par etapes avant l'entree en jeu avec progression, reprise et messages clairs.
+    - Amelioration des ecrans de connexion et creation de compte avec branchement de la connexion Google.
+    - Le joueur qui active son PVP peut maintenant attaquer un joueur innocent et recoit un skull visible a droite du nom.
+    - Les joueurs skull peuvent etre attaques sans activer le PVP et sans donner de skull a l'attaquant.
+    - Les runes fonctionnent maintenant en PVP avec portee, ligne de vue, autowalk, cooldown et regles de skull autoritaires.
+
 0.3318 - Correction du split et des items dans les corps
     - Le split des piles est maintenant valide par le serveur et les deux nouvelles piles restent utilisables et deplacables.
     - Les items utilises dans un corps sont maintenant synchronises immediatement sans attendre un refresh.

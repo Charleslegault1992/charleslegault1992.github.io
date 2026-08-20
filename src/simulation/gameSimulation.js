@@ -2,6 +2,7 @@ import { createGameActionDispatcher } from "../actions/gameActionDispatcher.js";
 import { registerGameplayActionHandlers } from "../actions/gameplayActions.js";
 import { registerInventoryActionHandlers } from "../inventory/inventoryActions.js";
 import { registerItemUseActionHandlers } from "../items/itemUseActions.js";
+import { canInitiatePlayerPvpAttack } from "../combat/playerPvpState.js";
 
 const rejectCommand = (reason) => ({ success: false, reason });
 
@@ -119,7 +120,10 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     if (!target || target.uid === player.uid || target.hp <= 0 || target.z !== player.z || player.hp <= 0) {
       return rejectCommand("target-lost");
     }
-    if (!player.pvp?.enabled || !target.pvp?.enabled) {
+    const canInitiatePvpAttack =
+      rules.canInitiatePlayerPvpAttack?.(player, target, payload) ??
+      canInitiatePlayerPvpAttack(player, target, payload.requestedAt);
+    if (canInitiatePvpAttack !== true) {
       return rejectCommand("pvp-disabled");
     }
     if (payload.requestedAt < state.timing.nextPlayerAttackTime) {

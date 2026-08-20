@@ -15,11 +15,15 @@ test("SQLite migrations are ordered and idempotent", () => {
   const secondRows = database.prepare("SELECT version, name FROM schema_migrations ORDER BY version").all();
 
   assert.deepEqual(secondRows, firstRows);
-  assert.deepEqual(firstRows.map((row) => row.version), [1, 2, 3, 4, 5]);
+  assert.deepEqual(firstRows.map((row) => row.version), [1, 2, 3, 4, 5, 6]);
   assert.equal(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'accounts'").get().name, "accounts");
   assert.equal(
     database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'external_identities'").get().name,
     "external_identities",
+  );
+  assert.equal(
+    database.prepare("SELECT name FROM pragma_table_info('accounts') WHERE name = 'email'").get().name,
+    "email",
   );
   database.close();
 });
@@ -33,5 +37,5 @@ test("a migrated SQLite database reopens at the same schema version", () => {
   reopenedDatabase.close();
   unlinkSync(databasePath);
 
-  assert.deepEqual(versions.map((row) => row.version), [1, 2, 3, 4, 5]);
+  assert.deepEqual(versions.map((row) => row.version), [1, 2, 3, 4, 5, 6]);
 });

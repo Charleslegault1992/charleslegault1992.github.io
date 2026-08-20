@@ -71,6 +71,7 @@ export const createPlayerNavigationController = ({
   completeItemDrag,
   findItemLocationByUid,
   findMonsterByUid,
+  findPlayerByUid,
   findPath,
   findPathToAnyTarget,
   getItemFromLocation,
@@ -327,6 +328,26 @@ export const createPlayerNavigationController = ({
               requireLineOfSight: true,
             };
       }
+      if (action.targetType === "player") {
+        const targetPlayer = findPlayerByUid(action.targetUid);
+        if (
+          useData.action !== "attackRune" ||
+          !targetPlayer ||
+          targetPlayer.uid === playerState.uid ||
+          targetPlayer.hp <= 0 ||
+          targetPlayer.z !== playerState.z
+        ) {
+          return null;
+        }
+        return isNearPlayer(targetPlayer, useData.range)
+          ? { isReady: true }
+          : {
+              target: targetPlayer,
+              range: useData.range,
+              distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
+              requireLineOfSight: true,
+            };
+      }
       if (action.targetType === "tile") {
         const targetTile = action.targetTile;
         if (useData.action !== "drinkPotion" || targetTile?.z !== playerState.z) {
@@ -386,6 +407,14 @@ export const createPlayerNavigationController = ({
           return false;
         }
         handleRuneUse(source, item, useData, { monster });
+        return true;
+      }
+      if (action.targetType === "player") {
+        const targetPlayer = findPlayerByUid(action.targetUid);
+        if (!targetPlayer) {
+          return false;
+        }
+        handleRuneUse(source, item, useData, { player: targetPlayer });
         return true;
       }
       if (action.targetType === "tile" && action.targetTile) {

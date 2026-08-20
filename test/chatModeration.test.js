@@ -13,8 +13,8 @@ test("chat mutes persist and moderator commands stay private", () => {
   const databasePath = join(tmpdir(), `nonameyet-chat-${randomUUID()}.sqlite`);
   const accounts = createSqliteAccountRepository({ databasePath });
   const repository = createSqliteChatModerationRepository({ databasePath });
-  accounts.create("moderator", "test-hash", 1);
-  accounts.create("target", "test-hash", 1);
+  accounts.create("moderator", "moderator@example.com", "test-hash", 1);
+  accounts.create("target", "target@example.com", "test-hash", 1);
   const service = createChatModerationService({ repository, moderatorAccountIds: ["moderator"] });
   const moderator = { uid: "player:moderator:one", name: "Mod" };
   const target = { uid: "player:target:one", name: "Target" };

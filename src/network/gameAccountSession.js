@@ -51,8 +51,8 @@ export const createGameAccountSession = ({ apiBaseUrl, storage = globalThis.sess
     }
   };
 
-  const authenticate = async (method, nextAccountId, password) => {
-    const result = await apiClient[method](nextAccountId, password);
+  const authenticate = async (method, ...credentials) => {
+    const result = await apiClient[method](...credentials);
     if (!result.success) {
       return result;
     }
@@ -76,8 +76,8 @@ export const createGameAccountSession = ({ apiBaseUrl, storage = globalThis.sess
   restore();
 
   return Object.freeze({
-    login: (nextAccountId, password) => authenticate("login", nextAccountId, password),
-    register: (nextAccountId, password) => authenticate("register", nextAccountId, password),
+    login: (login, password) => authenticate("login", login, password),
+    register: (nextAccountId, email, password) => authenticate("register", nextAccountId, email, password),
     loginWithGoogle: authenticateWithGoogle,
     refreshToken: async () => {
       const result = await apiClient.refreshToken();

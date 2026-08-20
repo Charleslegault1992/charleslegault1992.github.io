@@ -38,7 +38,16 @@ export const showPlayerName = (name) => {
     playerName.classList.add("name");
     playerRenderRefs.root.appendChild(playerName);
   }
-  playerName.textContent = `${name}`;
+  let playerNameText = playerName.querySelector(".player-name-text");
+  if (!playerNameText) {
+    playerNameText = document.createElement("span");
+    playerNameText.classList.add("player-name-text");
+    playerName.prepend(playerNameText);
+  }
+  playerNameText.textContent = `${name}`;
+  if (playerRenderRefs.skull && playerRenderRefs.skull.parentElement !== playerName) {
+    playerName.appendChild(playerRenderRefs.skull);
+  }
 };
 
 export const refreshPlayerSkull = (skullType) => {
@@ -49,7 +58,8 @@ export const refreshPlayerSkull = (skullType) => {
   if (!skull) {
     skull = document.createElement("div");
     skull.classList.add("player-skull");
-    playerRenderRefs.root.appendChild(skull);
+    const playerName = playerRenderRefs.root.querySelector(".name");
+    (playerName ?? playerRenderRefs.root).appendChild(skull);
     playerRenderRefs.skull = skull;
   }
   const hasSkull = skullType === "white" || skullType === "red";

@@ -3,10 +3,26 @@ import test from "node:test";
 
 import {
   applyUnjustifiedPvpAggression,
+  canInitiatePlayerPvpAttack,
   createPlayerPvpState,
   expirePlayerPvpState,
   recordUnjustifiedPlayerKill,
 } from "../src/combat/playerPvpState.js";
+
+test("PVP initiation requires attacker mode unless the target has an active skull", () => {
+  const now = 1000;
+  const attacker = { pvp: createPlayerPvpState() };
+  const target = { pvp: createPlayerPvpState() };
+
+  assert.equal(canInitiatePlayerPvpAttack(attacker, target, now), false);
+  target.pvp.enabled = true;
+  assert.equal(canInitiatePlayerPvpAttack(attacker, target, now), false);
+  attacker.pvp.enabled = true;
+  assert.equal(canInitiatePlayerPvpAttack(attacker, target, now), true);
+  attacker.pvp.enabled = false;
+  applyUnjustifiedPvpAggression(target, now);
+  assert.equal(canInitiatePlayerPvpAttack(attacker, target, now), true);
+});
 
 test("unjustified aggression gives a white skull that expires", () => {
   const player = { pvp: createPlayerPvpState() };

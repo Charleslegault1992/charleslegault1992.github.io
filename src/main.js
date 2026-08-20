@@ -20,6 +20,7 @@ import {
   setPixiItemUseTargets,
   setPixiWorldItemSelected,
   updatePixiCamera,
+  updatePixiLighting,
   updatePixiMonsterTransform,
   updatePixiNpcTransform,
   updatePixiRemotePlayerVisual,
@@ -113,6 +114,7 @@ import { createGameAccountSession } from "./network/gameAccountSession.js";
 import { createUseItemAction } from "./items/itemUseActions.js";
 import { applyDamageToPlayer } from "./combat/playerHealth.js";
 import { applyDamageToMonsterHealth } from "./combat/monsterHealth.js";
+import { canInitiatePlayerPvpAttack } from "./combat/playerPvpState.js";
 import { applyPlayerDeathState } from "./player/playerDeath.js";
 import { getPlayerMoveCooldown, getPlayerMovementTiming } from "./player/playerMovementTiming.js";
 import {
@@ -289,6 +291,7 @@ import {
   ENTER_GAME_AFTER_RELOAD_SESSION_KEY,
 } from "./ui/characterSelectorController.js";
 import { createGameOptionsController } from "./ui/gameOptionsController.js";
+import { createGameLoadingController } from "./ui/gameLoadingController.js";
 import { createMobileJoystickController } from "./ui/mobileJoystickController.js";
 import { createQuestWindowController } from "./ui/questWindowController.js";
 import { getCurrentWorldMap } from "./world/worldRuntime.js";
@@ -373,6 +376,10 @@ import {
   gameWelcomePlayButton,
   gameWelcomeLanguageButtons,
   characterSelector,
+  gameLoading,
+  gameLoadingStatus,
+  gameLoadingProgressFill,
+  gameLoadingRetryButton,
   stackSplitMenu,
   playerContainers,
   player,
@@ -384,7 +391,6 @@ import {
   chatTabs,
   chatInput,
   boiteJeuxInner,
-  lightCanvas,
   fpsCounter,
   gameStatusMessage,
   mobileGameControls,
@@ -502,7 +508,9 @@ let mobileJoystickController = null;
 let gameOptionsController = null;
 let questWindowController = null;
 let characterSelectorController = null;
+let gameLoadingController = null;
 let clientBootstrap = null;
+let gameShellPreloadPromise = null;
 let gameSystemsOrchestrator = null;
 let accountTokenRefreshIntervalId = null;
 const createCharacterSaveSnapshot = () => characterSessionController.createSnapshot();
@@ -3235,6 +3243,18 @@ const isMonsterValidRuneTarget = (monster, useData) => {
   );
 };
 
+const isPlayerValidRuneTarget = (targetPlayer, useData, now = Date.now()) => {
+  return (
+    targetPlayer?.uid !== playerState.uid &&
+    targetPlayer?.hp > 0 &&
+    targetPlayer.z === playerState.z &&
+    useData?.action === "attackRune" &&
+    Number.isFinite(useData.range) &&
+    isNearPlayer(targetPlayer, useData.range) &&
+    canInitiatePlayerPvpAttack(playerState, targetPlayer, now)
+  );
+};
+
 const getRuneItemUseTargetIndicators = (useData) => {
   const chunkRadius = Math.ceil(useData.range / CHUNK_SIZE_TILES);
   const nearbyMonsters = getMonstersInChunkRadius(playerState.x, playerState.y, playerState.z, chunkRadius);
@@ -3253,6 +3273,23 @@ const getRuneItemUseTargetIndicators = (useData) => {
       x: renderPosition.x,
       y: renderPosition.y,
       color: 0xe4a75b,
+    });
+  }
+
+  const now = Date.now();
+  for (const targetPlayer of playersByUid.values()) {
+    if (!isPlayerValidRuneTarget(targetPlayer, useData, now)) {
+      continue;
+    }
+    const renderPosition = getItemUseTargetRenderPosition(targetPlayer);
+    if (!renderPosition) {
+      continue;
+    }
+    indicators.push({
+      key: `player:${targetPlayer.uid}`,
+      x: renderPosition.x,
+      y: renderPosition.y,
+      color: 0xe45b5b,
     });
   }
 
@@ -3507,19 +3544,24 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 };
 
 const handleRuneUse = (source, item, useData, target) => {
+  const targetEntity = target.monster ?? target.player ?? null;
+  const targetType = target.monster ? "monster" : target.player ? "player" : null;
   let result = null;
-  if (target.monster?.hp > 0 && target.monster.z === playerState.z && !isNearPlayer(target.monster, useData.range)) {
+  if (targetEntity?.hp > 0 && targetEntity.z === playerState.z && !isNearPlayer(targetEntity, useData.range)) {
     startPlayerActionNavigation({
       type: PLAYER_ACTION_TYPE.targetItemUse,
       itemUid: item.uid,
-      targetType: "monster",
-      targetUid: target.monster.uid,
+      targetType,
+      targetUid: targetEntity.uid,
     });
-  } else if (target.monster) {
-    result = dispatchItemUseAction(source, item, {
-      targetType: "monster",
-      monsterUid: target.monster.uid,
-    });
+  } else if (targetEntity) {
+    result = dispatchItemUseAction(
+      source,
+      item,
+      targetType === "monster"
+        ? { targetType, monsterUid: targetEntity.uid }
+        : { targetType, playerUid: targetEntity.uid },
+    );
   }
   handleGameActionResult(result, presentItemUseFailure);
   cancelItemUse();
@@ -4856,68 +4898,24 @@ const showFloatingTextAbovePlayer = (text, type) => {
 //#endregion  -----  UI - STATS, SCALE ET TEXTES FLOTTANTS  -----
 
 /* ==================================================== */
-//#region     -----  LIGHT - CANVAS  -----
+//#region     -----  LIGHT - PIXI  -----
 /* ==================================================== */
-lightCanvas.width = GAME_WIDTH;
-lightCanvas.height = GAME_HEIGHT;
-const ctx = lightCanvas.getContext("2d");
-
-/* ---------- LUMIERE - AFFICHAGE ---------- */
-
-const getLightSourceScreenPosition = (source, surfaceOffsetY = 0) => {
-  const worldX = Number.isFinite(source?.renderX) ? source.renderX : source?.x;
-  const worldY = Number.isFinite(source?.renderY) ? source.renderY : source?.y;
-  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
-    return null;
-  }
-  return {
-    screenX: worldX - camera.x + TILE_SIZE / 2,
-    screenY: worldY - camera.y + TILE_SIZE / 2 - surfaceOffsetY,
-  };
+const PIXI_LIGHT_SOURCE_STRIDE = 3;
+const PIXI_LIGHT_INITIAL_CAPACITY = 64;
+const pixiLightingFrame = {
+  isOutdoor: true,
+  playerScreenX: 0,
+  playerScreenY: 0,
+  playerRevealRadius: TORCH_PLAYER_REVEAL_RADIUS,
+  spellRadius: 0,
+  torchCount: 0,
+  torchData: new Float32Array(PIXI_LIGHT_INITIAL_CAPACITY * PIXI_LIGHT_SOURCE_STRIDE),
 };
 
 const getTorchLightRadius = (item) => {
   const itemData = getItemData(item?.itemId);
   const fuelStage = getTorchFuelStage(item);
   return itemData?.lightSource?.radiusByStage?.[fuelStage] ?? 0;
-};
-
-const getActiveTorchLightSources = () => {
-  const lightSources = [];
-  for (const item of activeLitTorchesByUid.values()) {
-    if (!item.isLit || item.fuelRemainingMs <= 0) {
-      continue;
-    }
-
-    if (playerState.equipment.ammo === item) {
-      lightSources.push({ item, source: playerState, surfaceOffsetY: getEntitySurfaceOffsetY(playerState) });
-      continue;
-    }
-
-    if (worldItemsByUid.get(item.uid) === item && item.z === playerState.z) {
-      lightSources.push({ item, source: item, surfaceOffsetY: getWorldItemStackOffsetY(item) });
-    }
-  }
-  return lightSources;
-};
-
-const drawDarknessCutout = (screenX, screenY, radius, centerOpacity) => {
-  const gradient = ctx.createRadialGradient(screenX, screenY, 12, screenX, screenY, radius);
-  gradient.addColorStop(0, `rgba(0, 0, 0, ${centerOpacity})`);
-  gradient.addColorStop(0.65, `rgba(0, 0, 0, ${centerOpacity * 0.2})`);
-  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(screenX - radius, screenY - radius, radius * 2, radius * 2);
-};
-
-const drawTorchGlow = (screenX, screenY, radius) => {
-  const glowRadius = radius * 0.85;
-  const gradient = ctx.createRadialGradient(screenX, screenY, 16, screenX, screenY, glowRadius);
-  gradient.addColorStop(0, "rgba(255, 246, 169, 0.015)");
-  gradient.addColorStop(0.55, "rgba(255, 174, 45, 0.055)");
-  gradient.addColorStop(1, "rgba(255, 70, 0, 0)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(screenX - glowRadius, screenY - glowRadius, glowRadius * 2, glowRadius * 2);
 };
 
 const getActivePlayerSpellLightRadius = (now) => {
@@ -4928,71 +4926,87 @@ const getActivePlayerSpellLightRadius = (now) => {
   return lightEffect.radius;
 };
 
-const drawMagicLightGlow = (screenX, screenY, radius) => {
-  const glowRadius = radius * 0.75;
-  const gradient = ctx.createRadialGradient(screenX, screenY, 12, screenX, screenY, glowRadius);
-  gradient.addColorStop(0, "rgba(222, 239, 255, 0.04)");
-  gradient.addColorStop(0.6, "rgba(139, 194, 255, 0.025)");
-  gradient.addColorStop(1, "rgba(90, 150, 255, 0)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(screenX - glowRadius, screenY - glowRadius, glowRadius * 2, glowRadius * 2);
+const ensurePixiLightingCapacity = (requiredCount) => {
+  const requiredLength = requiredCount * PIXI_LIGHT_SOURCE_STRIDE;
+  if (requiredLength <= pixiLightingFrame.torchData.length) {
+    return;
+  }
+  let nextLength = pixiLightingFrame.torchData.length;
+  while (nextLength < requiredLength) {
+    nextLength *= 2;
+  }
+  const nextTorchData = new Float32Array(nextLength);
+  nextTorchData.set(pixiLightingFrame.torchData);
+  pixiLightingFrame.torchData = nextTorchData;
 };
 
-const drawOutdoorSunlight = () => {
-  const radius = Math.max(GAME_WIDTH, GAME_HEIGHT);
-  const gradient = ctx.createRadialGradient(GAME_WIDTH * 0.18, 0, 0, GAME_WIDTH * 0.18, 0, radius);
-  gradient.addColorStop(0, "rgba(255, 246, 197, 0.055)");
-  gradient.addColorStop(1, "rgba(255, 236, 167, 0.012)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+const appendPixiTorchLight = (screenX, screenY, radius, torchCount) => {
+  if (
+    screenX + radius < 0 ||
+    screenX - radius > GAME_WIDTH ||
+    screenY + radius < 0 ||
+    screenY - radius > GAME_HEIGHT
+  ) {
+    return torchCount;
+  }
+  ensurePixiLightingCapacity(torchCount + 1);
+  const dataIndex = torchCount * PIXI_LIGHT_SOURCE_STRIDE;
+  pixiLightingFrame.torchData[dataIndex] = screenX;
+  pixiLightingFrame.torchData[dataIndex + 1] = screenY;
+  pixiLightingFrame.torchData[dataIndex + 2] = radius;
+  return torchCount + 1;
 };
 
 const updateLight = (source) => {
-  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.globalCompositeOperation = "source-over";
+  const playerX = Number.isFinite(source?.renderX) ? source.renderX : source?.x;
+  const playerY = Number.isFinite(source?.renderY) ? source.renderY : source?.y;
+  const playerSurfaceOffsetY = getEntitySurfaceOffsetY(source);
+  pixiLightingFrame.isOutdoor = playerState.z >= 0;
+  pixiLightingFrame.playerScreenX = playerX - camera.x + TILE_SIZE / 2;
+  pixiLightingFrame.playerScreenY = playerY - camera.y + TILE_SIZE / 2 - playerSurfaceOffsetY;
+  pixiLightingFrame.spellRadius = pixiLightingFrame.isOutdoor ? 0 : getActivePlayerSpellLightRadius(Date.now());
+  pixiLightingFrame.torchCount = 0;
 
-  if (playerState.z >= 0) {
-    drawOutdoorSunlight();
-    return;
-  }
+  if (!pixiLightingFrame.isOutdoor) {
+    let torchCount = 0;
+    for (const item of activeLitTorchesByUid.values()) {
+      if (!item.isLit || item.fuelRemainingMs <= 0) {
+        continue;
+      }
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.995)";
-  ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-  ctx.globalCompositeOperation = "destination-out";
+      const radius = getTorchLightRadius(item);
+      if (radius <= 0) {
+        continue;
+      }
 
-  const playerScreenPosition = getLightSourceScreenPosition(source, getEntitySurfaceOffsetY(source));
-  if (playerScreenPosition) {
-    drawDarknessCutout(playerScreenPosition.screenX, playerScreenPosition.screenY, TORCH_PLAYER_REVEAL_RADIUS, 0.18);
-  }
+      if (playerState.equipment.ammo === item) {
+        torchCount = appendPixiTorchLight(
+          pixiLightingFrame.playerScreenX,
+          pixiLightingFrame.playerScreenY,
+          radius,
+          torchCount,
+        );
+        continue;
+      }
 
-  const spellLightRadius = getActivePlayerSpellLightRadius(Date.now());
-  if (playerScreenPosition && spellLightRadius > 0) {
-    drawDarknessCutout(playerScreenPosition.screenX, playerScreenPosition.screenY, spellLightRadius, 0.7);
-  }
-
-  const torchLights = getActiveTorchLightSources();
-  for (const torchLight of torchLights) {
-    const screenPosition = getLightSourceScreenPosition(torchLight.source, torchLight.surfaceOffsetY);
-    const radius = getTorchLightRadius(torchLight.item);
-    if (!screenPosition || radius <= 0) {
-      continue;
+      if (worldItemsByUid.get(item.uid) !== item || item.z !== playerState.z) {
+        continue;
+      }
+      const itemX = Number.isFinite(item.renderX) ? item.renderX : item.x;
+      const itemY = Number.isFinite(item.renderY) ? item.renderY : item.y;
+      torchCount = appendPixiTorchLight(
+        itemX - camera.x + TILE_SIZE / 2,
+        itemY - camera.y + TILE_SIZE / 2 - getWorldItemStackOffsetY(item),
+        radius,
+        torchCount,
+      );
     }
-    drawDarknessCutout(screenPosition.screenX, screenPosition.screenY, radius, 0.69);
+    pixiLightingFrame.torchCount = torchCount;
   }
 
-  ctx.globalCompositeOperation = "source-over";
-  for (const torchLight of torchLights) {
-    const screenPosition = getLightSourceScreenPosition(torchLight.source, torchLight.surfaceOffsetY);
-    const radius = getTorchLightRadius(torchLight.item);
-    if (screenPosition && radius > 0) {
-      drawTorchGlow(screenPosition.screenX, screenPosition.screenY, radius);
-    }
-  }
-  if (playerScreenPosition && spellLightRadius > 0) {
-    drawMagicLightGlow(playerScreenPosition.screenX, playerScreenPosition.screenY, spellLightRadius);
-  }
+  updatePixiLighting(pixiLightingFrame);
 };
-//#endregion  -----  LIGHT - CANVAS  -----
+//#endregion  -----  LIGHT - PIXI  -----
 
 /* ==================================================== */
 //#region     -----  JOUEUR - MOUVEMENT  -----
@@ -6988,6 +7002,7 @@ const updateMonsterMovement = (now, activeMonsters) => monsterAiSystem.updateMov
 /* ---------- RENDER - INITIALISATION DU MONDE ---------- */
 
 const renderInitialWorld = () => {
+  updateRenderCamera();
   renderGroundItems(worldItemsByUid.values());
   syncGroundEffectRenderForCurrentZ();
   syncVisibleMonsterRendersAroundPlayer();
@@ -7957,6 +7972,15 @@ gameOptionsController = createGameOptionsController({
   updatePlayerStats,
 });
 
+gameLoadingController = createGameLoadingController({
+  overlay: gameLoading,
+  statusElement: gameLoadingStatus,
+  progressElement: gameLoadingProgressFill,
+  retryButton: gameLoadingRetryButton,
+  getText: getGameUiText,
+  onRetry: () => window.location.reload(),
+});
+
 characterSelectorController = createCharacterSelectorController({
   accountSession: gameAccountSession,
   googleClientId: GOOGLE_CLIENT_ID,
@@ -8009,6 +8033,7 @@ playerNavigationController = createPlayerNavigationController({
   completeItemDrag,
   findItemLocationByUid,
   findMonsterByUid,
+  findPlayerByUid: (playerUid) => playersByUid.get(playerUid) ?? (playerState.uid === playerUid ? playerState : null),
   findPath,
   findPathToAnyTarget,
   getItemFromLocation,
@@ -8305,18 +8330,51 @@ const executeSimulationItemUse = (item, useData, payload) => {
   }
 
   if (useData.action === "attackRune") {
-    const monster = monstersByUid.get(payload.target?.monsterUid) ?? null;
-    if (!monster || payload.target?.targetType !== "monster" || !isMonsterValidRuneTarget(monster, useData)) {
+    const targetType = payload.target?.targetType;
+    const targetEntity = targetType === "monster"
+      ? monstersByUid.get(payload.target.monsterUid) ?? null
+      : targetType === "player"
+        ? playersByUid.get(payload.target.playerUid) ?? null
+        : null;
+    const isValidTarget = targetType === "monster"
+      ? isMonsterValidRuneTarget(targetEntity, useData)
+      : targetType === "player"
+        ? isPlayerValidRuneTarget(targetEntity, useData, payload.requestedAt)
+        : false;
+    if (!isValidTarget) {
       return { success: false, reason: "target-out-of-range" };
     }
-    if (!hasPlayerLineOfSightToEntity(monster)) {
+    if (!hasPlayerLineOfSightToEntity(targetEntity)) {
       return { success: false, reason: "line-of-sight-blocked" };
     }
     if (!consumeOneChargeFromRune(item, payload.source)) {
       return { success: false, reason: "item-consume-failed" };
     }
     const attackResult = calculateRuneAttackResult(useData);
-    const damageResult = applyDamageToMonster(monster, attackResult, payload.requestedAt);
+    const targetRenderSnapshot = structuredClone(targetEntity);
+    let damageResult = null;
+    if (targetType === "monster") {
+      damageResult = applyDamageToMonster(targetEntity, attackResult, payload.requestedAt);
+    } else {
+      const healthResult = applyDamageToPlayer(targetEntity, attackResult.finalDamage);
+      damageResult = {
+        success: healthResult.success,
+        changes: {
+          targetPlayerUid: targetEntity.uid,
+          hp: targetEntity.hp,
+          finalDamage: healthResult.damageApplied,
+        },
+        events: [
+          {
+            type: "player-pvp-rune-resolved",
+            playerUid: playerState.uid,
+            targetPlayerUid: targetEntity.uid,
+            attackResult,
+            targetRenderSnapshot,
+          },
+        ],
+      };
+    }
     if (!damageResult?.success) {
       return damageResult ?? { success: false, reason: "damage-failed" };
     }
@@ -8328,7 +8386,9 @@ const executeSimulationItemUse = (item, useData, payload) => {
       changes: {
         itemUid: item.uid,
         charges: item.charges ?? 0,
-        monsterUid: monster.uid,
+        ...(targetType === "monster"
+          ? { monsterUid: targetEntity.uid }
+          : { targetPlayerUid: targetEntity.uid }),
         finalDamage: attackResult.finalDamage,
       },
       events: [
@@ -8369,6 +8429,20 @@ const handlePlayerPvpAttackResolvedEffect = (event) => {
     updateRemotePlayerVisual(targetPlayer);
   }
   playPlayerAttackResultSfx(event.attackResult);
+  syncMobileTargetHud();
+};
+
+const handlePlayerPvpRuneResolvedEffect = (event) => {
+  const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
+  if (targetPlayer) {
+    showFloatingTextAboveTarget(
+      event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
+      70,
+      targetPlayer,
+      event.attackResult?.textType ?? "fire",
+    );
+    updateRemotePlayerVisual(targetPlayer);
+  }
   syncMobileTargetHud();
 };
 
@@ -8504,6 +8578,8 @@ gameSimulation = createGameSimulation({
   rules: {
     canPlayerAttackMonster: canSimulationPlayerAttackMonster,
     canPlayerAttackPlayer: canSimulationPlayerAttackMonster,
+    canInitiatePlayerPvpAttack: (attacker, target, payload) =>
+      canInitiatePlayerPvpAttack(attacker, target, payload.requestedAt),
     canPlayerMove: canSimulationPlayerMove,
     canPlayerUseWorldTransition: (movingPlayer, transition) => isNearPlayer(transition, 1),
     canUseWorldItemSource: (source) => canInteractWithWorldItemSource(source),
@@ -8567,6 +8643,7 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "npc-spoke": handleRemoteNpcSpeechEffect,
   "player-attack-resolved": handlePlayerAttackResolvedEffect,
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
+  "player-pvp-rune-resolved": handlePlayerPvpRuneResolvedEffect,
   "player-died": handleServerPlayerDeathEffect,
   "player-pvp-state-changed": () => refreshPvpButtonState(),
   "player-world-transitioned": () => presentPlayerWorldTransition(),
@@ -8767,6 +8844,67 @@ const initializePlayerUi = () => {
 };
 
 /* ---------- INITIALISATION - DEMARRAGE ---------- */
+const preconnectGameService = (url) => {
+  if (typeof url !== "string" || url === "") {
+    return;
+  }
+  try {
+    const origin = new URL(url).origin.replace(/^ws/, "http");
+    if (document.head.querySelector(`link[rel="preconnect"][href="${origin}"]`)) {
+      return;
+    }
+    const linkElement = document.createElement("link");
+    linkElement.rel = "preconnect";
+    linkElement.href = origin;
+    linkElement.crossOrigin = "anonymous";
+    document.head.appendChild(linkElement);
+  } catch {
+    // An invalid optional endpoint will be reported by the real connection attempt.
+  }
+};
+
+const preloadGameShell = () => {
+  if (gameShellPreloadPromise) {
+    return gameShellPreloadPromise;
+  }
+  preconnectGameService(REMOTE_GAME_API_URL);
+  preconnectGameService(REMOTE_GAME_SERVER_URL);
+  if (GOOGLE_CLIENT_ID !== "") {
+    preconnectGameService("https://accounts.google.com");
+  }
+  gameShellPreloadPromise = (async () => {
+    const worldMapsByZ = loadWorldMaps();
+    const didInitializeRenderer = await initializePixiRenderer({
+      htmlParentElement: game,
+      gameWidth: GAME_WIDTH,
+      gameHeight: GAME_HEIGHT,
+      lightingPresets: {
+        playerRevealRadius: TORCH_PLAYER_REVEAL_RADIUS,
+        torchRadii: getItemData("torch")?.lightSource?.radiusByStage ?? [],
+        spellRadii: Object.values(spellsDatabase)
+          .map((spellData) => spellData.lightRadius)
+          .filter((radius) => Number.isFinite(radius) && radius > 0),
+      },
+    });
+    if (!didInitializeRenderer) {
+      throw new Error("Pixi renderer initialization failed.");
+    }
+    const didLoadSharedTextures = await loadPixiWorldEntityTextures({
+      itemTextureUrl: getAtlasPath("items"),
+      monsterTextureUrl: getAtlasPath("monsters"),
+      npcTextureUrlsById: getNpcTextureUrlsById(),
+    });
+    if (!didLoadSharedTextures) {
+      throw new Error("Shared world textures could not be loaded.");
+    }
+    return { worldMapsByZ };
+  })().catch((error) => {
+    gameShellPreloadPromise = null;
+    throw error;
+  });
+  return gameShellPreloadPromise;
+};
+
 const prepareGameData = () => {
   const selectedOnlineCharacter = gameAccountSession?.getActiveCharacter() ?? null;
   if (selectedOnlineCharacter) {
@@ -8788,32 +8926,39 @@ const prepareGameData = () => {
   }
   return {
     loadedCharacterSnapshot,
-    worldMapsByZ: loadWorldMaps(),
   };
 };
 
-const initializeGameRenderer = async () => {
-  await initializePixiRenderer({
-    htmlParentElement: game,
-    gameWidth: GAME_WIDTH,
-    gameHeight: GAME_HEIGHT,
-  });
+const initializeGameRenderer = async () => preloadGameShell();
+
+const loadSelectedPlayerTextures = async () => {
   const playerTextureUrlsByLayer = await getPlayerAppearanceLayerTextureUrls(
     playerState.appearanceParts,
     playerState.appearanceColors,
   );
-  await loadPixiWorldEntityTextures({
+  const didLoadPlayerTextures = await loadPixiWorldEntityTextures({
     playerTextureUrlsByLayer,
-    itemTextureUrl: getAtlasPath("items"),
-    monsterTextureUrl: getAtlasPath("monsters"),
-    npcTextureUrlsById: getNpcTextureUrlsById(),
   });
+  if (!didLoadPlayerTextures) {
+    throw new Error("Player appearance textures could not be loaded.");
+  }
+};
+
+const initializeGameSession = async () => {
+  const [, sessionResult] = await Promise.all([
+    loadSelectedPlayerTextures(),
+    initializeRemoteGameSession(),
+  ]);
+  return sessionResult;
 };
 
 const initializeGameWorld = async ({ loadedCharacterSnapshot, worldMapsByZ }) => {
   pixiWorldRenderState.worldMapsByZ = worldMapsByZ;
   if (gameRuntimeState.isRemoteSession) {
     pixiWorldRenderState.currentZ = playerState.z;
+    rebuildWorldTileStacks();
+    rebuildMonsterSpatialIndexes();
+    rebuildNpcSpatialIndexes();
     await updatePixiVisibleChunksAroundPlayer();
     return;
   }
@@ -8843,10 +8988,23 @@ clientBootstrap = createClientBootstrap({
   phases: [
     { name: "data", run: prepareGameData },
     { name: "renderer", run: initializeGameRenderer },
-    { name: "network", run: initializeRemoteGameSession },
+    { name: "network", run: initializeGameSession },
     { name: "world", run: initializeGameWorld },
     { name: "interface", run: initializeGameInterface },
   ],
+  onPhaseStarted: ({ phase, phaseIndex, phaseCount }) => {
+    const loadingTextKeyByPhase = {
+      data: "loadingData",
+      renderer: "loadingRenderer",
+      network: "loadingNetwork",
+      world: "loadingWorld",
+      interface: "loadingInterface",
+    };
+    gameLoadingController.setStage(loadingTextKeyByPhase[phase.name] ?? "loadingData", phaseIndex / phaseCount);
+  },
+  onPhaseCompleted: ({ phaseIndex, phaseCount }) => {
+    gameLoadingController.setStage("loadingReady", (phaseIndex + 1) / phaseCount);
+  },
   onStarted: () => {
     preloadGameSfx();
     startGameMusic();
@@ -8865,13 +9023,36 @@ clientBootstrap = createClientBootstrap({
 });
 
 const startGame = async () => {
-  const result = await clientBootstrap.start();
-  return result.success;
+  gameWelcome.hidden = false;
+  if (gameLoadingRetryButton) {
+    gameLoadingRetryButton.textContent = getGameUiText("retry");
+  }
+  gameLoadingController.show();
+  try {
+    const result = await clientBootstrap.start();
+    if (!result.success) {
+      return false;
+    }
+    gameLoadingController.setStage("loadingReady", 1);
+    renderPixiFrame(performance.now());
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    characterSelectorController.close();
+    gameWelcome.hidden = true;
+    gameLoadingController.hide();
+    return true;
+  } catch (error) {
+    console.error("[Startup] Game initialization failed:", error);
+    gameLoadingController.fail();
+    return false;
+  }
 };
 
 const shouldEnterGameImmediately = initializeGameWelcome();
+void preloadGameShell().catch((error) => {
+  console.warn("[Startup] Background preload will retry when the game starts:", error);
+});
 if (shouldEnterGameImmediately) {
-  startGame();
+  void startGame();
 }
 
 //#endregion  -----  INITIALISATION DU JEU  -----

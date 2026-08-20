@@ -133,28 +133,38 @@ export const createGameHttpApi = ({
         return true;
       }
       const body = await readJsonBody(request);
-      const accountId = String(body?.accountId ?? "").trim().toLocaleLowerCase();
       const password = body?.password;
+      let authenticatedAccountId = null;
       if (url.pathname === "/auth/register") {
+        const accountId = String(body?.accountId ?? "").trim().toLocaleLowerCase();
+        const email = String(body?.email ?? "").trim().toLocaleLowerCase();
         const passwordHash = await passwordService.hashPassword(password);
-        const result = passwordHash ? accountRepository.create(accountId, passwordHash, now()) : null;
+        const result = passwordHash ? accountRepository.create(accountId, email, passwordHash, now()) : null;
         if (!result?.success) {
-          writeJson(response, result?.reason === "account-already-exists" ? 409 : 400, {
+          const isConflict = ["account-already-exists", "email-already-exists"].includes(result?.reason);
+          writeJson(response, isConflict ? 409 : 400, {
             success: false,
             reason: result?.reason ?? "invalid-credentials",
           }, corsHeaders);
           return true;
         }
+        authenticatedAccountId = result.accountId;
       } else {
-        const account = accountRepository.find(accountId);
+        const login = String(body?.login ?? body?.accountId ?? "").trim().toLocaleLowerCase();
+        const account = accountRepository.findByLogin(login);
         const passwordHash = account?.passwordHash ?? await dummyPasswordHashPromise;
         const passwordMatches = await passwordService.verifyPassword(password, passwordHash);
         if (!account || !passwordMatches) {
           writeJson(response, 401, { success: false, reason: "invalid-credentials" }, corsHeaders);
           return true;
         }
+        authenticatedAccountId = account.accountId;
       }
-      writeJson(response, 200, { success: true, accountId, token: issueToken(accountId) }, corsHeaders);
+      writeJson(response, 200, {
+        success: true,
+        accountId: authenticatedAccountId,
+        token: issueToken(authenticatedAccountId),
+      }, corsHeaders);
       return true;
     }
 
