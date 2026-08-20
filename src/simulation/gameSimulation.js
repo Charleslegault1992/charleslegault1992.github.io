@@ -221,6 +221,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     executeAttackPlayer,
     executeCastSpell,
     executeMove: commands.executeMoveItem,
+    executeSplitItemStack: commands.executeSplitItemStack,
     executeMovePlayer,
     executeSendChatMessage,
     executeSetPvpEnabled,

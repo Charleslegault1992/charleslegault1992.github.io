@@ -757,6 +757,7 @@ export const createAuthoritativeWorldRuntime = ({
           });
         },
         executeMoveItem: inventory.executeMove,
+        executeSplitItemStack: inventory.splitItemStack,
         executeWorldTransition: (transition) => executePlayerWorldTransition(player, transition),
         findAutomaticWorldTransition: (movingPlayer) => {
           const worldMap = worldMapsByZ.get(movingPlayer.z);
@@ -958,6 +959,13 @@ export const createAuthoritativeWorldRuntime = ({
           upserts.worldItems = [...(upserts.worldItems ?? []), serializeWorldItem(changedWorldItem)];
         } else if (action.payload?.source?.locationType === "worldItem") {
           removals.worldItems = [...(removals.worldItems ?? []), changedItemUid];
+        }
+      }
+      const createdWorldItemUid = result.changes?.createdWorldItemUid;
+      if (Number.isInteger(createdWorldItemUid)) {
+        const createdWorldItem = worldEntities.worldItems.get(createdWorldItemUid);
+        if (createdWorldItem) {
+          upserts.worldItems = [...(upserts.worldItems ?? []), serializeWorldItem(createdWorldItem)];
         }
       }
       const corpseUid = result.changes?.corpseUid;

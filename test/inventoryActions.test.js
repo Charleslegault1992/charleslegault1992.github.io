@@ -6,6 +6,7 @@ import { createItemInstance } from "../src/items/itemFactory.js";
 import {
   createInsertItemsAction,
   createMoveItemAction,
+  createSplitItemStackAction,
   INVENTORY_ACTION_REASON,
   registerInventoryActionHandlers,
 } from "../src/inventory/inventoryActions.js";
@@ -102,4 +103,22 @@ test("a rejected local move keeps the domain reason", () => {
 
   assert.equal(result.success, false);
   assert.equal(result.reason, INVENTORY_ACTION_REASON.itemChanged);
+});
+
+test("a split action preserves its authoritative source, item UID and quantity", () => {
+  const dispatcher = createDispatcher();
+  const source = { locationType: "containerSlot", parentContainerUid: 10, slotIndex: 2 };
+  const action = createSplitItemStackAction(source, 25, 7);
+
+  const result = dispatcher.dispatch(action, {
+    executeSplitItemStack(payload) {
+      assert.deepEqual(payload.source, source);
+      assert.equal(payload.itemUid, 25);
+      assert.equal(payload.splitQuantity, 7);
+      return { success: true, changes: { itemUid: 25, splitItemUid: 26 } };
+    },
+  });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.changes, { itemUid: 25, splitItemUid: 26 });
 });

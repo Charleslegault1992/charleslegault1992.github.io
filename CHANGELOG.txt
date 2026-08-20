@@ -1,3 +1,7 @@
+0.3318 - Correction du split et des items dans les corps
+    - Le split des piles est maintenant valide par le serveur et les deux nouvelles piles restent utilisables et deplacables.
+    - Les items utilises dans un corps sont maintenant synchronises immediatement sans attendre un refresh.
+
 0.3317 - Correction du mouvement online sous latence
     - La confirmation du serveur ne redemarre plus l'animation locale d'un mouvement deja predit.
     - Les predictions locales ne reinitialisent plus l'interpolation des monstres, NPC et joueurs distants.

@@ -16,7 +16,7 @@ import { createAuthoritativeWorldRuntime } from "../server/authoritativeWorldRun
 import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
 import { createSqliteCharacterRepository } from "../server/persistence/sqliteCharacterRepository.js";
 import { getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../src/world/worldCoordinates.js";
-import { createMoveItemAction } from "../src/inventory/inventoryActions.js";
+import { createMoveItemAction, createSplitItemStackAction } from "../src/inventory/inventoryActions.js";
 import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { createUseItemAction } from "../src/items/itemUseActions.js";
 
@@ -374,6 +374,81 @@ test("the authoritative server owns world-to-inventory item moves", async () => 
   assert.equal(backpack.content[0].uid, apple.uid);
   assert.equal(runtime.getWorldEntities().worldItems.has(apple.uid), false);
   assert.equal(result.changes.equipment.backpack.content[0].uid, apple.uid);
+});
+
+test("split corpse stacks remain authoritative, movable and immediately usable", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "split", characterId: "corpse" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const backpack = createItemInstance("bag", 1);
+  const gold = createItemInstance("goldCoin", 10);
+  const cheese = createItemInstance("cheese", 2);
+  const corpse = createGroundItem("ratCorpse", 1, player.x, player.y, player.z, [gold, cheese], {
+    now: () => serverTime,
+    decayingItems: [],
+  });
+  player.equipment.backpack = backpack;
+  player.sanity = 0;
+  runtime.getWorldEntities().worldItems.add(corpse);
+
+  const beforeSplit = runtime.createSnapshotForClient(session);
+  const splitResult = runtime.dispatchAction(
+    session,
+    createSplitItemStackAction(
+      { locationType: "containerSlot", parentContainerUid: corpse.uid, slotIndex: 0 },
+      gold.uid,
+      4,
+    ),
+  );
+  const splitGold = corpse.content[2];
+  const splitDelta = runtime.getDeltasForClient(session, beforeSplit.revision).at(-1);
+
+  assert.equal(splitResult.success, true);
+  assert.equal(gold.quantity, 6);
+  assert.equal(splitGold.quantity, 4);
+  assert.notEqual(splitGold.uid, gold.uid);
+  assert.equal(splitDelta.upserts.worldItems.find((item) => item.uid === corpse.uid).content[2].uid, splitGold.uid);
+
+  const moveSplitResult = runtime.dispatchAction(
+    session,
+    createMoveItemAction(
+      { locationType: "containerSlot", parentContainerUid: corpse.uid, slotIndex: 2 },
+      { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 0 },
+      splitGold.uid,
+    ),
+  );
+  const moveOriginalResult = runtime.dispatchAction(
+    session,
+    createMoveItemAction(
+      { locationType: "containerSlot", parentContainerUid: corpse.uid, slotIndex: 0 },
+      { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 1 },
+      gold.uid,
+    ),
+  );
+
+  assert.equal(moveSplitResult.success, true);
+  assert.equal(moveOriginalResult.success, true);
+  assert.equal(backpack.content[0].uid, splitGold.uid);
+  assert.equal(backpack.content[1].uid, gold.uid);
+
+  const beforeEating = runtime.createSnapshotForClient(session);
+  const eatResult = runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: { locationType: "containerSlot", parentContainerUid: corpse.uid, slotIndex: 1 },
+      itemUid: cheese.uid,
+      requestedAt: serverTime,
+    }),
+  );
+  const eatDelta = runtime.getDeltasForClient(session, beforeEating.revision).at(-1);
+
+  assert.equal(eatResult.success, true);
+  assert.equal(cheese.quantity, 1);
+  assert.equal(eatDelta.upserts.worldItems.find((item) => item.uid === corpse.uid).content[1].quantity, 1);
 });
 
 test("private inventory deltas are sent only as self state", async () => {

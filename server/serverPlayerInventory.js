@@ -7,6 +7,7 @@ import {
 } from "../src/inventory/inventoryWeight.js";
 import { createItemLocationController } from "../src/inventory/itemLocationController.js";
 import { getItemData, getItemSurfaceHeight, isContainerItem } from "../src/items/itemModel.js";
+import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { canPlayerEquipItemInSlot } from "../src/player/playerEquipment.js";
 import {
   commitContainerInsertionPlan,
@@ -182,6 +183,13 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     return Boolean(rootWorldItem && isNear(player, rootWorldItem, 1) && isTopWorldItem(rootWorldItem));
   };
 
+  const getWorldRootUidForLocation = (location) => {
+    if (location?.locationType !== "containerSlot") {
+      return null;
+    }
+    return findWorldRootContaining(location.parentContainerUid)?.uid ?? null;
+  };
+
   const canPlaceWorldItem = (_source, _item, destination) => {
     if (!isNear(player, destination, WORLD_ITEM_THROW_RANGE)) {
       return false;
@@ -241,6 +249,76 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     return result;
   };
 
+  const splitItemStack = ({ source, itemUid, splitQuantity }) => {
+    const item = locationController.getItem(source);
+    const itemData = getItemData(item?.itemId);
+    if (
+      !itemData?.stackable ||
+      item?.uid !== itemUid ||
+      !Number.isInteger(splitQuantity) ||
+      splitQuantity <= 0 ||
+      splitQuantity >= item.quantity ||
+      !canAccessLocation(source)
+    ) {
+      return { success: false, reason: "item-changed" };
+    }
+
+    const changedWorldContainerUids = new Set();
+    let splitItem = null;
+
+    if (source.locationType === "containerSlot") {
+      const parentContainer = locationController.getParentContainer(source);
+      const capacity = getItemData(parentContainer?.itemId)?.capacity;
+      if (!parentContainer || !Number.isInteger(capacity)) {
+        return { success: false, reason: "invalid-source" };
+      }
+      let emptySlotIndex = -1;
+      for (let slotIndex = 0; slotIndex < capacity; slotIndex++) {
+        if (!parentContainer.content[slotIndex]) {
+          emptySlotIndex = slotIndex;
+          break;
+        }
+      }
+      if (emptySlotIndex < 0) {
+        return { success: false, reason: "no-room" };
+      }
+      splitItem = createItemInstance(item.itemId, splitQuantity);
+      if (!splitItem) {
+        return { success: false, reason: "invalid-configuration" };
+      }
+      parentContainer.content[emptySlotIndex] = splitItem;
+      const worldRoot = findWorldRootContaining(parentContainer.uid);
+      if (worldRoot) {
+        changedWorldContainerUids.add(worldRoot.uid);
+      }
+    } else if (source.locationType === "worldItem") {
+      if (!isNear(player, item, 1) || !isTopWorldItem(item)) {
+        return { success: false, reason: "invalid-source" };
+      }
+      splitItem = createGroundItem(item.itemId, splitQuantity, item.x, item.y, item.z);
+      if (!splitItem || !worldItems.add(splitItem)) {
+        return { success: false, reason: "move-rejected" };
+      }
+    } else {
+      return { success: false, reason: "invalid-source" };
+    }
+
+    item.quantity -= splitQuantity;
+    updatePlayerCarriedWeight(player);
+    return {
+      success: true,
+      changes: {
+        itemUid,
+        splitItemUid: splitItem.uid,
+        createdWorldItemUid: source.locationType === "worldItem" ? splitItem.uid : null,
+        changedWorldContainerUids: [...changedWorldContainerUids],
+        carriedWeight: player.carriedWeight,
+        equipment: player.equipment,
+      },
+      events: [{ type: "inventory-stack-split", itemUid, splitItemUid: splitItem.uid }],
+    };
+  };
+
   const insertItems = (containerUid, itemEntries) => {
     const container = findContainerByUid(containerUid);
     const insertionWeight = getRewardItemsTotalWeight(itemEntries);
@@ -268,8 +346,10 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     findItemLocationByUid,
     getItem: locationController.getItem,
     getRemainingCapacity: () => getPlayerRemainingCapacity(player),
+    getWorldRootUidForLocation,
     insertItems,
     removeItem: locationController.removeItem,
     refreshWeight: () => updatePlayerCarriedWeight(player),
+    splitItemStack,
   });
 };

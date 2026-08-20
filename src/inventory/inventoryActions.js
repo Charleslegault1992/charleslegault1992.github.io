@@ -6,6 +6,7 @@ import { isValidItemLocation } from "./itemLocation.js";
 export const INVENTORY_ACTION_TYPE = Object.freeze({
   insertItems: "inventory.insert-items",
   moveItem: "inventory.move-item",
+  splitItemStack: "inventory.split-item-stack",
 });
 
 export const INVENTORY_ACTION_REASON = Object.freeze({
@@ -39,6 +40,22 @@ export const createInsertItemsAction = (containerUid, itemEntries) => {
   return createGameAction(INVENTORY_ACTION_TYPE.insertItems, {
     containerUid,
     itemEntries,
+  });
+};
+
+export const createSplitItemStackAction = (source, itemUid, splitQuantity) => {
+  if (
+    !isValidItemLocation(source) ||
+    !Number.isInteger(itemUid) ||
+    !Number.isInteger(splitQuantity) ||
+    splitQuantity <= 0
+  ) {
+    return null;
+  }
+  return createGameAction(INVENTORY_ACTION_TYPE.splitItemStack, {
+    source,
+    itemUid,
+    splitQuantity,
   });
 };
 
@@ -109,8 +126,31 @@ export const executeMoveItemAction = (action, context) => {
   );
 };
 
+export const executeSplitItemStackAction = (action, context) => {
+  const source = action?.payload?.source;
+  const itemUid = action?.payload?.itemUid;
+  const splitQuantity = action?.payload?.splitQuantity;
+  if (
+    !isValidItemLocation(source) ||
+    !Number.isInteger(itemUid) ||
+    !Number.isInteger(splitQuantity) ||
+    splitQuantity <= 0 ||
+    typeof context?.executeSplitItemStack !== "function"
+  ) {
+    return rejectGameAction(action, INVENTORY_ACTION_REASON.invalidRequest);
+  }
+
+  const splitResult = context.executeSplitItemStack({ source, itemUid, splitQuantity });
+  if (!splitResult?.success) {
+    return rejectGameAction(action, splitResult?.reason ?? INVENTORY_ACTION_REASON.moveRejected);
+  }
+  return succeedGameAction(action, splitResult.changes ?? null, splitResult.events ?? []);
+};
+
 export const registerInventoryActionHandlers = (dispatcher) => {
   const didRegisterInsert = dispatcher?.register?.(INVENTORY_ACTION_TYPE.insertItems, executeInsertItemsAction) === true;
   const didRegisterMove = dispatcher?.register?.(INVENTORY_ACTION_TYPE.moveItem, executeMoveItemAction) === true;
-  return didRegisterInsert && didRegisterMove;
+  const didRegisterSplit =
+    dispatcher?.register?.(INVENTORY_ACTION_TYPE.splitItemStack, executeSplitItemStackAction) === true;
+  return didRegisterInsert && didRegisterMove && didRegisterSplit;
 };

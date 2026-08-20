@@ -101,6 +101,7 @@ import { createChatController } from "./chat/chatController.js";
 import {
   createInsertItemsAction,
   createMoveItemAction,
+  createSplitItemStackAction,
   INVENTORY_ACTION_REASON,
 } from "./inventory/inventoryActions.js";
 import { createGameSimulation } from "./simulation/gameSimulation.js";
@@ -3571,7 +3572,7 @@ const closeStackSplitMenu = () => {
   stackSplitMenu?.toggleAttribute("hidden", true);
 };
 
-const splitItemStack = (source, expectedItemUid, splitQuantity) => {
+const executeLocalSplitItemStack = ({ source, itemUid: expectedItemUid, splitQuantity }) => {
   const item = getDragSourceItem(source);
   const itemData = getItemData(item?.itemId);
   if (
@@ -3581,36 +3582,60 @@ const splitItemStack = (source, expectedItemUid, splitQuantity) => {
     splitQuantity <= 0 ||
     splitQuantity >= item.quantity
   ) {
-    return false;
+    return { success: false, reason: INVENTORY_ACTION_REASON.itemChanged };
   }
 
+  let splitItem = null;
   if (source.locationType === "containerSlot") {
     const parentContainer = getParentContainerFromContainerSlotLocation(source);
     const emptySlotIndex = findFirstEmptyContainerSlot(parentContainer);
     if (emptySlotIndex === null) {
-      showGameStatusMessage(getGameUiText("splitStackNeedsSpace"));
-      return false;
+      return { success: false, reason: INVENTORY_ACTION_REASON.noRoom };
     }
-    const splitItem = createItemInstance(item.itemId, splitQuantity);
+    splitItem = createItemInstance(item.itemId, splitQuantity);
     if (!splitItem) {
-      return false;
+      return { success: false, reason: INVENTORY_ACTION_REASON.invalidConfiguration };
     }
     parentContainer.content[emptySlotIndex] = splitItem;
   } else if (source.locationType === "worldItem") {
     if (!canInteractWithWorldItemSource(source)) {
-      return false;
+      return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
     }
-    const splitItem = createGroundItem(item.itemId, splitQuantity, item.x, item.y, item.z);
+    splitItem = createGroundItem(item.itemId, splitQuantity, item.x, item.y, item.z);
     if (!splitItem || !addGroundItem(splitItem)) {
-      return false;
+      return { success: false, reason: INVENTORY_ACTION_REASON.moveRejected };
     }
   } else {
-    return false;
+    return { success: false, reason: INVENTORY_ACTION_REASON.invalidSource };
   }
 
   item.quantity -= splitQuantity;
   refreshItemUiAfterDrag();
   autosaveCurrentCharacter();
+  return {
+    success: true,
+    changes: { itemUid: item.uid, splitItemUid: splitItem.uid },
+    events: [{ type: "inventory-stack-split", itemUid: item.uid, splitItemUid: splitItem.uid }],
+  };
+};
+
+const splitItemStack = (source, expectedItemUid, splitQuantity) => {
+  const action = createSplitItemStackAction(source, expectedItemUid, splitQuantity);
+  if (!action) {
+    return false;
+  }
+
+  handleGameActionResult(gameTransport.send(action), (result) => {
+    if (result?.success) {
+      closeStackSplitMenu();
+      return;
+    }
+    if (result?.reason === INVENTORY_ACTION_REASON.noRoom) {
+      showGameStatusMessage(getGameUiText("splitStackNeedsSpace"));
+    } else {
+      showGameStatusMessage(getGameUiText("cannotPlaceItem"));
+    }
+  });
   return true;
 };
 
@@ -3674,9 +3699,7 @@ const openStackSplitMenu = (item, source) => {
     const sourceSnapshot = stackSplitMenuState.source;
     const itemUid = stackSplitMenuState.itemUid;
     const quantity = Number(numberInputElement.value);
-    if (splitItemStack(sourceSnapshot, itemUid, quantity)) {
-      closeStackSplitMenu();
-    }
+    splitItemStack(sourceSnapshot, itemUid, quantity);
   });
   return true;
 };
@@ -8514,6 +8537,7 @@ gameSimulation = createGameSimulation({
     },
     executeItemUse: executeSimulationItemUse,
     executeMoveItem: executeInventoryMoveRequest,
+    executeSplitItemStack: executeLocalSplitItemStack,
     executeNpcSpeech: (payload, speakingPlayer) =>
       npcConversationSystem.handlePlayerSpeech(payload.text, speakingPlayer, payload.requestedAt),
     executeSpell: (payload) => playerSpellSystem.executeLearnedById(payload.spellId, payload.requestedAt),

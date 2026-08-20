@@ -207,6 +207,17 @@ export const createServerPlayerItemUse = ({
     if (result.success && cooldownGroup) {
       cooldowns.begin(cooldownGroup, payload.requestedAt);
     }
+    if (result.success) {
+      const worldRootUid = inventory.getWorldRootUidForLocation(payload.source);
+      if (Number.isInteger(worldRootUid)) {
+        result.changes = {
+          ...(result.changes ?? {}),
+          changedWorldContainerUids: [
+            ...new Set([...(result.changes?.changedWorldContainerUids ?? []), worldRootUid]),
+          ],
+        };
+      }
+    }
     return result;
   };
 
