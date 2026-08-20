@@ -342,6 +342,7 @@ export const createRemoteGameStateBridge = ({
   onStateApplied = null,
   onEvents = null,
   onConnectionStateChanged = null,
+  onLatencyUpdated = null,
 }) => {
   const replicationStore = transport?.getReplicationStore?.();
   if (!replicationStore || !playerState || !entityMaps) {
@@ -467,6 +468,10 @@ export const createRemoteGameStateBridge = ({
       }
 
       onConnectionStateChanged?.(event);
+      return;
+    }
+    if (event.type === "latency-updated") {
+      onLatencyUpdated?.(event);
     }
   });
 

@@ -27,6 +27,8 @@ export const createWebSocketGameTransport = ({
   replicationStore = createClientReplicationStore(),
   reconnectDelayMs = 250,
   maxReconnectDelayMs = 5000,
+  pingIntervalMs = 5000,
+  now = () => Date.now(),
 }) => {
   if (typeof url !== "string" || url === "" || typeof socketFactory !== "function") {
     throw new TypeError("The WebSocket transport requires a URL and a socket factory.");
@@ -35,9 +37,12 @@ export const createWebSocketGameTransport = ({
     !Number.isFinite(reconnectDelayMs) ||
     !Number.isFinite(maxReconnectDelayMs) ||
     reconnectDelayMs < 0 ||
-    maxReconnectDelayMs < reconnectDelayMs
+    maxReconnectDelayMs < reconnectDelayMs ||
+    !Number.isFinite(pingIntervalMs) ||
+    pingIntervalMs <= 0 ||
+    typeof now !== "function"
   ) {
-    throw new TypeError("Invalid WebSocket reconnect timing.");
+    throw new TypeError("Invalid WebSocket transport timing.");
   }
 
   const listeners = new Set();
@@ -55,6 +60,9 @@ export const createWebSocketGameTransport = ({
   let connectionState = "disconnected";
   let shouldReconnect = false;
   let socketGeneration = 0;
+  let pingTimeoutId = null;
+  let roundTripTimeMs = null;
+  let smoothedRoundTripTimeMs = null;
 
   const getMovementPredictionState = (acknowledgedRequestId = null) => {
     const predictionState = movementPrediction.reconcileWithState(
@@ -70,7 +78,7 @@ export const createWebSocketGameTransport = ({
 
   const publish = (event) => {
     for (const listener of listeners) {
-      listener(structuredClone(event));
+      listener(event);
     }
   };
 
@@ -89,6 +97,43 @@ export const createWebSocketGameTransport = ({
     }
     socket.send(encoded);
     return true;
+  };
+
+  const stopPingLoop = () => {
+    if (pingTimeoutId !== null) {
+      clearTimeout(pingTimeoutId);
+      pingTimeoutId = null;
+    }
+  };
+
+  const publishDisconnectedLatency = () => {
+    if (roundTripTimeMs === null && smoothedRoundTripTimeMs === null) {
+      return;
+    }
+    roundTripTimeMs = null;
+    smoothedRoundTripTimeMs = null;
+    publish({ type: "latency-updated", roundTripTimeMs, smoothedRoundTripTimeMs });
+  };
+
+  const schedulePing = () => {
+    stopPingLoop();
+    if (!shouldReconnect || connectionState !== "ready") {
+      return;
+    }
+    pingTimeoutId = setTimeout(() => {
+      pingTimeoutId = null;
+      sendMessage(CLIENT_MESSAGE_TYPE.ping, { clientTime: now() });
+      schedulePing();
+    }, pingIntervalMs);
+  };
+
+  const startPingLoop = () => {
+    stopPingLoop();
+    if (connectionState !== "ready") {
+      return;
+    }
+    sendMessage(CLIENT_MESSAGE_TYPE.ping, { clientTime: now() });
+    schedulePing();
   };
 
   const acknowledgeRevision = () => {
@@ -123,6 +168,7 @@ export const createWebSocketGameTransport = ({
     if (message.type === SERVER_MESSAGE_TYPE.snapshot) {
       reconnectAttempt = 0;
       setConnectionState("ready", { playerUid });
+      startPingLoop();
     }
     if (message.type === SERVER_MESSAGE_TYPE.snapshot && resolveConnection) {
       resolveConnection({ playerUid, snapshot: structuredClone(message.payload) });
@@ -162,6 +208,19 @@ export const createWebSocketGameTransport = ({
         pending.resolve(structuredClone(message.payload));
       }
       publish({ type: message.type, payload: message.payload });
+      return;
+    }
+    if (message.type === SERVER_MESSAGE_TYPE.pong) {
+      const clientTime = message.payload?.clientTime;
+      const receivedAt = now();
+      if (Number.isFinite(clientTime) && Number.isFinite(receivedAt) && receivedAt >= clientTime) {
+        roundTripTimeMs = Math.round(receivedAt - clientTime);
+        smoothedRoundTripTimeMs =
+          smoothedRoundTripTimeMs === null
+            ? roundTripTimeMs
+            : Math.round(smoothedRoundTripTimeMs * 0.75 + roundTripTimeMs * 0.25);
+        publish({ type: "latency-updated", roundTripTimeMs, smoothedRoundTripTimeMs });
+      }
       return;
     }
     if (
@@ -226,6 +285,8 @@ export const createWebSocketGameTransport = ({
       }
       socket = null;
       playerUid = null;
+      stopPingLoop();
+      publishDisconnectedLatency();
       closePendingActions("WebSocket closed before the action was resolved.");
       publish({ type: "connection-closed" });
       if (shouldReconnect) {
@@ -307,6 +368,8 @@ export const createWebSocketGameTransport = ({
         clearTimeout(reconnectTimeoutId);
         reconnectTimeoutId = null;
       }
+      stopPingLoop();
+      publishDisconnectedLatency();
       const activeSocket = socket;
       socket = null;
       activeSocket?.close();
@@ -322,6 +385,7 @@ export const createWebSocketGameTransport = ({
     subscribe,
     getPlayerUid: () => playerUid,
     getConnectionState: () => connectionState,
+    getRoundTripTimeMs: () => smoothedRoundTripTimeMs,
     getPredictedSelf: () => getMovementPredictionState().predictedSelf,
     getReplicationStore: () => replicationStore,
   });

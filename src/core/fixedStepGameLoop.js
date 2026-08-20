@@ -41,13 +41,13 @@ export const startFixedStepGameLoop = ({ updateGameLogic, renderGameFrame, rende
     const frameDelta = Math.min(frameTime - frameTimingState.previousFrameTime, MAX_FRAME_DELTA_MS);
     frameTimingState.previousFrameTime = frameTime;
     frameTimingState.accumulatedLogicTime += frameDelta;
-    const logicNow = Date.now();
+    const frameNow = Date.now();
     let logicSteps = 0;
     while (
       frameTimingState.accumulatedLogicTime >= GAME_LOGIC_STEP_MS &&
       logicSteps < MAX_LOGIC_STEPS_PER_FRAME
     ) {
-      updateGameLogic(logicNow);
+      updateGameLogic(frameNow);
       frameTimingState.accumulatedLogicTime -= GAME_LOGIC_STEP_MS;
       logicSteps++;
     }
@@ -55,7 +55,7 @@ export const startFixedStepGameLoop = ({ updateGameLogic, renderGameFrame, rende
       frameTimingState.accumulatedLogicTime = 0;
     }
 
-    renderGameFrame(Date.now());
+    renderGameFrame(frameNow);
     renderPixiFrame(frameTime);
     updateFpsCounter(fpsCounter, frameTime);
     requestAnimationFrame(gameLoop);

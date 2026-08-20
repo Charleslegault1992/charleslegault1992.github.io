@@ -8,6 +8,7 @@ import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
 import { createMovePlayerAction } from "../src/actions/gameplayActions.js";
 import { TILE_SIZE } from "../src/core/gameConstants.js";
 import {
+  CLIENT_MESSAGE_TYPE,
   createNetworkMessage,
   encodeNetworkMessage,
   SERVER_MESSAGE_TYPE,
@@ -212,5 +213,46 @@ test("the WebSocket transport uses a refreshed token when it reconnects", async 
   const reconnectHello = JSON.parse(sockets[1].sent[0]);
 
   assert.equal(reconnectHello.payload.authToken, "fresh-token");
+  transport.disconnect();
+});
+
+test("the WebSocket transport measures the round-trip latency after synchronization", async () => {
+  const socket = new FakeSocket();
+  const latencyEvents = [];
+  let currentTime = 1000;
+  const transport = createWebSocketGameTransport({
+    url: "ws://test/game",
+    socketFactory: () => socket,
+    pingIntervalMs: 60000,
+    now: () => currentTime,
+  });
+  transport.subscribe((event) => {
+    if (event.type === "latency-updated") {
+      latencyEvents.push(event);
+    }
+  });
+
+  const connection = transport.connect({ characterId: "latency" });
+  socket.open();
+  socket.receive(SERVER_MESSAGE_TYPE.welcome, { playerUid: "player:latency" }, 0);
+  socket.receive(SERVER_MESSAGE_TYPE.snapshot, createReconnectSnapshot(1), 1);
+  await connection;
+
+  const pingMessage = socket.sent.map((message) => JSON.parse(message)).find((message) => {
+    return message.type === CLIENT_MESSAGE_TYPE.ping;
+  });
+  assert.ok(pingMessage);
+  assert.equal(pingMessage.payload.clientTime, 1000);
+
+  currentTime = 1042;
+  socket.receive(
+    SERVER_MESSAGE_TYPE.pong,
+    { clientTime: pingMessage.payload.clientTime, serverTime: 1020 },
+    2,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(transport.getRoundTripTimeMs(), 42);
+  assert.equal(latencyEvents.at(-1)?.smoothedRoundTripTimeMs, 42);
   transport.disconnect();
 });

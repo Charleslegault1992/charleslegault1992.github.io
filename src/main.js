@@ -392,6 +392,7 @@ import {
   chatInput,
   boiteJeuxInner,
   fpsCounter,
+  pingCounter,
   gameStatusMessage,
   mobileGameControls,
   mobileJoystickZone,
@@ -7925,7 +7926,7 @@ const setupTestPlayerInventory = () => {
 gameSystemsOrchestrator = createGameSystemsOrchestrator({
   createLogicContext: (now) => ({
     now,
-    activeMonsters: getActiveMonstersAroundPlayer(),
+    activeMonsters: gameRuntimeState.isRemoteSession ? null : getActiveMonstersAroundPlayer(),
   }),
   logicSystems: [
     ({ now }) => updatePlayerFollowNavigation(now),
@@ -8806,7 +8807,17 @@ const initializeRemoteGameSession = async () => {
     },
     onStateApplied: ({ event }) => synchronizeRemoteWorldRender(event),
     onEvents: (events) => gameActionEffectRouter({ events }),
+    onLatencyUpdated: ({ smoothedRoundTripTimeMs }) => {
+      if (pingCounter) {
+        pingCounter.textContent = Number.isFinite(smoothedRoundTripTimeMs)
+          ? `PING: ${smoothedRoundTripTimeMs} ms`
+          : "PING: -- ms";
+      }
+    },
     onConnectionStateChanged: ({ state }) => {
+      if (pingCounter && state !== "ready") {
+        pingCounter.textContent = "PING: -- ms";
+      }
       if (gameRuntimeState.isStarted && state === "reconnecting") {
         showGameStatusMessage("Connection lost. Reconnecting...");
       }

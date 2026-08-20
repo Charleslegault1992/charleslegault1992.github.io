@@ -10,6 +10,7 @@ import {
 } from "../state/gameOptionsState.js";
 import {
   fpsCounter,
+  pingCounter,
   game,
   gameOptionsWindow,
   gameWelcomeLanguageButtons,
@@ -73,6 +74,9 @@ export const createGameOptionsController = ({
   const apply = () => {
     if (fpsCounter) {
       fpsCounter.style.display = gameOptionsUiState.values.showFps ? "" : "none";
+    }
+    if (pingCounter) {
+      pingCounter.style.display = gameOptionsUiState.values.showFps ? "" : "none";
     }
     game?.classList.toggle("game-hide-creature-names", !gameOptionsUiState.values.showCreatureNames);
     game?.classList.toggle("game-hide-health-bars", !gameOptionsUiState.values.showHealthBars);

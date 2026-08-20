@@ -1,3 +1,9 @@
+0.332 - Optimisation FPS et ping reseau
+    - Ajout du ping en millisecondes sous le compteur de FPS avec une mesure reseau lissee.
+    - Suppression de la copie complete des deltas reseau avant leur affichage.
+    - Le client online ne parcourt plus les monstres pour executer une IA locale inutile.
+    - La boucle de jeu reutilise maintenant la meme heure pour la logique et le rendu d'une frame.
+
 0.3319 - Lumiere Pixi, connexion et PVP
     - Remplacement complet de la lumiere Canvas2D par un rendu Pixi persistant optimise pour WebGL, WebGPU et mobile.
     - Ajout du chargement par etapes avant l'entree en jeu avec progression, reprise et messages clairs.

@@ -36,6 +36,7 @@ export const chatTabs = document.querySelector("#chat-tabs");
 export const chatInput = document.querySelector("#chat-input");
 export const boiteJeuxInner = document.querySelector(".boite-jeux-inner");
 export const fpsCounter = document.querySelector("#fps-counter");
+export const pingCounter = document.querySelector("#ping-counter");
 export const gameStatusMessage = document.querySelector("#game-status-message");
 export const mobileGameControls = document.querySelector("#mobile-game-controls");
 export const mobileJoystickZone = document.querySelector("#mobile-joystick-zone");
