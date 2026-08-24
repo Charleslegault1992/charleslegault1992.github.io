@@ -776,6 +776,41 @@ test("a top world rune can be used directly from the ground", async () => {
   assert.equal(runtime.getWorldEntities().worldItems.has(rune.uid), true);
 });
 
+test("the last rune charge refreshes its world container and removes the spent rune", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "items", characterId: "world-rune-container" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const monster = [...runtime.getWorldEntities().monsters.values()][0];
+  Object.assign(monster, { x: player.x, y: player.y, z: player.z, hp: monster.maxHp });
+  const rune = createItemInstance("fireRune", 1);
+  rune.charges = 1;
+  const bag = createGroundItem("bag", 1, player.x, player.y, player.z, [rune]);
+  runtime.getWorldEntities().worldItems.add(bag);
+  const snapshot = runtime.createSnapshotForClient(session);
+
+  const result = runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: { locationType: "containerSlot", parentContainerUid: bag.uid, slotIndex: 0 },
+      itemUid: rune.uid,
+      target: { targetType: "monster", monsterUid: monster.uid },
+      requestedAt: serverTime,
+    }),
+  );
+  const [delta] = runtime.getDeltasForClient(session, snapshot.revision);
+  const replicatedBag = delta.upserts.worldItems.find((item) => item.uid === bag.uid);
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.changes.changedWorldContainerUids, [bag.uid]);
+  assert.equal(bag.content[0], null);
+  assert.ok(replicatedBag);
+  assert.equal(replicatedBag.content[0], null);
+});
+
 test("every attack rune resolves with its matching elemental damage type", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;

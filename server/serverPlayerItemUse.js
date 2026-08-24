@@ -357,6 +357,7 @@ export const createServerPlayerItemUse = ({
     if (cooldownGroup && !cooldowns.isReady(cooldownGroup, payload.requestedAt)) {
       return { success: false, reason: "cooldown" };
     }
+    const worldRootUid = inventory.getWorldRootUidForLocation(payload.source);
     let result = null;
     if (useData.action === "eat" && payload.target === null) {
       result = executeFood(item, payload.source, useData, payload.requestedAt);
@@ -379,7 +380,6 @@ export const createServerPlayerItemUse = ({
       cooldowns.begin(cooldownGroup, payload.requestedAt);
     }
     if (result.success) {
-      const worldRootUid = inventory.getWorldRootUidForLocation(payload.source);
       if (Number.isInteger(worldRootUid)) {
         result.changes = {
           ...(result.changes ?? {}),

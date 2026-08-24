@@ -2746,6 +2746,10 @@ body.item-drag-active * {
   letter-spacing: 0;
 }
 
+.name.player-name-skull-active {
+  color: #ff5a50;
+}
+
 .player-skull {
   position: absolute;
   top: 0;

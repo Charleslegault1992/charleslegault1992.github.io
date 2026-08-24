@@ -109,6 +109,7 @@ let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
 let feedbackEffectContainer = null;
+let entityNameplateContainer = null;
 let mapLayerContainersByName = null;
 let tilesetImageUrlByFileName = null;
 let tilesetTextureByImageFileName = null;
@@ -981,6 +982,7 @@ export const updatePixiPlayerTransform = ({ x, y, zIndex }) => {
 export const upsertPixiRemotePlayerAppearance = async ({ uid, appearanceKey, textureUrlsByLayer }) => {
   if (
     !entityContainer ||
+    !entityNameplateContainer ||
     !(remotePlayerVisualsByUid instanceof Map) ||
     typeof uid !== "string" ||
     uid === "" ||
@@ -993,6 +995,7 @@ export const upsertPixiRemotePlayerAppearance = async ({ uid, appearanceKey, tex
   let refs = remotePlayerVisualsByUid.get(uid);
   if (!refs) {
     const container = new Container();
+    const nameplateContainer = new Container();
     const spritesByLayer = new Map();
     const name = new Text({
       text: "",
@@ -1023,10 +1026,14 @@ export const upsertPixiRemotePlayerAppearance = async ({ uid, appearanceKey, tex
     health.x = 8;
     health.y = -4;
     container.label = `remote-player:${uid}`;
-    container.addChild(name, healthBackground, health, skull, selection);
+    nameplateContainer.label = `remote-player-nameplate:${uid}`;
+    container.addChild(selection);
+    nameplateContainer.addChild(name, healthBackground, health, skull);
     entityContainer.addChild(container);
+    entityNameplateContainer.addChild(nameplateContainer);
     refs = {
       container,
+      nameplateContainer,
       spritesByLayer,
       name,
       health,
@@ -1115,7 +1122,7 @@ export const updatePixiRemotePlayerVisual = ({
   const skullType = pvp?.skullType ?? "none";
   refs.skull.visible = skullType === "white" || skullType === "red";
   refs.skullHead.tint = skullType === "red" ? 0xd9362d : 0xffffff;
-  refs.name.tint = skullType === "red" ? 0xff5a50 : 0xffffff;
+  refs.name.tint = refs.skull.visible ? 0xff5a50 : 0x3cff00;
   const nextName = String(name ?? "");
   if (refs.name.text !== nextName) {
     refs.name.text = nextName;
@@ -1127,6 +1134,9 @@ export const updatePixiRemotePlayerVisual = ({
   if (refs.container.x !== x) refs.container.x = x;
   if (refs.container.y !== y) refs.container.y = y;
   if (refs.container.zIndex !== zIndex) refs.container.zIndex = zIndex;
+  if (refs.nameplateContainer.x !== x) refs.nameplateContainer.x = x;
+  if (refs.nameplateContainer.y !== y) refs.nameplateContainer.y = y;
+  if (refs.nameplateContainer.zIndex !== zIndex) refs.nameplateContainer.zIndex = zIndex;
   return true;
 };
 
@@ -1136,6 +1146,7 @@ export const removePixiRemotePlayerVisual = (uid) => {
     return false;
   }
   refs.container.destroy({ children: true });
+  refs.nameplateContainer.destroy({ children: true });
   remotePlayerVisualsByUid.delete(uid);
   return true;
 };
@@ -2141,9 +2152,11 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     projectileContainer = new Container();
     topContainer = new Container();
     feedbackEffectContainer = new Container();
+    entityNameplateContainer = new Container();
     mapLayerContainersByName = new Map();
 
     entityContainer.sortableChildren = true;
+    entityNameplateContainer.sortableChildren = true;
 
     pixiApp.stage.addChild(worldContainer);
     worldContainer.addChild(mapBelowContainer);
@@ -2187,6 +2200,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldItemSelectionFilter = new ColorMatrixFilter();
     worldItemSelectionFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
     initializePixiLighting({ gameWidth, gameHeight, lightingPresets });
+    pixiApp.stage.addChild(entityNameplateContainer);
     pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
     pixiApp.ticker.add(updatePixiGroundEffectAnimations);
     pixiApp.ticker.add(updatePixiCombatEffects);
@@ -2258,11 +2272,13 @@ export const renderPixiFrame = (frameTime) => {
 //#region     -----  PIXI - CAMERA  -----
 /* ==================================================== */
 export const updatePixiCamera = (cameraX, cameraY) => {
-  if (!worldContainer || !Number.isFinite(cameraX) || !Number.isFinite(cameraY)) {
+  if (!worldContainer || !entityNameplateContainer || !Number.isFinite(cameraX) || !Number.isFinite(cameraY)) {
     return;
   }
   worldContainer.x = -cameraX;
   worldContainer.y = -cameraY;
+  entityNameplateContainer.x = -cameraX;
+  entityNameplateContainer.y = -cameraY;
 };
 //#endregion  -----  PIXI - CAMERA  -----
 

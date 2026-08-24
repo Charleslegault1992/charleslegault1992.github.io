@@ -1027,7 +1027,7 @@ export const itemsDatabase = {
       range: 7,
       cooldownGroup: "rune",
     },
-    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 8, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   energyRune: {
     itemId: "energyRune",
@@ -1047,7 +1047,7 @@ export const itemsDatabase = {
       range: 7,
       cooldownGroup: "rune",
     },
-    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 1, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   poisonRune: {
     itemId: "poisonRune",
@@ -1067,7 +1067,7 @@ export const itemsDatabase = {
       range: 7,
       cooldownGroup: "rune",
     },
-    render: { atlas: "items", parts: [{ atlasCol: 8, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 2, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   smallHealingRune: {
     itemId: "smallHealingRune",
@@ -1117,7 +1117,7 @@ export const itemsDatabase = {
     stackable: false,
     blockMovement: false,
     use: { mode: "target", action: "createField", groundEffectId: "energyField", charges: 5, range: 7, cooldownGroup: "rune" },
-    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 9, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   poisonFieldRune: {
     itemId: "poisonFieldRune",
@@ -1129,7 +1129,7 @@ export const itemsDatabase = {
     stackable: false,
     blockMovement: false,
     use: { mode: "target", action: "createField", groundEffectId: "poisonField", charges: 5, range: 7, cooldownGroup: "rune" },
-    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 0, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   iceFieldRune: {
     itemId: "iceFieldRune",
@@ -1141,7 +1141,7 @@ export const itemsDatabase = {
     stackable: false,
     blockMovement: false,
     use: { mode: "target", action: "createField", groundEffectId: "iceField", charges: 5, range: 7, cooldownGroup: "rune" },
-    render: { atlas: "items", parts: [{ atlasCol: 9, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 5, atlasRow: 26, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   fireFieldRune: {
     itemId: "fireFieldRune",

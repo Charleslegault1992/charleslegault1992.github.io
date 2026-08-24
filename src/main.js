@@ -176,6 +176,7 @@ import {
   getUseCooldownGroup,
   getUseCooldownRemainingRatio,
   isUseCooldownReady,
+  synchronizeUseCooldowns,
 } from "./items/itemCooldown.js";
 import {
   getItemData,
@@ -1501,6 +1502,12 @@ const setWorldItemPosition = (destination, item) => {
 };
 /* ---------- DRAG - VALIDATION ACTION COMPLETE ---------- */
 const syncOpenedContainerItemReferences = () => {
+  const sourceTypeByLocationType = {
+    containerSlot: "container",
+    equipmentSlot: "equipment",
+    worldItem: "world",
+  };
+
   for (let index = openedContainers.length - 1; index >= 0; index--) {
     const wrapper = openedContainers[index];
     const containerUid = wrapper?.item?.uid;
@@ -1519,6 +1526,7 @@ const syncOpenedContainerItemReferences = () => {
     }
 
     wrapper.item = currentItem;
+    wrapper.sourceType = sourceTypeByLocationType[currentLocation.locationType] ?? wrapper.sourceType;
   }
 
   for (const wrapper of openedContainers) {
@@ -1554,6 +1562,7 @@ const syncOpenedContainerItemReferences = () => {
 
 const refreshInventoryUi = () => {
   syncOpenedContainerItemReferences();
+  closeFarOpenedContainers();
   updatePlayerCarriedWeight(playerState);
   updatePlayerInventory();
   renderContainerDock();
@@ -9431,6 +9440,7 @@ const hasReplicatedEntityChanges = (event, entityType) => {
 };
 
 const synchronizeRemoteSelfUi = (forceRefresh = false) => {
+  synchronizeUseCooldowns(playerState.cooldowns);
   const inventorySignature = JSON.stringify({
     equipment: playerState.equipment,
     carriedWeight: playerState.carriedWeight,

@@ -33,11 +33,19 @@ export const createItemCooldownState = (cooldownEndTimes = null) => {
     return clamp((cooldownEndTime - now) / cooldownDuration, 0, 1);
   };
 
+  const synchronize = (cooldownEndTimes) => {
+    for (const cooldownGroup of Object.keys(USE_COOLDOWN_MS)) {
+      const cooldownEndTime = cooldownEndTimes?.[cooldownGroup];
+      nextUseCooldownByGroup[cooldownGroup] = Number.isFinite(cooldownEndTime) ? cooldownEndTime : 0;
+    }
+  };
+
   return Object.freeze({
     begin,
     getEndTimes: () => structuredClone(nextUseCooldownByGroup),
     getRemainingRatio,
     isReady,
+    synchronize,
   });
 };
 
@@ -57,4 +65,8 @@ export const beginUseCooldown = (cooldownGroup, now = Date.now()) => {
 
 export const getUseCooldownRemainingRatio = (cooldownGroup, now) => {
   return defaultItemCooldownState.getRemainingRatio(cooldownGroup, now);
+};
+
+export const synchronizeUseCooldowns = (cooldownEndTimes) => {
+  defaultItemCooldownState.synchronize(cooldownEndTimes);
 };

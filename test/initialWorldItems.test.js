@@ -42,14 +42,14 @@ test("the cave contains a runic test bag with every new rune", () => {
 test("every test rune maps to its matching action and atlas icon", () => {
   const expectedRunes = {
     fireRune: ["attackRune", 25, 0],
-    iceRune: ["attackRune", 25, 1],
-    energyRune: ["attackRune", 25, 2],
-    poisonRune: ["attackRune", 25, 8],
+    iceRune: ["attackRune", 25, 8],
+    energyRune: ["attackRune", 25, 1],
+    poisonRune: ["attackRune", 25, 2],
     smallHealingRune: ["healRune", 25, 3],
     greatHealingRune: ["healRune", 26, 2],
-    energyFieldRune: ["createField", 26, 0],
-    poisonFieldRune: ["createField", 26, 5],
-    iceFieldRune: ["createField", 26, 9],
+    energyFieldRune: ["createField", 26, 9],
+    poisonFieldRune: ["createField", 26, 0],
+    iceFieldRune: ["createField", 26, 5],
     fireFieldRune: ["createField", 26, 10],
     dissipationRune: ["dispelField", 26, 6],
   };

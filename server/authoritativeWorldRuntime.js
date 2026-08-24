@@ -60,6 +60,7 @@ import { spellsDatabase } from "../src/spellDatabase.js";
 import { executePlayerSpellCast } from "../src/spells/spellCasting.js";
 import { executeRewardChestTransaction } from "../src/quests/rewardChestTransaction.js";
 import { createServerNpcConversationService } from "./serverNpcConversationService.js";
+import { createServerNpcMovement } from "./serverNpcMovement.js";
 import { createServerMonsterAi } from "./serverMonsterAi.js";
 import { createServerFieldEffectSystem } from "./serverFieldEffectSystem.js";
 import { advancePlayerRegeneration } from "../src/player/playerRegeneration.js";
@@ -125,6 +126,7 @@ export const createAuthoritativeWorldRuntime = ({
   allowCharacterAutoCreate = false,
   now = () => Date.now(),
   combatRandom = null,
+  npcRandomInt = getRandomInt,
 }) => {
   if (!(worldMapsByZ instanceof Map) || typeof now !== "function") {
     throw new TypeError("The authoritative world requires loaded maps and a clock.");
@@ -278,6 +280,15 @@ export const createAuthoritativeWorldRuntime = ({
     npcs: worldEntities.npcs,
     playersByUid,
     getInventory: (playerUid) => inventoriesByPlayerUid.get(playerUid) ?? null,
+  });
+  const npcMovement = createServerNpcMovement({
+    worldMapsByZ,
+    playersByUid,
+    monsters: worldEntities.monsters,
+    npcs: worldEntities.npcs,
+    worldItems: worldEntities.worldItems,
+    conversationStatesByNpcUid: npcConversationService.statesByNpcUid,
+    randomInt: npcRandomInt,
   });
   const monsterAi = createServerMonsterAi({
     worldMapsByZ,
@@ -1462,6 +1473,13 @@ export const createAuthoritativeWorldRuntime = ({
         currentServerTime = serverTime;
       }
       worldEntities.respawnSystem.update(currentServerTime);
+      const changedNpcs = npcMovement.update(currentServerTime);
+      if (changedNpcs.length > 0) {
+        journal.record({
+          serverTime: currentServerTime,
+          upserts: { npcs: changedNpcs.map(serializeNpcState) },
+        });
+      }
       if (currentServerTime >= nextWorldDecayAt) {
         nextWorldDecayAt = currentServerTime + DECAY_REFRESH_COOLDOWN_MS;
         updateWorldDecay();

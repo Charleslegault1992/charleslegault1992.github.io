@@ -65,6 +65,7 @@ export const refreshPlayerSkull = (skullType) => {
   const hasSkull = skullType === "white" || skullType === "red";
   skull.hidden = !hasSkull;
   skull.classList.toggle("player-skull-red", skullType === "red");
+  playerRenderRefs.root.querySelector(".name")?.classList.toggle("player-name-skull-active", hasSkull);
 };
 
 export const updatePlayerSprite = () => {
