@@ -460,6 +460,7 @@ const playerStatusIndicatorUiState = {
   nextRefreshAt: 0,
 };
 let shouldReloadAfterMobileSessionHide = false;
+let mobileSessionReloadRequested = false;
 let gameSimulation = null;
 let gameTransport = null;
 let gameActionEffectRouter = null;
@@ -3239,6 +3240,7 @@ const updateItemCooldownOverlays = (now) => {
 
 /* ---------- ITEM USE - ETAT / ROUTAGE ET ACTIONS ---------- */
 const addUseCursorClass = () => {
+  resetMobileJoystick();
   boitePrincipale.classList.add("item-use-cursor");
 };
 
@@ -5550,6 +5552,21 @@ const prepareMobileSessionExit = () => {
     // The socket still closes even when private browsing blocks sessionStorage.
   }
   gameTransport?.disconnect?.();
+  requestMobileSessionReload();
+  return true;
+};
+
+const requestMobileSessionReload = () => {
+  if (!shouldReloadAfterMobileSessionHide || mobileSessionReloadRequested) {
+    return false;
+  }
+  mobileSessionReloadRequested = true;
+  try {
+    window.location.replace(window.location.href);
+  } catch {
+    mobileSessionReloadRequested = false;
+    return false;
+  }
   return true;
 };
 
@@ -5560,12 +5577,12 @@ document.addEventListener("visibilitychange", () => {
     prepareMobileSessionExit();
     return;
   }
-  if (shouldReloadAfterMobileSessionHide) {
-    window.location.reload();
-  }
+  requestMobileSessionReload();
 });
 
 window.addEventListener("blur", resetMobileJoystick);
+window.addEventListener("focus", requestMobileSessionReload);
+window.addEventListener("pageshow", requestMobileSessionReload);
 
 window.addEventListener("pagehide", () => {
   autosaveCurrentCharacter();
@@ -6186,7 +6203,7 @@ document.addEventListener(
 );
 
 mobileJoystickZone?.addEventListener("pointerdown", (event) => {
-  if (event.pointerType !== "touch" && event.pointerType !== "pen") {
+  if (itemUseState.isUsingItem || (event.pointerType !== "touch" && event.pointerType !== "pen")) {
     return;
   }
   event.preventDefault();
@@ -6830,7 +6847,13 @@ const handleRemoteNpcSpeechEffect = (event) => {
   }
   const npc = npcsByUid.get(event.npcUid) ?? null;
   if (npc) {
-    npcConversationSystem.presentSpeech(npc, event.text, event.suggestions ?? [], event.openChat !== false);
+    npcConversationSystem.presentSpeech(
+      npc,
+      event.text,
+      event.suggestions ?? [],
+      event.openChat !== false,
+      event.conversationActive,
+    );
   }
 };
 

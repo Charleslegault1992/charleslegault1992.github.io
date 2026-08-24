@@ -748,6 +748,34 @@ test("item use and shared item cooldown are authoritative per player", async () 
   assert.equal(cooldownResult.reason, "cooldown");
 });
 
+test("a top world rune can be used directly from the ground", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "items", characterId: "ground-rune" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const monster = [...runtime.getWorldEntities().monsters.values()][0];
+  Object.assign(monster, { x: player.x, y: player.y, z: player.z, hp: monster.maxHp });
+  const rune = createGroundItem("fireRune", 1, player.x, player.y, player.z);
+  runtime.getWorldEntities().worldItems.add(rune);
+
+  const result = runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: { locationType: "worldItem", itemUid: rune.uid },
+      itemUid: rune.uid,
+      target: { targetType: "monster", monsterUid: monster.uid },
+      requestedAt: serverTime,
+    }),
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(rune.charges, 4);
+  assert.equal(runtime.getWorldEntities().worldItems.has(rune.uid), true);
+});
+
 test("learned spells consume authoritative mana and share the spell cooldown", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;

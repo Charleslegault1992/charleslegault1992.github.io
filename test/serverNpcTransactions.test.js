@@ -67,3 +67,46 @@ test("server NPC sales and bank deposits commit complete transactions", async ()
   assert.equal(getPlayerGoldAmount(player), 0);
   assert.equal(player.bank.goldBalance, 2);
 });
+
+test("Kay heals to half health and limits free bags to five per server day", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let now = Date.UTC(2026, 7, 24, 12);
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => now });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "support",
+    characterId: "newcomer",
+    language: "fr",
+  }).playerUid;
+  const player = runtime.getPlayer(session.playerUid);
+  const kay = [...runtime.getWorldEntities().npcs.values()].find((npc) => npc.npcId === "kay");
+  Object.assign(player, { x: kay.x, y: kay.y, z: kay.z, hp: 10, maxHp: 101 });
+
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const heal = speak(runtime, session, player, "soin");
+  assert.equal(heal.success, true);
+  assert.equal(player.hp, 51);
+  assert.equal(heal.events.some((event) => event.type === "npc-heal-completed"), true);
+
+  for (let count = 1; count <= 5; count++) {
+    player.equipment.backpack = null;
+    const bagResult = speak(runtime, session, player, "sac");
+    assert.equal(bagResult.success, true);
+    assert.equal(player.equipment.backpack?.itemId, "bag");
+    assert.equal(player.progress.dailyNpcRewardsByNpcId.kay.count, count);
+  }
+
+  player.equipment.backpack = null;
+  const limitedResult = speak(runtime, session, player, "sac");
+  assert.equal(limitedResult.success, true);
+  assert.equal(player.equipment.backpack, null);
+  assert.match(limitedResult.events.find((event) => event.type === "npc-spoke").text, /demain/i);
+
+  now += 24 * 60 * 60 * 1000;
+  runtime.update(now);
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const nextDayResult = speak(runtime, session, player, "sac");
+  assert.equal(nextDayResult.success, true);
+  assert.equal(player.equipment.backpack?.itemId, "bag");
+  assert.equal(player.progress.dailyNpcRewardsByNpcId.kay.count, 1);
+});

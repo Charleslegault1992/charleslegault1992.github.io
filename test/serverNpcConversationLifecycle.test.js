@@ -22,9 +22,13 @@ test("walking away from an NPC does not force the chat panel open", () => {
   });
 
   assert.equal(service.handleSpeech("salut", player, 1000).success, true);
+  const repeatedGreeting = service.handleSpeech("salut", player, 1001);
+  assert.equal(repeatedGreeting.success, true);
+  assert.deepEqual(repeatedGreeting.events, []);
   player.x = TILE_SIZE * 10;
 
   const departureEvent = service.update(1100).find((event) => event.type === "npc-spoke");
 
   assert.equal(departureEvent?.openChat, false);
+  assert.equal(departureEvent?.conversationActive, false);
 });

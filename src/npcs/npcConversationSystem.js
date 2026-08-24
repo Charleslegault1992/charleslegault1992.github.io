@@ -49,6 +49,8 @@ export const createNpcConversationSystem = ({
   playerActionType,
   updateNpcDirectionToPlayer,
 }) => {
+  const lastGreetingAttemptAtByNpcUid = new Map();
+
   const isPlayerWithinNpcTalkRange = (player, npc) => {
     if (!player || !npc || player.z !== npc.z) {
       return false;
@@ -62,6 +64,15 @@ export const createNpcConversationSystem = ({
     if (!npc || !player || !isPlayerWithinNpcTalkRange(player, npc)) {
       return false;
     }
+    const conversationState = npcConversationStatesByUid.get(npc.uid);
+    if (conversationState?.activePlayerUid === player.uid) {
+      return false;
+    }
+    const lastGreetingAttemptAt = lastGreetingAttemptAtByNpcUid.get(npc.uid) ?? 0;
+    if (now - lastGreetingAttemptAt < 1500) {
+      return false;
+    }
+    lastGreetingAttemptAtByNpcUid.set(npc.uid, now);
     const greeting = getCurrentGameLanguage() === "fr" ? "Salut" : "Hi";
     const message = addChatMessage("local", "player", greeting, player);
     if (!message) {
@@ -181,7 +192,12 @@ export const createNpcConversationSystem = ({
     return true;
   };
 
-  const showNpcSpeech = (npc, text, suggestions = [], shouldOpenChat = true) => {
+  const showNpcSpeech = (npc, text, suggestions = [], shouldOpenChat = true, conversationActive = null) => {
+    const conversationState = npcConversationStatesByUid.get(npc?.uid);
+    if (conversationState && typeof conversationActive === "boolean") {
+      conversationState.activePlayerUid = conversationActive ? playerState.uid : null;
+      conversationState.lastInteractionAt = conversationActive ? Date.now() : 0;
+    }
     if (npc.z === playerState.z) {
       showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
     }

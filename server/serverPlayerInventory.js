@@ -202,6 +202,13 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     );
   };
 
+  const canInteractWithWorldItem = (_source, item) => {
+    if (!isNear(player, item, 1)) {
+      return false;
+    }
+    return isTopWorldItem(item) ? true : "not-top-of-stack";
+  };
+
   const moveService = createInventoryMoveService({
     getItem: locationController.getItem,
     getParentContainer: locationController.getParentContainer,
@@ -215,12 +222,7 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     },
     getItemTotalWeight,
     canEquipItem: (item, slotName) => canPlayerEquipItemInSlot(player, item, slotName),
-    canInteractWithWorldItem: (_source, item) => {
-      if (!isNear(player, item, 1)) {
-        return false;
-      }
-      return isTopWorldItem(item) ? true : "not-top-of-stack";
-    },
+    canInteractWithWorldItem,
     canAccessLocation,
     canPlaceWorldItem,
   });
@@ -346,6 +348,7 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
   };
 
   return Object.freeze({
+    canInteractWithWorldItem,
     executeMove,
     findContainerByUid,
     findItemLocationByUid,

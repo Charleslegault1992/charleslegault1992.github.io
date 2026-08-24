@@ -799,6 +799,7 @@ export const createAuthoritativeWorldRuntime = ({
           !hasActivePlayerSkull(pvpPlayer, currentServerTime) && !isPlayerInPvpCombat(pvpPlayer.uid),
         canPlayerMove: (payload) => isPlayerDestinationAvailable(player, payload),
         canPlayerUseWorldTransition: (movingPlayer, transition) => isPlayerNearTiledObject(movingPlayer, transition, 1),
+        canUseWorldItemSource: (source, item) => inventory.canInteractWithWorldItem(source, item) === true,
         getPlayerMoveTiming: (payload) => getPlayerMovementTiming(player, payload),
         getMovementCooldownToleranceMs: () => NETWORK_MOVEMENT_COOLDOWN_TOLERANCE_MS,
         getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
@@ -857,7 +858,7 @@ export const createAuthoritativeWorldRuntime = ({
           };
         },
         executeItemUse: itemUse.execute,
-        executeNpcSpeech: (payload) => npcConversationService.handleSpeech(payload.text, player, payload.requestedAt),
+        executeNpcSpeech: (payload) => npcConversationService.handleSpeech(payload.text, player, currentServerTime),
         executeSpell: (payload) =>
           executePlayerSpellCast({
             player,

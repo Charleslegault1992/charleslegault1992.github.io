@@ -677,6 +677,12 @@ main {
   font-weight: bold;
 }
 
+.npc-dialogue-option:disabled {
+  opacity: 0.52;
+  cursor: default;
+  filter: grayscale(0.35);
+}
+
 .mobile-window-close-button {
   display: none;
 }
@@ -2462,6 +2468,27 @@ body.item-drag-active * {
   padding-left: 18px;
 }
 
+.container-window-title-icon {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  overflow: hidden;
+}
+
+.container-window-title-icon .item-quantity,
+.container-window-title-icon .item-cooldown-overlay {
+  display: none;
+}
+
+.container-window-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .container-minimize-button,
 .container-back-button {
   width: 18px;
@@ -2866,8 +2893,12 @@ body.item-drag-active * {
   #player-inventory {
     right: auto;
     left: max(var(--mobile-edge), env(safe-area-inset-left));
-    width: min(46vw, 214px);
+    width: 174px;
+    max-width: calc(100% - var(--mobile-edge) - var(--mobile-edge));
+    max-height: none;
     padding: 3px;
+    overflow-y: hidden;
+    touch-action: none;
     background-image: none;
     background-color: rgba(10, 10, 9, 0.78);
     backdrop-filter: none;
@@ -3147,8 +3178,9 @@ body.item-drag-active * {
 
   #player-containers .container-window-header .boite-jeux-titre {
     min-height: 30px;
-    padding-left: 4px;
-    justify-content: flex-start;
+    gap: 3px;
+    padding: 0 3px;
+    justify-content: center;
     overflow: hidden;
     font-size: 9px;
     text-overflow: ellipsis;
@@ -3486,6 +3518,12 @@ body.item-drag-active * {
     height: min(52vh, 260px);
     pointer-events: auto;
     touch-action: none;
+  }
+
+  .item-use-cursor .mobile-joystick-zone,
+  .item-use-cursor .mobile-joystick,
+  .item-use-cursor .mobile-joystick-knob {
+    pointer-events: none;
   }
 
   .mobile-joystick {
@@ -4039,11 +4077,13 @@ body.item-drag-active * {
 
   #player-minimap,
   #player-stats {
-    width: min(46vw, 340px);
+    width: min(38vw, 280px);
   }
 
   #player-inventory {
-    width: min(34vw, 214px);
+    width: 174px;
+    max-height: none;
+    overflow-y: hidden;
   }
 
   #player-containers {
@@ -4070,6 +4110,14 @@ body.item-drag-active * {
     bottom: calc(
       max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 12px
     );
+  }
+}
+
+@media (max-height: 300px) and (pointer: coarse) {
+  #player-inventory {
+    max-height: calc(100% - 62px - env(safe-area-inset-top));
+    overflow-y: auto;
+    touch-action: pan-y;
   }
 }
 

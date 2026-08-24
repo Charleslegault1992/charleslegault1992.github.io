@@ -322,7 +322,13 @@ export const createContainerWindowController = ({
 
       const title = document.createElement("div");
       title.classList.add("boite-jeux-titre");
-      title.textContent = getLocalizedItemName(containerItem.itemId);
+      const titleIcon = document.createElement("span");
+      titleIcon.classList.add("container-window-title-icon");
+      renderItemIcon(titleIcon, containerItem, 14);
+      const titleText = document.createElement("span");
+      titleText.classList.add("container-window-title-text");
+      titleText.textContent = getLocalizedItemName(containerItem.itemId);
+      title.append(titleIcon, titleText);
       header.appendChild(title);
 
       if (container.parent) {

@@ -33,6 +33,23 @@ export const createChatController = ({
     maxEntries: 50,
   };
   let activeChannelId = "local";
+  let npcSuggestionLocked = false;
+  let npcSuggestionUnlockTimeoutId = null;
+
+  const setNpcSuggestionLocked = (locked) => {
+    npcSuggestionLocked = locked;
+    for (const button of chat.querySelectorAll(".npc-dialogue-option")) {
+      button.disabled = locked;
+    }
+  };
+
+  const unlockNpcSuggestions = () => {
+    if (npcSuggestionUnlockTimeoutId !== null) {
+      clearTimeout(npcSuggestionUnlockTimeoutId);
+      npcSuggestionUnlockTimeoutId = null;
+    }
+    setNpcSuggestionLocked(false);
+  };
 
   const isValidChannel = (channelId) => channelId in CHAT_CHANNELS;
 
@@ -78,6 +95,9 @@ export const createChatController = ({
     messages.push(message);
     while (messages.length > channel.maxMessages) {
       messages.shift();
+    }
+    if (messageType === "npc") {
+      unlockNpcSuggestions();
     }
     return message;
   };
@@ -143,7 +163,7 @@ export const createChatController = ({
     return true;
   };
 
-  const createMessageElement = (message) => {
+  const createMessageElement = (message, suggestionsEnabled = false) => {
     if (!message?.messageType) {
       return null;
     }
@@ -165,12 +185,20 @@ export const createChatController = ({
         button.classList.add("npc-dialogue-option");
         button.type = "button";
         button.textContent = suggestion;
+        button.disabled = npcSuggestionLocked || !suggestionsEnabled;
         button.setAttribute("aria-label", getGameUiText("sayNpcOption")(suggestion));
         button.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (npcSuggestionLocked || !suggestionsEnabled) {
+            return;
+          }
+          setNpcSuggestionLocked(true);
           if (sendPlayerMessage(suggestion)) {
             addHistoryEntry(suggestion);
+            npcSuggestionUnlockTimeoutId = setTimeout(unlockNpcSuggestions, 1500);
+          } else {
+            unlockNpcSuggestions();
           }
         });
         suggestionsElement.appendChild(button);
@@ -182,8 +210,10 @@ export const createChatController = ({
 
   const renderMessages = () => {
     chat.textContent = "";
-    for (const message of getMessages(activeChannelId)) {
-      const element = createMessageElement(message);
+    const messages = getMessages(activeChannelId);
+    const latestSuggestionMessage = messages.findLast((message) => message.speechSuggestions.length > 0) ?? null;
+    for (const message of messages) {
+      const element = createMessageElement(message, message === latestSuggestionMessage);
       if (element) {
         chat.appendChild(element);
       }

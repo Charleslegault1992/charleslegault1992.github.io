@@ -14,6 +14,9 @@ import {
 } from "../src/inventory/inventoryTransactions.js";
 import { spellsDatabase } from "../src/spellDatabase.js";
 import { getLocalizedItemNameForLanguage } from "../src/localization/gameLocalization.js";
+import { createItemInstance } from "../src/items/itemFactory.js";
+
+const DAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
 const normalize = (text) => String(text ?? "")
   .normalize("NFD")
@@ -87,7 +90,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     changes: { npcUid: npc.uid, conversationActive: true },
     events: [
       { type: "player-spoke", playerUid: player.uid, text },
-      { type: "npc-spoke", npcUid: npc.uid, playerUid: player.uid, text, suggestions },
+      { type: "npc-spoke", npcUid: npc.uid, playerUid: player.uid, text, suggestions, conversationActive: true },
       ...extraEvents,
     ],
   });
@@ -293,6 +296,10 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         changes: { queuePosition: state.waitingPlayerUids.indexOf(player.uid) + 1 },
       };
     }
+    if (isGreeting && state.activePlayerUid === player.uid && state.lastInteractionAt > 0) {
+      state.lastInteractionAt = now;
+      return { success: true, changes: { npcUid: npc.uid, conversationActive: true }, events: [] };
+    }
     state.activePlayerUid = player.uid;
     state.lastInteractionAt = now;
 
@@ -304,6 +311,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     if (hasAnyWord(words, ["bye", "goodbye", "aurevoir"])) {
       const reply = createReply(npc, player, format(dialogue.farewell, player));
       reply.changes.conversationActive = false;
+      reply.events.find((event) => event.type === "npc-spoke").conversationActive = false;
       release(npc, state, now);
       return reply;
     }
@@ -316,6 +324,50 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         return createReply(npc, player, dialogue.cancelled);
       }
       return createReply(npc, player, dialogue.confirmRequired, dialogue.confirmationSuggestions);
+    }
+
+    if (npcData.service?.type === "newcomerSupport") {
+      if (hasAnyWord(words, ["heal", "healing", "soin", "soins", "guerir", "guerison"])) {
+        const targetHp = Math.ceil(player.maxHp * 0.5);
+        if (player.hp >= targetHp) {
+          return createReply(npc, player, dialogue.alreadyHealthy, dialogue.greetingSuggestions);
+        }
+        const restoredAmount = targetHp - player.hp;
+        player.hp = targetHp;
+        return createReply(npc, player, dialogue.healed, dialogue.greetingSuggestions, [
+          { type: "npc-heal-completed", npcUid: npc.uid, playerUid: player.uid, restoredAmount },
+        ]);
+      }
+
+      if (hasAnyWord(words, ["bag", "backpack", "sac", "sacs"])) {
+        if (player.equipment.backpack) {
+          return createReply(npc, player, dialogue.bagAlreadyEquipped, dialogue.greetingSuggestions);
+        }
+        const inventory = getInventory(player.uid);
+        if (!inventory) {
+          return createReply(npc, player, dialogue.unavailable, dialogue.greetingSuggestions);
+        }
+        player.progress.dailyNpcRewardsByNpcId ??= {};
+        const currentDay = Math.floor(now / DAY_DURATION_MS);
+        let dailyReward = player.progress.dailyNpcRewardsByNpcId[npc.npcId];
+        if (!dailyReward || dailyReward.day !== currentDay) {
+          dailyReward = { day: currentDay, count: 0 };
+          player.progress.dailyNpcRewardsByNpcId[npc.npcId] = dailyReward;
+        }
+        if (dailyReward.count >= npcData.service.maxDailyBags) {
+          return createReply(npc, player, dialogue.dailyBagLimit, dialogue.greetingSuggestions);
+        }
+        const bag = createItemInstance("bag", 1);
+        if (!bag) {
+          return createReply(npc, player, dialogue.unavailable, dialogue.greetingSuggestions);
+        }
+        player.equipment.backpack = bag;
+        dailyReward.count++;
+        inventory.refreshWeight();
+        return createReply(npc, player, dialogue.bagGiven, dialogue.greetingSuggestions, [
+          { type: "npc-transaction-completed", transactionType: "free-bag", itemId: "bag", quantity: 1 },
+        ]);
+      }
     }
 
     if (npcData.service?.type === "itemShop") {
@@ -501,6 +553,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           text: timedOut ? dialogue.timeoutFarewell : dialogue.rudeDeparture,
           suggestions: [],
           openChat: timedOut,
+          conversationActive: false,
         });
         release(npc, state, now);
       }
