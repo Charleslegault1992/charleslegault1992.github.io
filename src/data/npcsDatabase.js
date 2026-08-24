@@ -1,4 +1,5 @@
 import { SPRITE_SIZE } from "../core/gameConstants.js";
+import { spellsDatabase } from "../spellDatabase.js";
 
 /* ---------- DATABASE - NPCS ---------- */
 
@@ -198,7 +199,7 @@ export const npcsDatabase = {
     },
     service: {
       type: "spellTeacher",
-      spellIds: ["cura"],
+      spellIds: Object.keys(spellsDatabase),
     },
     dialogue: {
       en: {
@@ -208,12 +209,13 @@ export const npcsDatabase = {
         name: "I am Kev.",
         job: "I teach spells to adventurers.",
         help: "Ask me about spells, or ask me for healing.",
-        spells: "I can teach the Healing Spell for 40 gold.",
-        confirmLearn: "Do you want to learn the {spellName} for {price} gold?",
+        spells: "I can teach: {spellList}.",
+        confirmLearn: "Do you want to learn the {spellName} for {price} gold? It requires magic level {requiredMagicLevel}.",
         confirmRequired: "Say yes to learn it or no to cancel.",
         cancelled: "Very well. No lesson today.",
         learned: "You have learned the {spellName}. You can cast it by saying \"{incantation}\".",
         alreadyLearned: "You already know that spell.",
+        magicLevelRequired: "You need magic level {requiredMagicLevel} to learn the {spellName}. Your magic level is {currentMagicLevel}.",
         notEnoughGold: "Come back with {price} gold and I will teach you.",
         unavailable: "I cannot teach that spell.",
         unknown: "Ask me about spells or ask me for healing.",
@@ -228,12 +230,13 @@ export const npcsDatabase = {
         name: "Moi, c'est Kev.",
         job: "J'enseigne des sorts aux aventuriers.",
         help: "Demande-moi mes sorts, ou demande-moi un sort de soin.",
-        spells: "Je peux t'apprendre le sort de soin pour 40 pieces d'or.",
-        confirmLearn: "Veux-tu apprendre le {spellName} pour {price} pieces d'or?",
+        spells: "Je peux t'apprendre: {spellList}.",
+        confirmLearn: "Veux-tu apprendre le {spellName} pour {price} pieces d'or? Il demande le niveau de magie {requiredMagicLevel}.",
         confirmRequired: "Dis oui pour apprendre le sort ou non pour annuler.",
         cancelled: "Comme tu veux. Pas de cours aujourd'hui.",
         learned: "Tu connais maintenant le {spellName}. Tu peux le lancer en disant \"{incantation}\".",
         alreadyLearned: "Tu connais deja ce sort-la.",
+        magicLevelRequired: "Il te faut le niveau de magie {requiredMagicLevel} pour apprendre le {spellName}. Ton niveau de magie est {currentMagicLevel}.",
         notEnoughGold: "Reviens avec {price} pieces d'or et je vais te l'apprendre.",
         unavailable: "Je ne peux pas t'enseigner ce sort-la.",
         unknown: "Demande-moi mes sorts ou demande-moi un sort de soin.",

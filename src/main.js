@@ -1522,13 +1522,33 @@ const syncOpenedContainerItemReferences = () => {
   }
 
   for (const wrapper of openedContainers) {
-    const parentUid = wrapper.parent?.item?.uid;
+    const visitedContainerUids = new Set([wrapper.itemUid]);
+    let childWrapper = wrapper;
+    let parentWrapper = wrapper.parent;
 
-    if (!Number.isInteger(parentUid)) {
-      continue;
+    while (parentWrapper) {
+      const parentUid = parentWrapper.itemUid ?? parentWrapper.item?.uid;
+      if (!Number.isInteger(parentUid) || visitedContainerUids.has(parentUid)) {
+        childWrapper.parent = null;
+        childWrapper.parentUid = null;
+        break;
+      }
+
+      const parentLocation = findItemLocationByUid(parentUid);
+      const parentItem = parentLocation ? getItemFromLocation(parentLocation) : null;
+      if (!parentItem || !isOpenableContainerItem(parentItem)) {
+        childWrapper.parent = null;
+        childWrapper.parentUid = null;
+        break;
+      }
+
+      parentWrapper.itemUid = parentUid;
+      parentWrapper.item = parentItem;
+      childWrapper.parentUid = parentUid;
+      visitedContainerUids.add(parentUid);
+      childWrapper = parentWrapper;
+      parentWrapper = parentWrapper.parent;
     }
-
-    wrapper.parent = openedContainers.find((openedWrapper) => openedWrapper.item?.uid === parentUid) ?? null;
   }
 };
 
@@ -3695,7 +3715,17 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 const handleRuneUse = (source, item, useData, target) => {
   const isHealingRune = useData.action === "healRune";
   const targetEntity = isHealingRune ? (target.player ?? null) : (target.monster ?? target.player ?? null);
-  const targetType = isHealingRune ? (target.player ? "player" : null) : target.monster ? "monster" : target.player ? "player" : null;
+  const targetType = isHealingRune
+    ? target.player === playerState
+      ? "self"
+      : target.player
+        ? "player"
+        : null
+    : target.monster
+      ? "monster"
+      : target.player
+        ? "player"
+        : null;
   let result = null;
   if (targetEntity?.hp > 0 && targetEntity.z === playerState.z && !isNearPlayer(targetEntity, useData.range)) {
     startPlayerActionNavigation({
@@ -4464,6 +4494,23 @@ const addSkillLevelUpFeedback = (skillKey, newLevel) => {
   const logMessage = getGameUiText("skillAdvanced")(getLocalizedSkillName(skillKey), newLevel);
   addLogMessage(logMessage, "level");
   showFloatingTextAboveTarget(logMessage, -90, playerState, "level", 4000);
+};
+
+const presentSkillProgression = (skillProgression) => {
+  if (
+    !skillProgression ||
+    !(skillProgression.skillKey in playerState.skills) ||
+    !Number.isInteger(skillProgression.previousLevel) ||
+    !Number.isInteger(skillProgression.nextLevel) ||
+    skillProgression.nextLevel <= skillProgression.previousLevel
+  ) {
+    return false;
+  }
+
+  for (let level = skillProgression.previousLevel + 1; level <= skillProgression.nextLevel; level++) {
+    addSkillLevelUpFeedback(skillProgression.skillKey, level);
+  }
+  return true;
 };
 
 /* ---------- UI - SCALE DU JEU ---------- */
@@ -9036,6 +9083,9 @@ const playAttackResolutionEffect = (event, target) => {
 };
 
 const handlePlayerAttackResolvedEffect = (event) => {
+  if (event.playerUid === playerState.uid) {
+    presentSkillProgression(event.skillProgression);
+  }
   playPlayerWeaponProjectile(event.targetRenderSnapshot);
   const monster = findMonsterByUid(event.monsterUid);
   playAttackResolutionEffect(event, monster ?? event.targetRenderSnapshot);
@@ -9046,6 +9096,9 @@ const handlePlayerAttackResolvedEffect = (event) => {
 };
 
 const handlePlayerPvpAttackResolvedEffect = (event) => {
+  if (event.playerUid === playerState.uid) {
+    presentSkillProgression(event.skillProgression);
+  }
   playPlayerWeaponProjectile(event.targetRenderSnapshot);
   const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
   if (targetPlayer) {
@@ -9109,6 +9162,7 @@ const handleMonsterAttackResolvedEffect = (event) => {
     return;
   }
   playAttackResolutionEffect(event, playerState);
+  presentSkillProgression(event.skillProgression);
 
   const monster = findMonsterByUid(event.monsterUid);
   const monsterData = getMonsterData(monster?.monsterId);
@@ -9247,6 +9301,12 @@ const handleItemUseResolvedEffect = (event) => {
   syncMobileTorchButton();
 };
 
+const handleSpellCastResolvedEffect = (event) => {
+  if (event.playerUid === playerState.uid) {
+    presentSkillProgression(event.skillProgression);
+  }
+};
+
 gameSimulation = createGameSimulation({
   state: {
     player: playerState,
@@ -9347,6 +9407,7 @@ gameActionEffectRouter = createGameActionEffectRouter({
   },
   "player-world-transitioned": () => presentPlayerWorldTransition(),
   "reward-chest-completed": handleRewardChestCompletedEffect,
+  "spell-cast-resolved": handleSpellCastResolvedEffect,
 });
 
 const setGameTransport = (nextTransport, subscribeToActionResults) => {

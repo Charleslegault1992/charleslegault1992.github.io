@@ -140,3 +140,40 @@ test("Kay heals to half health and limits free bags to five per server day", asy
   assert.equal(player.equipment.backpack?.itemId, "bag");
   assert.equal(player.progress.dailyNpcRewardsByNpcId.kay.count, 1);
 });
+
+test("Kev offers every spell and enforces magic level before charging gold", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "magic",
+    characterId: "student",
+    language: "fr",
+  }).playerUid;
+  const player = runtime.getPlayer(session.playerUid);
+  const kev = [...runtime.getWorldEntities().npcs.values()].find((npc) => npc.npcId === "kev");
+  const bag = createItemInstance("bag", 1);
+  bag.content[0] = createItemInstance("goldCoin", 100);
+  player.equipment.backpack = bag;
+  Object.assign(player, { x: kev.x, y: kev.y, z: kev.z });
+
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const spellMenu = speak(runtime, session, player, "sorts");
+  const spellMenuReply = spellMenu.events.find((event) => event.type === "npc-spoke");
+  assert.equal(spellMenuReply.suggestions.length, 6);
+  assert.match(spellMenuReply.text, /ML 5/);
+
+  const blockedLesson = speak(runtime, session, player, "Soin du poison");
+  assert.match(blockedLesson.events.find((event) => event.type === "npc-spoke").text, /niveau de magie 2/i);
+  assert.equal(getPlayerGoldAmount(player), 100);
+  assert.equal(player.spellbook.learnedSpellIds.includes("purgaVenenum"), false);
+
+  player.skills.magic.level = 2;
+  const lessonConfirmation = speak(runtime, session, player, "Soin du poison");
+  assert.match(lessonConfirmation.events.find((event) => event.type === "npc-spoke").text, /80 pieces/i);
+  const learned = speak(runtime, session, player, "oui");
+
+  assert.equal(learned.success, true);
+  assert.equal(getPlayerGoldAmount(player), 20);
+  assert.equal(player.spellbook.learnedSpellIds.includes("purgaVenenum"), true);
+});

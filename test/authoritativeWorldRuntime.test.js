@@ -776,6 +776,51 @@ test("a top world rune can be used directly from the ground", async () => {
   assert.equal(runtime.getWorldEntities().worldItems.has(rune.uid), true);
 });
 
+test("every attack rune resolves with its matching elemental damage type", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "runes", characterId: "attack-runes" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const monster = [...runtime.getWorldEntities().monsters.values()][0];
+  const monsterMaxHp = monster.hp;
+  Object.assign(monster, { x: player.x, y: player.y, z: player.z });
+  const backpack = createItemInstance("bag", 1);
+  const runeDefinitions = [
+    ["fireRune", "fire"],
+    ["iceRune", "ice"],
+    ["energyRune", "energy"],
+    ["poisonRune", "poison"],
+  ];
+  const runes = runeDefinitions.map(([itemId]) => createItemInstance(itemId, 1));
+  runes.forEach((rune, index) => {
+    backpack.content[index] = rune;
+  });
+  player.equipment.backpack = backpack;
+
+  for (const [index, [, damageType]] of runeDefinitions.entries()) {
+    monster.hp = monsterMaxHp;
+    const rune = runes[index];
+    const result = runtime.dispatchAction(
+      session,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: index },
+        itemUid: rune.uid,
+        target: { targetType: "monster", monsterUid: monster.uid },
+        requestedAt: serverTime,
+      }),
+    );
+
+    assert.equal(result.success, true, `${rune.itemId} should resolve`);
+    assert.equal(result.events[0].damageType, damageType, `${rune.itemId} item effect`);
+    assert.equal(result.events[1].damageType, damageType, `${rune.itemId} combat effect`);
+    assert.equal(rune.charges, 4);
+    serverTime += 2000;
+  }
+});
+
 test("healing runes restore another player without consuming a charge at full health", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;
@@ -796,17 +841,17 @@ test("healing runes restore another player without consuming a charge at full he
   backpack.content[1] = smallRune;
   healer.equipment.backpack = backpack;
 
-  const useRune = (rune, slotIndex) => runtime.dispatchAction(
+  const useRune = (rune, slotIndex, runeTarget) => runtime.dispatchAction(
     healerSession,
     createUseItemAction({
       source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
       itemUid: rune.uid,
-      target: { targetType: "player", playerUid: target.uid },
+      target: runeTarget,
       requestedAt: serverTime,
     }),
   );
 
-  const healResult = useRune(greatRune, 0);
+  const healResult = useRune(greatRune, 0, { targetType: "player", playerUid: target.uid });
   assert.equal(healResult.success, true);
   assert.equal(target.hp, target.maxHp);
   assert.equal(healResult.changes.restoredAmount, target.maxHp - 10);
@@ -814,13 +859,20 @@ test("healing runes restore another player without consuming a charge at full he
   assert.equal(healResult.events[0].targetPlayerUid, target.uid);
 
   serverTime += 2000;
-  const fullHealthResult = useRune(smallRune, 1);
+  healer.hp = 10;
+  const selfHealResult = useRune(smallRune, 1, { targetType: "self", playerUid: healer.uid });
+  assert.equal(selfHealResult.success, true);
+  assert.equal(healer.hp, 60);
+  assert.equal(smallRune.charges, 4);
+
+  serverTime += 2000;
+  const fullHealthResult = useRune(smallRune, 1, { targetType: "player", playerUid: target.uid });
   assert.equal(fullHealthResult.success, false);
   assert.equal(fullHealthResult.reason, "fullHealth");
-  assert.equal(smallRune.charges, 5);
+  assert.equal(smallRune.charges, 4);
 });
 
-test("field runes create and dispel an authoritative field from the ground", async () => {
+test("every field rune creates its matching field and dissipation removes it", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
@@ -828,44 +880,57 @@ test("field runes create and dispel an authoritative field from the ground", asy
   const connection = runtime.connectClient(session, { accountId: "items", characterId: "field-runes" });
   session.playerUid = connection.playerUid;
   const player = runtime.getPlayer(connection.playerUid);
-  const fieldRune = createGroundItem("fireFieldRune", 1, player.x, player.y, player.z);
-  runtime.getWorldEntities().worldItems.add(fieldRune);
+  const backpack = createItemInstance("bag", 1);
+  const fieldRuneDefinitions = [
+    ["fireFieldRune", "fireField"],
+    ["energyFieldRune", "energyField"],
+    ["poisonFieldRune", "poisonField"],
+    ["iceFieldRune", "iceField"],
+  ];
+  const fieldRunes = fieldRuneDefinitions.map(([itemId]) => createItemInstance(itemId, 1));
+  const dispelRune = createItemInstance("dissipationRune", 1);
+  fieldRunes.forEach((rune, index) => {
+    backpack.content[index] = rune;
+  });
+  backpack.content[4] = dispelRune;
+  player.equipment.backpack = backpack;
   const target = { targetType: "tile", x: player.x, y: player.y, z: player.z };
 
-  const createResult = runtime.dispatchAction(
-    session,
-    createUseItemAction({
-      source: { locationType: "worldItem", itemUid: fieldRune.uid },
-      itemUid: fieldRune.uid,
-      target,
-      requestedAt: serverTime,
-    }),
-  );
-  const field = runtime.getWorldEntities().groundEffects
-    .getAllAt(player.x, player.y, player.z)
-    .find((effect) => effect.groundEffectId === "fireField");
+  for (const [index, [, groundEffectId]] of fieldRuneDefinitions.entries()) {
+    const fieldRune = fieldRunes[index];
+    const createResult = runtime.dispatchAction(
+      session,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: index },
+        itemUid: fieldRune.uid,
+        target,
+        requestedAt: serverTime,
+      }),
+    );
+    const field = runtime.getWorldEntities().groundEffects
+      .getAllAt(player.x, player.y, player.z)
+      .find((effect) => effect.groundEffectId === groundEffectId);
 
-  assert.equal(createResult.success, true);
-  assert.equal(fieldRune.charges, 4);
-  assert.ok(field);
-  assert.equal(player.statusEffects.burning.active, true);
+    assert.equal(createResult.success, true, `${fieldRune.itemId} should create a field`);
+    assert.equal(fieldRune.charges, 4);
+    assert.ok(field, `${groundEffectId} should exist`);
 
-  serverTime += 2000;
-  const dispelRune = createGroundItem("dissipationRune", 1, player.x, player.y, player.z);
-  runtime.getWorldEntities().worldItems.add(dispelRune);
-  const dispelResult = runtime.dispatchAction(
-    session,
-    createUseItemAction({
-      source: { locationType: "worldItem", itemUid: dispelRune.uid },
-      itemUid: dispelRune.uid,
-      target,
-      requestedAt: serverTime,
-    }),
-  );
+    serverTime += 2000;
+    const dispelResult = runtime.dispatchAction(
+      session,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 4 },
+        itemUid: dispelRune.uid,
+        target,
+        requestedAt: serverTime,
+      }),
+    );
+    assert.equal(dispelResult.success, true, `dissipation should remove ${groundEffectId}`);
+    assert.equal(runtime.getWorldEntities().groundEffects.has(field.uid), false);
+    serverTime += 2000;
+  }
 
-  assert.equal(dispelResult.success, true);
-  assert.equal(dispelRune.charges, 4);
-  assert.equal(runtime.getWorldEntities().groundEffects.has(field.uid), false);
+  assert.equal(dispelRune.charges, 1);
 });
 
 test("learned spells consume authoritative mana and share the spell cooldown", async () => {
@@ -878,6 +943,7 @@ test("learned spells consume authoritative mana and share the spell cooldown", a
   const player = runtime.getPlayer(connection.playerUid);
   player.mana = 20;
   player.maxMana = 20;
+  player.skills.magic.experience = 99;
 
   const castResult = runtime.dispatchAction(session, createCastSpellAction("lux", 0));
   const cooldownResult = runtime.dispatchAction(session, createCastSpellAction("lux", 0));
@@ -886,6 +952,12 @@ test("learned spells consume authoritative mana and share the spell cooldown", a
   assert.equal(castResult.success, true);
   assert.equal(player.mana, 15);
   assert.ok(player.spellEffects.light.expiresAt > serverTime);
+  assert.deepEqual(castResult.events[0].skillProgression, {
+    skillKey: "magic",
+    experienceGain: 6,
+    previousLevel: 0,
+    nextLevel: 1,
+  });
   assert.equal(cooldownResult.reason, "cooldown");
   assert.equal(unlearnedResult.reason, "spell-not-learned");
 });
@@ -899,7 +971,8 @@ test("cure spells remove their matching authoritative status effect", async () =
   const player = runtime.getPlayer(connection.playerUid);
   player.mana = 30;
   player.maxMana = 30;
-  player.skills.magic.level = 1;
+  player.skills.magic.level = 2;
+  player.spellbook.learnedSpellIds.push("purgaVenenum");
   player.statusEffects.poison = { active: true, expiresAt: 10000 };
 
   const result = runtime.dispatchAction(session, createCastSpellAction("purgaVenenum", 1000));

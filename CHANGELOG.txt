@@ -1,3 +1,9 @@
+0.3410 - Runes, sacs et progression magique
+    - Correction des runes de soin, des runes de field et de la dissipation avec leurs bons sprites et leurs bonnes cibles.
+    - La fleche de retour des sous-sacs reste disponible apres les refresh dinventaire.
+    - Kev propose maintenant tous les sorts avec un prix et un niveau de magie requis.
+    - Les montees de skills et de magie affichent de nouveau leur message au joueur.
+
 0.3409 - Runes de soin
     - Ajout des petites et grandes runes de soin pour soi-meme ou les autres joueurs.
     - Les runes de soin utilisent les charges, la portee, la ligne de vue et le cooldown commun des runes.

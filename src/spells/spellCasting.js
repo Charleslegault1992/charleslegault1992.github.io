@@ -64,8 +64,15 @@ export const executePlayerSpellCast = ({ player, spellData, now, cooldowns, rand
   const magicExperience = normalizeSkillExperienceGain(
     SKILL_EXPERIENCE_GAIN_PER_TRY * (classData.skillExperienceMultipliers.magic ?? 0.2),
   );
+  const previousMagicLevel = player.skills.magic.level;
   player.skills.magic.experience += magicExperience;
-  player.skills.magic.level = getSkillLevelFromExperience(player.skills.magic.experience);
+  player.skills.magic.level = getSkillLevelFromExperience(player.skills.magic.experience, previousMagicLevel);
+  const skillProgression = {
+    skillKey: "magic",
+    experienceGain: magicExperience,
+    previousLevel: previousMagicLevel,
+    nextLevel: player.skills.magic.level,
+  };
 
   return {
     success: true,
@@ -78,6 +85,14 @@ export const executePlayerSpellCast = ({ player, spellData, now, cooldowns, rand
       spellEffects: structuredClone(player.spellEffects),
       statusEffects: structuredClone(player.statusEffects ?? {}),
     },
-    events: [{ type: "spell-cast-resolved", playerUid: player.uid, spellId: spellData.spellId, restoredAmount }],
+    events: [
+      {
+        type: "spell-cast-resolved",
+        playerUid: player.uid,
+        spellId: spellData.spellId,
+        restoredAmount,
+        skillProgression,
+      },
+    ],
   };
 };

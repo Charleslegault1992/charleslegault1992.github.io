@@ -371,6 +371,16 @@ export const createNpcConversationSystem = ({
     return [...spellSuggestions, ...getNpcMenuNavigationSuggestions()];
   };
 
+  const getPlayerMagicLevel = (player) => player?.skills?.magic?.level ?? 0;
+
+  const getNpcSpellOfferList = (npcData) => {
+    return (npcData?.service?.spellIds ?? [])
+      .map((spellId) => getLocalizedSpellData(spellId))
+      .filter(Boolean)
+      .map((spellData) => `${spellData.name} (ML ${spellData.requiredMagicLevel}, ${spellData.learnPrice} gold)`)
+      .join(", ");
+  };
+
   const buyItemFromNpc = (npc, player, npcData, dialogue, offer, quantity, now) => {
     if (!Number.isInteger(offer?.buyPrice) || offer.buyPrice <= 0) {
       return queueNpcReply(npc, player, dialogue.unavailable, now);
@@ -527,14 +537,30 @@ export const createNpcConversationSystem = ({
 
   const findNpcTeacherSpell = (npcData, text) => {
     const speechWords = getNpcSpeechWords(text);
+    let bestMatch = null;
+    let bestMatchWordCount = 0;
+    let bestMatchLength = 0;
+
     for (const spellId of npcData?.service?.spellIds ?? []) {
       const spellData = spellsDatabase[spellId];
       const aliases = [spellData?.name, spellData?.nameFr, ...(spellData?.learningKeywords ?? [])].filter(Boolean);
-      if (aliases.some((alias) => hasNpcSpeechKeyword(speechWords, [alias]))) {
-        return spellData;
+      for (const alias of aliases) {
+        if (!hasNpcSpeechKeyword(speechWords, [alias])) {
+          continue;
+        }
+        const normalizedAlias = normalizeNpcSpeechText(alias);
+        const aliasWordCount = getNpcSpeechWords(alias).size;
+        if (
+          aliasWordCount > bestMatchWordCount ||
+          (aliasWordCount === bestMatchWordCount && normalizedAlias.length > bestMatchLength)
+        ) {
+          bestMatch = spellData;
+          bestMatchWordCount = aliasWordCount;
+          bestMatchLength = normalizedAlias.length;
+        }
       }
     }
-    return null;
+    return bestMatch;
   };
 
   const learnPlayerSpell = (player, spellId) => {
@@ -554,6 +580,14 @@ export const createNpcConversationSystem = ({
   const learnSpellFromNpc = (npc, player, npcData, dialogue, spellData, now) => {
     if (!spellData || isPlayerSpellLearned(spellData.spellId)) {
       return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
+    }
+    const currentMagicLevel = getPlayerMagicLevel(player);
+    if (currentMagicLevel < spellData.requiredMagicLevel) {
+      return queueNpcReply(npc, player, dialogue.magicLevelRequired, now, false, {
+        spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
+        requiredMagicLevel: spellData.requiredMagicLevel,
+        currentMagicLevel,
+      });
     }
     if (getPlayerGoldAmount(player) < spellData.learnPrice) {
       return queueNpcReply(npc, player, dialogue.notEnoughGold, now, false, { price: spellData.learnPrice });
@@ -586,10 +620,26 @@ export const createNpcConversationSystem = ({
       }
       const state = npcConversationStatesByUid.get(npc.uid);
       state.activeMenu = "spells";
-      return queueNpcReply(npc, player, dialogue.spells, now, false, {}, getNpcSpellMenuSuggestions(npcData));
+      return queueNpcReply(
+        npc,
+        player,
+        dialogue.spells,
+        now,
+        false,
+        { spellList: getNpcSpellOfferList(npcData) },
+        getNpcSpellMenuSuggestions(npcData),
+      );
     }
     if (isPlayerSpellLearned(spellData.spellId)) {
       return queueNpcReply(npc, player, dialogue.alreadyLearned, now);
+    }
+    const currentMagicLevel = getPlayerMagicLevel(player);
+    if (currentMagicLevel < spellData.requiredMagicLevel) {
+      return queueNpcReply(npc, player, dialogue.magicLevelRequired, now, false, {
+        spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
+        requiredMagicLevel: spellData.requiredMagicLevel,
+        currentMagicLevel,
+      });
     }
 
     const state = npcConversationStatesByUid.get(npc.uid);
@@ -607,6 +657,7 @@ export const createNpcConversationSystem = ({
       {
         spellName: getLocalizedSpellData(spellData.spellId).name.toLocaleLowerCase(),
         price: spellData.learnPrice,
+        requiredMagicLevel: spellData.requiredMagicLevel,
       },
       dialogue.confirmationSuggestions,
     );

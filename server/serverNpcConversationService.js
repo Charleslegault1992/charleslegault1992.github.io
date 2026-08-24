@@ -50,6 +50,30 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     getLocalizedItemNameForLanguage(itemId, quantity, player?.language);
   const getPlayerSpellName = (player, spell) =>
     player?.language === "fr" ? spell?.nameFr ?? spell?.name : spell?.name;
+  const getPlayerMagicLevel = (player) => player?.skills?.magic?.level ?? 0;
+  const getSpellTeacherOfferList = (player, npcData) =>
+    (npcData.service?.spellIds ?? [])
+      .map((spellId) => spellsDatabase[spellId])
+      .filter(Boolean)
+      .map((spell) => `${getPlayerSpellName(player, spell)} (ML ${spell.requiredMagicLevel}, ${spell.learnPrice} gold)`)
+      .join(", ");
+  const findSpellIdForSpeech = (npcData, text) => {
+    const normalizedText = normalize(text);
+    let bestMatch = null;
+    let bestMatchLength = 0;
+
+    for (const spellId of npcData.service?.spellIds ?? []) {
+      const spell = spellsDatabase[spellId];
+      for (const keyword of [spell?.name, spell?.nameFr, ...(spell?.learningKeywords ?? [])].filter(Boolean)) {
+        const normalizedKeyword = normalize(keyword);
+        if (normalizedText.includes(normalizedKeyword) && normalizedKeyword.length > bestMatchLength) {
+          bestMatch = spellId;
+          bestMatchLength = normalizedKeyword.length;
+        }
+      }
+    }
+    return bestMatch;
+  };
 
   const getState = (npcUid) => {
     if (!statesByNpcUid.has(npcUid)) {
@@ -151,6 +175,27 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
     let completedText = dialogue.cancelled ?? "Cancelled.";
     let transactionSucceeded = false;
+
+    if (pending.type === "learn-spell") {
+      const spell = spellsDatabase[pending.spellId] ?? null;
+      if (!spell) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.unavailable);
+      }
+      if (player.spellbook.learnedSpellIds.includes(spell.spellId)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.alreadyLearned);
+      }
+      const currentMagicLevel = getPlayerMagicLevel(player);
+      if (currentMagicLevel < spell.requiredMagicLevel) {
+        state.pendingAction = null;
+        return createReply(npc, player, format(dialogue.magicLevelRequired, player, {
+          spellName: getPlayerSpellName(player, spell),
+          requiredMagicLevel: spell.requiredMagicLevel,
+          currentMagicLevel,
+        }));
+      }
+    }
 
     if (pending.type === "buy-item" || pending.type === "learn-spell") {
       const paymentPlan = createPlayerGoldPaymentPlan(player, pending.price);
@@ -473,22 +518,19 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       }
     }
     if (npcData.service?.type === "spellTeacher") {
-      if (hasAnyWord(words, ["spell", "spells", "sort", "sorts", "magic", "magie"])) {
-        const suggestions = npcData.service.spellIds
-          .map((spellId) => getPlayerSpellName(player, spellsDatabase[spellId]))
-          .filter(Boolean);
-        return createReply(npc, player, dialogue.spells, suggestions);
-      }
-      const spellId = npcData.service.spellIds.find((candidate) => {
-        const spell = spellsDatabase[candidate];
-        return [spell.name, spell.nameFr, ...(spell.learningKeywords ?? [])]
-          .filter(Boolean)
-          .some((keyword) => normalize(text).includes(normalize(keyword)));
-      });
+      const spellId = findSpellIdForSpeech(npcData, text);
       if (spellId) {
         const spell = spellsDatabase[spellId];
         if (player.spellbook.learnedSpellIds.includes(spellId)) {
           return createReply(npc, player, dialogue.alreadyLearned);
+        }
+        const currentMagicLevel = getPlayerMagicLevel(player);
+        if (currentMagicLevel < spell.requiredMagicLevel) {
+          return createReply(npc, player, format(dialogue.magicLevelRequired, player, {
+            spellName: getPlayerSpellName(player, spell),
+            requiredMagicLevel: spell.requiredMagicLevel,
+            currentMagicLevel,
+          }));
         }
         state.pendingAction = { type: "learn-spell", spellId, price: spell.learnPrice };
         return createReply(
@@ -497,8 +539,20 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           format(dialogue.confirmLearn, player, {
             spellName: getPlayerSpellName(player, spell),
             price: spell.learnPrice,
+            requiredMagicLevel: spell.requiredMagicLevel,
           }),
           dialogue.confirmationSuggestions,
+        );
+      }
+      if (hasAnyWord(words, ["spell", "spells", "sort", "sorts", "magic", "magie"])) {
+        const suggestions = npcData.service.spellIds
+          .map((candidate) => getPlayerSpellName(player, spellsDatabase[candidate]))
+          .filter(Boolean);
+        return createReply(
+          npc,
+          player,
+          format(dialogue.spells, player, { spellList: getSpellTeacherOfferList(player, npcData) }),
+          suggestions,
         );
       }
     }

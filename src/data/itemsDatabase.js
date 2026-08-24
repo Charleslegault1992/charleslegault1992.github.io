@@ -1086,7 +1086,7 @@ export const itemsDatabase = {
       range: 7,
       cooldownGroup: "rune",
     },
-    render: { atlas: "items", parts: [{ atlasCol: 4, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
+    render: { atlas: "items", parts: [{ atlasCol: 3, atlasRow: 25, offsetX: 0, offsetY: 0, zOffset: 0 }] },
   },
   greatHealingRune: {
     itemId: "greatHealingRune",

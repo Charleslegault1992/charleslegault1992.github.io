@@ -398,12 +398,17 @@ export const createPlayerNavigationController = ({
       }
       if (action.targetType === "tile") {
         const targetTile = action.targetTile;
-        if (useData.action !== "drinkPotion" || targetTile?.z !== playerState.z) {
+        if (!["drinkPotion", "createField", "dispelField"].includes(useData.action) || targetTile?.z !== playerState.z) {
           return null;
         }
         return isNearPlayer(targetTile, useData.range)
           ? { isReady: true }
-          : { target: targetTile, range: useData.range, distanceType: PLAYER_ACTION_DISTANCE_TYPE.square };
+          : {
+              target: targetTile,
+              range: useData.range,
+              distanceType: PLAYER_ACTION_DISTANCE_TYPE.square,
+              requireLineOfSight: useData.action !== "drinkPotion",
+            };
       }
       return null;
     }
@@ -466,7 +471,11 @@ export const createPlayerNavigationController = ({
         return true;
       }
       if (action.targetType === "tile" && action.targetTile) {
-        handleDrinkPotionUse(source, item, useData, { tile: action.targetTile });
+        if (useData.action === "drinkPotion") {
+          handleDrinkPotionUse(source, item, useData, { tile: action.targetTile });
+        } else {
+          handleGroundRuneUse(source, item, useData, { tile: action.targetTile });
+        }
         return true;
       }
       return false;
