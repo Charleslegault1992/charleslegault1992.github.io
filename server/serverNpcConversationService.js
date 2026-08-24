@@ -500,6 +500,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           playerUid: player.uid,
           text: timedOut ? dialogue.timeoutFarewell : dialogue.rudeDeparture,
           suggestions: [],
+          openChat: timedOut,
         });
         release(npc, state, now);
       }

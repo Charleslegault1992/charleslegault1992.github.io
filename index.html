@@ -213,24 +213,7 @@
               <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
             </div>
           </div>
-          <div class="mobile-panel-buttons" role="toolbar" aria-label="Game panels" data-game-title="gamePanels">
-            <button class="mobile-panel-button" type="button" data-mobile-panel="map" data-game-title="mobileMap">
-              <span class="mobile-panel-icon mobile-panel-icon-map" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="mobileMap">Map</span>
-            </button>
-            <button class="mobile-panel-button" type="button" data-mobile-panel="stats" data-game-title="stats">
-              <span class="mobile-panel-icon mobile-panel-icon-stats" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="stats">Stats</span>
-            </button>
-            <button
-              class="mobile-panel-button"
-              type="button"
-              data-mobile-panel="inventory"
-              data-game-title="mobileEquipment"
-            >
-              <span class="mobile-panel-icon mobile-panel-icon-equipment" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="mobileEquipment">Gear</span>
-            </button>
+          <div class="mobile-primary-actions" role="toolbar" aria-label="Game controls" data-game-title="gamePanels">
             <button
               class="mobile-panel-button"
               type="button"
@@ -259,52 +242,120 @@
             <button
               class="mobile-panel-button"
               type="button"
-              data-mobile-action="toggle-quests"
-              data-game-title="quests"
-              aria-haspopup="dialog"
-              aria-controls="player-quests"
-              aria-expanded="false"
-            >
-              <span class="mobile-panel-icon mobile-panel-icon-quests" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="quests">Quests</span>
-            </button>
-          </div>
-          <div class="mobile-quick-actions" role="toolbar" aria-label="Combat controls" data-game-title="combatControls">
-            <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
-              <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true"
-                >BAL</span
-              >
-              <span id="mobile-stance-label" class="mobile-panel-label">Balanced</span>
-            </button>
-            <button
-              class="mobile-panel-button"
-              type="button"
               data-mobile-action="toggle-follow"
               data-game-title="follow"
             >
               <span class="mobile-panel-icon mobile-panel-icon-follow" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="follow">Follow</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-torch" aria-pressed="false">
-              <span class="mobile-panel-icon mobile-panel-icon-torch" aria-hidden="true">TOR</span>
-              <span class="mobile-panel-label" data-game-text="mobileTorch">Torch</span>
+            <button
+              id="mobile-action-menu-toggle"
+              class="mobile-panel-button"
+              type="button"
+              data-mobile-action="toggle-menu"
+              data-game-title="mobileMenu"
+              aria-haspopup="menu"
+              aria-controls="mobile-action-menu"
+              aria-expanded="false"
+            >
+              <span class="mobile-panel-icon mobile-panel-icon-menu" aria-hidden="true"></span>
+              <span class="mobile-panel-label" data-game-text="mobileMenu">Menu</span>
             </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-pvp" aria-pressed="false">
-              <span class="mobile-panel-icon mobile-panel-icon-pvp" aria-hidden="true">PVP</span>
-              <span class="mobile-panel-label">PVP</span>
-            </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-options">
-              <span class="mobile-panel-icon mobile-panel-icon-options" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="options">Options</span>
-            </button>
-            <button class="mobile-panel-button" type="button" data-mobile-action="logout">
-              <span class="mobile-panel-icon mobile-panel-icon-logout" aria-hidden="true"></span>
-              <span class="mobile-panel-label" data-game-text="logout">Logout</span>
-            </button>
+          </div>
+          <div id="mobile-action-menu" class="mobile-action-menu" role="menu" hidden>
+            <div class="mobile-action-menu-section">
+              <div class="mobile-action-menu-title" data-game-text="gamePanels">Game panels</div>
+              <div class="mobile-action-menu-grid">
+                <button class="mobile-panel-button" type="button" data-mobile-panel="map" data-game-title="mobileMap">
+                  <span class="mobile-panel-icon mobile-panel-icon-map" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="mobileMap">Map</span>
+                </button>
+                <button class="mobile-panel-button" type="button" data-mobile-panel="stats" data-game-title="stats">
+                  <span class="mobile-panel-icon mobile-panel-icon-stats" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="stats">Stats</span>
+                </button>
+                <button
+                  class="mobile-panel-button"
+                  type="button"
+                  data-mobile-panel="inventory"
+                  data-game-title="mobileEquipment"
+                >
+                  <span class="mobile-panel-icon mobile-panel-icon-equipment" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="mobileEquipment">Gear</span>
+                </button>
+                <button
+                  class="mobile-panel-button"
+                  type="button"
+                  data-mobile-action="toggle-quests"
+                  data-game-title="quests"
+                  aria-haspopup="dialog"
+                  aria-controls="player-quests"
+                  aria-expanded="false"
+                >
+                  <span class="mobile-panel-icon mobile-panel-icon-quests" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="quests">Quests</span>
+                </button>
+              </div>
+            </div>
+            <div class="mobile-action-menu-section">
+              <div class="mobile-action-menu-title" data-game-text="combatControls">Combat controls</div>
+              <div class="mobile-action-menu-grid">
+                <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
+                  <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true"
+                    >BAL</span
+                  >
+                  <span id="mobile-stance-label" class="mobile-panel-label">Balanced</span>
+                </button>
+                <button class="mobile-panel-button" type="button" data-mobile-action="toggle-torch" aria-pressed="false">
+                  <span class="mobile-panel-icon mobile-panel-icon-torch" aria-hidden="true">TOR</span>
+                  <span class="mobile-panel-label" data-game-text="mobileTorch">Torch</span>
+                </button>
+                <button class="mobile-panel-button" type="button" data-mobile-action="toggle-pvp" aria-pressed="false">
+                  <span class="mobile-panel-icon mobile-panel-icon-pvp" aria-hidden="true">PVP</span>
+                  <span class="mobile-panel-label">PVP</span>
+                </button>
+              </div>
+            </div>
+            <div class="mobile-action-menu-section">
+              <div class="mobile-action-menu-title" data-game-text="mobileSystem">System</div>
+              <div class="mobile-action-menu-grid">
+                <button class="mobile-panel-button" type="button" data-mobile-action="toggle-options">
+                  <span class="mobile-panel-icon mobile-panel-icon-options" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="options">Options</span>
+                </button>
+                <button class="mobile-panel-button" type="button" data-mobile-action="logout">
+                  <span class="mobile-panel-icon mobile-panel-icon-logout" aria-hidden="true"></span>
+                  <span class="mobile-panel-label" data-game-text="logout">Logout</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </main>
+    <div id="logout-confirmation" class="logout-confirmation-overlay" hidden>
+      <section
+        class="logout-confirmation-dialog boite-panneau"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-confirmation-title"
+        aria-describedby="logout-confirmation-text"
+      >
+        <div class="boite-boite">
+          <div id="logout-confirmation-title" class="boite-jeux-titre" data-game-text="logoutConfirmTitle">
+            Leave the game?
+          </div>
+          <div class="separateur-panneau"></div>
+          <p id="logout-confirmation-text" class="logout-confirmation-text" data-game-text="logoutConfirmText">
+            Your character will be saved before you leave.
+          </p>
+          <div class="logout-confirmation-actions">
+            <button id="logout-confirmation-cancel" type="button" data-game-text="cancel">Cancel</button>
+            <button id="logout-confirmation-confirm" type="button" data-game-text="logout">Logout</button>
+          </div>
+        </div>
+      </section>
+    </div>
     <div id="mobile-orientation-lock" class="mobile-orientation-lock" role="status" aria-live="polite">
       <div class="mobile-orientation-icon" aria-hidden="true">
         <div class="mobile-orientation-phone"></div>

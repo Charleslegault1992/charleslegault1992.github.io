@@ -1,3 +1,9 @@
+0.337 - Menu mobile et confirmations
+    - Remplacement des grosses barres mobiles par un menu compact organise par panneaux, combat et systeme.
+    - La fenetre Options passe maintenant devant les controles mobiles et reste utilisable apres un changement de layout.
+    - Les choix de dialogue NPC sont plus compacts et quitter leur portee n'ouvre plus le chat automatiquement.
+    - Ajout d'une confirmation propre avant de quitter le personnage sur mobile et desktop.
+
 0.336 - Controles mobiles et suivi
     - Correction du joystick qui pouvait rester bloque apres un changement de direction en diagonale.
     - Ajout du bouton Quetes et synchronisation visuelle des boutons de fenetres sur mobile.

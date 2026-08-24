@@ -296,6 +296,7 @@ import {
 } from "./ui/characterSelectorController.js";
 import { createGameOptionsController } from "./ui/gameOptionsController.js";
 import { createGameLoadingController } from "./ui/gameLoadingController.js";
+import { createLogoutConfirmationController } from "./ui/logoutConfirmationController.js";
 import { createMobileJoystickController } from "./ui/mobileJoystickController.js";
 import { createQuestWindowController } from "./ui/questWindowController.js";
 import { getCurrentWorldMap } from "./world/worldRuntime.js";
@@ -398,12 +399,17 @@ import {
   fpsCounter,
   pingCounter,
   gameStatusMessage,
+  logoutConfirmation,
+  logoutConfirmationCancelButton,
+  logoutConfirmationConfirmButton,
   mobileGameControls,
   mobileJoystickZone,
   mobileJoystick,
   mobileJoystickKnob,
   mobilePanelButtons,
   mobileActionButtons,
+  mobileActionMenu,
+  mobileActionMenuToggle,
   mobilePanelCloseButton,
   mobilePlayerName,
   mobilePlayerLevel,
@@ -517,6 +523,7 @@ let gameOptionsController = null;
 let questWindowController = null;
 let characterSelectorController = null;
 let gameLoadingController = null;
+let logoutConfirmationController = null;
 let clientBootstrap = null;
 let gameShellPreloadPromise = null;
 let gameSystemsOrchestrator = null;
@@ -2635,7 +2642,13 @@ const saveGameOptions = () => gameOptionsController.save();
 const applyGameOptions = () => gameOptionsController.apply();
 const refreshGameLanguageDependentUi = () => gameOptionsController.refreshLanguageDependentUi();
 const setGameLanguage = (language) => gameOptionsController.setLanguage(language);
-const renderOptionsWindow = () => gameOptionsController.render();
+const renderOptionsWindow = () => {
+  const optionsWindowParent = isMobileGameLayout() ? mobileGameControls : game;
+  if (optionsWindowParent && gameOptionsWindow?.parentElement !== optionsWindowParent) {
+    optionsWindowParent.appendChild(gameOptionsWindow);
+  }
+  gameOptionsController.render();
+};
 const toggleOptionsWindow = () => gameOptionsController.toggle();
 
 const refreshPvpButtonState = () => {
@@ -2670,7 +2683,7 @@ const togglePvpMode = () => {
 
 const logoutCurrentCharacter = () => {
   if (!saveCurrentCharacterBeforeSwitch()) {
-    return;
+    return false;
   }
 
   gameRuntimeState.isSwitchingCharacter = true;
@@ -2681,7 +2694,10 @@ const logoutCurrentCharacter = () => {
   }
   stopGameMusic();
   window.location.reload();
+  return true;
 };
+
+const requestLogoutCurrentCharacter = () => logoutConfirmationController?.open();
 
 const bindEquipmentMenuButtons = () => {
   const pvpButton = playerInventory.querySelector('[data-ui-action="show-pvp-status"]');
@@ -2691,7 +2707,7 @@ const bindEquipmentMenuButtons = () => {
   pvpButton?.addEventListener("click", togglePvpMode);
   hotkeyButton?.addEventListener("click", toggleSpellWindow);
   optionsButton?.addEventListener("click", toggleOptionsWindow);
-  logoutButton?.addEventListener("click", logoutCurrentCharacter);
+  logoutButton?.addEventListener("click", requestLogoutCurrentCharacter);
   refreshPvpButtonState();
 };
 
@@ -4298,6 +4314,7 @@ const mobileGameLayoutMedia = window.matchMedia(MOBILE_GAME_LAYOUT_QUERY);
 
 const mobileGameUiState = {
   openPanel: null,
+  isActionMenuOpen: false,
   joystickPointerId: null,
   joystickWasMoving: false,
   joystickDiagonalCandidate: null,
@@ -4348,7 +4365,16 @@ const getMobilePanelElement = (panelName) => {
   return panelElementsByName[panelName] ?? null;
 };
 
+const setMobileActionMenuOpen = (isOpen) => {
+  const nextIsOpen = isMobileGameLayout() && isOpen === true;
+  mobileGameUiState.isActionMenuOpen = nextIsOpen;
+  mobileActionMenu?.toggleAttribute("hidden", !nextIsOpen);
+  mobileActionMenuToggle?.classList.toggle("mobile-panel-button-active", nextIsOpen);
+  mobileActionMenuToggle?.setAttribute("aria-expanded", String(nextIsOpen));
+};
+
 const setOpenMobilePanel = (panelName = null) => {
+  setMobileActionMenuOpen(false);
   const nextPanelName = mobileGameUiState.openPanel === panelName ? null : panelName;
   mobileGameUiState.openPanel = nextPanelName;
   mobileGameControls?.classList.toggle("mobile-game-controls-panel-open", nextPanelName !== null);
@@ -4506,6 +4532,7 @@ const syncMobileGameLayout = () => {
   mobileGameControls?.setAttribute("aria-hidden", String(!mobileLayout));
   if (!mobileLayout) {
     setOpenMobilePanel(null);
+    setMobileActionMenuOpen(false);
     spellUiState.mobileAssignHotkeyIndex = null;
   }
   syncMobilePlayerHud();
@@ -4517,6 +4544,9 @@ const syncMobileGameLayout = () => {
   syncMobileWindowButtons();
   syncMobileStanceButton();
   syncItemUseSourceFeedback();
+  if (gameOptionsController) {
+    renderOptionsWindow();
+  }
   renderSpellWindow();
   updateGameScale();
 };
@@ -5900,7 +5930,8 @@ document.addEventListener(
   (event) => {
     if (event.pointerType === "touch" && isMobileGameLayout() && mobileGameUiState.openPanel !== null) {
       const openPanelElement = getMobilePanelElement(mobileGameUiState.openPanel);
-      const clickedPanelButton = event.target instanceof Element && event.target.closest(".mobile-panel-buttons");
+      const clickedPanelButton =
+        event.target instanceof Element && event.target.closest(".mobile-primary-actions, .mobile-action-menu");
       const clickedContainerWindow = event.target instanceof Element && event.target.closest("#player-containers");
       if (!openPanelElement?.contains(event.target) && !clickedPanelButton && !clickedContainerWindow) {
         event.preventDefault();
@@ -6074,6 +6105,7 @@ for (const button of mobilePanelButtons) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    setMobileActionMenuOpen(false);
     setOpenMobilePanel(button.dataset.mobilePanel);
   });
 }
@@ -6082,6 +6114,15 @@ for (const button of mobileActionButtons) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if (button.dataset.mobileAction === "toggle-menu") {
+      const shouldOpenMenu = !mobileGameUiState.isActionMenuOpen;
+      if (shouldOpenMenu && mobileGameUiState.openPanel !== null) {
+        setOpenMobilePanel(null);
+      }
+      setMobileActionMenuOpen(shouldOpenMenu);
+      return;
+    }
+    setMobileActionMenuOpen(false);
     if (button.dataset.mobileAction === "toggle-backpack") {
       toggleMobileBackpack();
     } else if (button.dataset.mobileAction === "toggle-follow") {
@@ -6101,10 +6142,28 @@ for (const button of mobileActionButtons) {
     } else if (button.dataset.mobileAction === "toggle-options") {
       toggleOptionsWindow();
     } else if (button.dataset.mobileAction === "logout") {
-      logoutCurrentCharacter();
+      requestLogoutCurrentCharacter();
     }
   });
 }
+
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    const targetElement = event.target instanceof Element ? event.target : null;
+    if (
+      !mobileGameUiState.isActionMenuOpen ||
+      targetElement?.closest("#mobile-action-menu") ||
+      targetElement?.closest(".mobile-primary-actions")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setMobileActionMenuOpen(false);
+  },
+  { capture: true },
+);
 
 mobileItemUseIndicator?.addEventListener("click", (event) => {
   event.preventDefault();
@@ -6640,7 +6699,7 @@ const handleRemoteNpcSpeechEffect = (event) => {
   }
   const npc = npcsByUid.get(event.npcUid) ?? null;
   if (npc) {
-    npcConversationSystem.presentSpeech(npc, event.text, event.suggestions ?? []);
+    npcConversationSystem.presentSpeech(npc, event.text, event.suggestions ?? [], event.openChat !== false);
   }
 };
 
@@ -8150,6 +8209,15 @@ gameLoadingController = createGameLoadingController({
   getText: getGameUiText,
   onRetry: () => window.location.reload(),
 });
+
+logoutConfirmationController = createLogoutConfirmationController({
+  overlay: logoutConfirmation,
+  cancelButton: logoutConfirmationCancelButton,
+  confirmButton: logoutConfirmationConfirmButton,
+  onConfirm: logoutCurrentCharacter,
+  onOpen: resetMovementKeys,
+});
+logoutConfirmationController.bind();
 
 characterSelectorController = createCharacterSelectorController({
   accountSession: gameAccountSession,

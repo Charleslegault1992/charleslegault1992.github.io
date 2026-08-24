@@ -181,12 +181,12 @@ export const createNpcConversationSystem = ({
     return true;
   };
 
-  const showNpcSpeech = (npc, text, suggestions = []) => {
+  const showNpcSpeech = (npc, text, suggestions = [], shouldOpenChat = true) => {
     if (npc.z === playerState.z) {
       showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
     }
     addChatMessage("local", "npc", text, npc, suggestions);
-    if (typeof showNpcConversationChat === "function") {
+    if (shouldOpenChat && typeof showNpcConversationChat === "function") {
       showNpcConversationChat();
     } else if (getActiveChatChannelId() === "local") {
       renderActiveChatMessages();
@@ -217,7 +217,7 @@ export const createNpcConversationSystem = ({
     const npcData = getNpcData(npc?.npcId);
     const dialogue = getNpcDialogueData(npcData);
     if (player && dialogue && reason === "outOfRange") {
-      showNpcSpeech(npc, formatNpcDialogueText(dialogue.rudeDeparture, player));
+      showNpcSpeech(npc, formatNpcDialogueText(dialogue.rudeDeparture, player), [], false);
     } else if (player && dialogue && reason === "timeout") {
       showNpcSpeech(npc, formatNpcDialogueText(dialogue.timeoutFarewell, player));
     }
