@@ -90,6 +90,7 @@ export const serializePlayerPublicState = (player) => {
       skullType: player.pvp?.skullType ?? "none",
       skullExpiresAt: Number.isFinite(player.pvp?.skullExpiresAt) ? player.pvp.skullExpiresAt : 0,
     },
+    statusEffects: cloneOrNull(player.statusEffects) ?? {},
   };
 };
 
@@ -142,6 +143,7 @@ export const serializeMonsterState = (monster) => {
     moveDuration: monster.moveDuration,
     hp: monster.hp,
     state: monster.state,
+    statusEffects: cloneOrNull(monster.statusEffects) ?? {},
   };
 };
 
@@ -176,6 +178,8 @@ export const serializeGroundEffectState = (groundEffect) => {
     z: groundEffect.z,
     decayStage: groundEffect.decayStage,
     nextDecayAt: groundEffect.nextDecayAt,
+    isPermanent: groundEffect.isPermanent === true,
+    ownerUid: typeof groundEffect.ownerUid === "string" ? groundEffect.ownerUid : null,
   };
 };
 

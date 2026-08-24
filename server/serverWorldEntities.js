@@ -3,6 +3,9 @@ import { createMonster } from "../src/monsters/monsterModel.js";
 import { createMonsterRespawnSystem } from "../src/monsters/monsterRespawnSystem.js";
 import { createNpcFromWorldObject } from "../src/npcs/npcModel.js";
 import { createInitialWorldItems } from "../src/world/initialWorldItems.js";
+import { TILE_SIZE } from "../src/core/gameConstants.js";
+import { groundEffectsDatabase } from "../src/data/groundEffectsDatabase.js";
+import { allocateGroundEffectUid } from "../src/state/uidAllocator.js";
 import { createSpatialEntityStore } from "./spatialEntityStore.js";
 
 export const createServerWorldEntities = (
@@ -21,8 +24,10 @@ export const createServerWorldEntities = (
   const spawnStateById = new Map();
   const eventOrderState = { nextEventOrder: 1 };
 
-  for (const worldItem of createInitialWorldItems(0)) {
-    worldItems.add(worldItem);
+  for (const z of worldMapsByZ.keys()) {
+    for (const worldItem of createInitialWorldItems(z)) {
+      worldItems.add(worldItem);
+    }
   }
 
   for (const worldMap of worldMapsByZ.values()) {
@@ -31,6 +36,30 @@ export const createServerWorldEntities = (
         const npc = createNpcFromWorldObject(worldNpcObject);
         if (npc) {
           npcs.add(npc);
+        }
+      }
+      for (const interactable of chunk.interactables ?? []) {
+        const properties = interactable.properties ?? {};
+        const effectData = groundEffectsDatabase[properties.groundEffectId];
+        if (properties.interactableType !== "field" || effectData?.kind !== "field") {
+          continue;
+        }
+        const widthTiles = Math.max(1, Math.ceil((interactable.width || TILE_SIZE) / TILE_SIZE));
+        const heightTiles = Math.max(1, Math.ceil((interactable.height || TILE_SIZE) / TILE_SIZE));
+        for (let rowOffset = 0; rowOffset < heightTiles; rowOffset++) {
+          for (let colOffset = 0; colOffset < widthTiles; colOffset++) {
+            groundEffects.add({
+              uid: allocateGroundEffectUid(),
+              groundEffectId: properties.groundEffectId,
+              x: (interactable.col + colOffset) * TILE_SIZE,
+              y: (interactable.row + rowOffset) * TILE_SIZE,
+              z: worldMap.z,
+              decayStage: 0,
+              isPermanent: properties.isPermanent !== false,
+              ownerUid: null,
+              nextDecayAt: Number.POSITIVE_INFINITY,
+            });
+          }
         }
       }
     }

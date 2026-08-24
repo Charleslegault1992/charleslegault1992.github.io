@@ -7,6 +7,7 @@ import {
   clearPixiWorldItemVisuals,
   initializePixiRenderer,
   loadPixiWorldEntityTextures,
+  playPixiCombatEffect,
   playPixiItemProjectile,
   playPixiRewardChestEffect,
   playPixiSpellEffect,
@@ -272,6 +273,7 @@ import {
 import {
   addOrRefreshGroundEffectState,
   getGroundEffectData,
+  removeGroundEffect,
   renderGroundEffect,
   syncGroundEffectRenderForCurrentZ,
   updateGroundEffectDecay,
@@ -2643,6 +2645,8 @@ const getPlayerStatusIndicatorLabel = (statusIndicator) => {
     [PLAYER_STATUS_INDICATOR.redSkull]: "statusRedSkull",
     [PLAYER_STATUS_INDICATOR.poison]: "statusPoisoned",
     [PLAYER_STATUS_INDICATOR.fire]: "statusBurning",
+    [PLAYER_STATUS_INDICATOR.energy]: "statusElectrified",
+    [PLAYER_STATUS_INDICATOR.ice]: "statusFrozen",
     [PLAYER_STATUS_INDICATOR.combat]: "statusCombatLocked",
     [PLAYER_STATUS_INDICATOR.protection]: "statusProtectionZone",
   };
@@ -3615,6 +3619,7 @@ const presentItemUseFailure = (result) => {
     "torch-burned-out": "torchBurnedOut",
     "torch-needs-placement": "torchNeedsPlacement",
     "sanity-full": "alreadyFull",
+    "field-not-found": "fieldNotFound",
   };
   const messageKey = messageKeyByReason[result?.reason];
   if (messageKey) {
@@ -3675,6 +3680,31 @@ const handleRuneUse = (source, item, useData, target) => {
   cancelItemUse();
 };
 
+const handleGroundRuneUse = (source, item, useData, target) => {
+  if (!target.tile) {
+    cancelItemUse();
+    return;
+  }
+  let result = null;
+  if (!isNearPlayer(target.tile, useData.range)) {
+    startPlayerActionNavigation({
+      type: PLAYER_ACTION_TYPE.targetItemUse,
+      itemUid: item.uid,
+      targetType: "tile",
+      targetTile: { ...target.tile, z: playerState.z },
+    });
+  } else {
+    result = dispatchItemUseAction(source, item, {
+      targetType: "tile",
+      x: target.tile.x,
+      y: target.tile.y,
+      z: playerState.z,
+    });
+  }
+  handleGameActionResult(result, presentItemUseFailure);
+  cancelItemUse();
+};
+
 const completeItemUseFromEvent = (e) => {
   const target = getPointerTargetFromEvent(e);
   if (!target.pointerInsideMap) {
@@ -3694,6 +3724,9 @@ const completeItemUseFromEvent = (e) => {
   }
   if (useData.action === "attackRune") {
     handleRuneUse(source, item, useData, target);
+  }
+  if (useData.action === "createField" || useData.action === "dispelField") {
+    handleGroundRuneUse(source, item, useData, target);
   }
 };
 /* ---------- ITEM USE - ACTIONS DIRECTES ---------- */
@@ -8771,6 +8804,8 @@ const executeSimulationItemUse = (item, useData, payload) => {
             playerUid: playerState.uid,
             targetPlayerUid: targetEntity.uid,
             attackResult,
+            attackKind: "rune",
+            damageType: useData.damageType ?? "fire",
             targetRenderSnapshot,
           },
         ],
@@ -8800,17 +8835,128 @@ const executeSimulationItemUse = (item, useData, payload) => {
           cooldownGroup,
           sfx: GAME_SFX.runeUse,
         },
-        ...(damageResult.events ?? []),
+        ...(damageResult.events ?? []).map((event) => ({
+          ...event,
+          attackKind: "rune",
+          damageType: useData.damageType ?? "fire",
+        })),
       ],
+    };
+  }
+
+  if (useData.action === "createField" && payload.target?.targetType === "tile") {
+    if (
+      payload.target.z !== playerState.z ||
+      !isNearPlayer(payload.target, useData.range) ||
+      !hasPlayerLineOfSightToWorldPosition(payload.target)
+    ) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    const field = createFluidPuddle(useData.groundEffectId, payload.target.x, payload.target.y, payload.target.z);
+    if (!field || !consumeOneChargeFromRune(item, payload.source)) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    if (!beginUseCooldown(cooldownGroup, payload.requestedAt)) {
+      return { success: false, reason: "invalid-cooldown" };
+    }
+    field.ownerUid = playerState.uid;
+    return {
+      success: true,
+      changes: { itemUid: item.uid, charges: item.charges ?? 0, groundEffectUid: field.uid },
+      events: [{
+        type: "item-use-resolved",
+        action: "createField",
+        itemUid: item.uid,
+        groundEffectUid: field.uid,
+        damageType: getGroundEffectData(useData.groundEffectId)?.damageType,
+        x: field.x,
+        y: field.y,
+        z: field.z,
+      }],
+    };
+  }
+
+  if (useData.action === "dispelField" && payload.target?.targetType === "tile") {
+    if (
+      payload.target.z !== playerState.z ||
+      !isNearPlayer(payload.target, useData.range) ||
+      !hasPlayerLineOfSightToWorldPosition(payload.target)
+    ) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    const field = [...groundEffectsByUid.values()].find(
+      (effect) =>
+        effect.x === payload.target.x &&
+        effect.y === payload.target.y &&
+        effect.z === payload.target.z &&
+        getGroundEffectData(effect.groundEffectId)?.kind === "field",
+    );
+    if (!field) {
+      return { success: false, reason: "field-not-found" };
+    }
+    if (!removeGroundEffect(field.uid) || !consumeOneChargeFromRune(item, payload.source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    if (!beginUseCooldown(cooldownGroup, payload.requestedAt)) {
+      return { success: false, reason: "invalid-cooldown" };
+    }
+    return {
+      success: true,
+      changes: { itemUid: item.uid, charges: item.charges ?? 0, removedGroundEffectUid: field.uid },
+      events: [{ type: "item-use-resolved", action: "dispelField", itemUid: item.uid }],
     };
   }
 
   return { success: false, reason: "unsupported-item-action" };
 };
 
+const playCombatEffectAtTarget = (effectId, variant, target) => {
+  const targetPosition = getItemUseTargetRenderPosition(target);
+  if (!targetPosition) {
+    return false;
+  }
+  const targetX = targetPosition.x + TILE_SIZE / 2;
+  const targetY = targetPosition.y + TILE_SIZE / 2;
+  return playPixiCombatEffect({ effectId, variant, startX: targetX, startY: targetY });
+};
+
+const playRuneCombatEffect = (event, target) => {
+  if (event.attackKind !== "rune" || !event.damageType) {
+    return false;
+  }
+  const attacker = getPlayerEntityByUid(event.playerUid);
+  const attackerPosition = getItemUseTargetRenderPosition(attacker);
+  const targetPosition = getItemUseTargetRenderPosition(target);
+  if (!attackerPosition || !targetPosition) {
+    return false;
+  }
+  return playPixiCombatEffect({
+    effectId: event.damageType,
+    variant: "projectile",
+    startX: attackerPosition.x + TILE_SIZE / 2,
+    startY: attackerPosition.y + TILE_SIZE / 2,
+    targetX: targetPosition.x + TILE_SIZE / 2,
+    targetY: targetPosition.y + TILE_SIZE / 2,
+  });
+};
+
+const playAttackResolutionEffect = (event, target) => {
+  if (event.attackResult?.textType === "miss") {
+    return playCombatEffectAtTarget("miss", "impact", target);
+  }
+  if (["block", "absorb"].includes(event.attackResult?.textType)) {
+    return playCombatEffectAtTarget("block", "impact", target);
+  }
+  if (["sword", "axe", "mace"].includes(event.weaponType) && event.attackResult?.finalDamage > 0) {
+    return playCombatEffectAtTarget(`${event.weaponType}Attack`, "impact", target);
+  }
+  return false;
+};
+
 const handlePlayerAttackResolvedEffect = (event) => {
   playPlayerWeaponProjectile(event.targetRenderSnapshot);
   const monster = findMonsterByUid(event.monsterUid);
+  playAttackResolutionEffect(event, monster ?? event.targetRenderSnapshot);
   if (event.attackResult?.finalDamage <= 0 && monster) {
     showFloatingTextAboveMonster(monster, event.attackResult.text, event.attackResult.textType);
   }
@@ -8821,6 +8967,7 @@ const handlePlayerPvpAttackResolvedEffect = (event) => {
   playPlayerWeaponProjectile(event.targetRenderSnapshot);
   const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
   if (targetPlayer) {
+    playAttackResolutionEffect(event, targetPlayer);
     showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
       event.attackResult?.textType ?? "damage",
@@ -8839,6 +8986,7 @@ const handlePlayerPvpAttackResolvedEffect = (event) => {
 const handlePlayerPvpRuneResolvedEffect = (event) => {
   const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
   if (targetPlayer) {
+    playRuneCombatEffect(event, targetPlayer);
     showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
       event.attackResult?.textType ?? "fire",
@@ -8878,6 +9026,7 @@ const handleMonsterAttackResolvedEffect = (event) => {
   if (!attackResult) {
     return;
   }
+  playAttackResolutionEffect(event, playerState);
 
   const monster = findMonsterByUid(event.monsterUid);
   const monsterData = getMonsterData(monster?.monsterId);
@@ -8915,6 +9064,11 @@ const handleMonsterDamageResolvedEffect = (event) => {
     addLogMessage(getGameUiText("damageDealt")(event.damageApplied, localizedMonsterData.name), "combat");
   }
   const liveMonster = findMonsterByUid(event.monsterUid);
+  if (event.attackKind === "fieldTick") {
+    playCombatEffectAtTarget(event.damageType, "statusTick", liveMonster ?? event.targetRenderSnapshot);
+  } else {
+    playRuneCombatEffect(event, liveMonster ?? event.targetRenderSnapshot);
+  }
   showFloatingTextAboveMonster(liveMonster ?? event.targetRenderSnapshot, event.damageApplied, event.textType);
 
   if (!event.didDie) {
@@ -8948,6 +9102,29 @@ const handleMonsterDamageResolvedEffect = (event) => {
   const deathSfx = deathSfxByMonsterId[event.monsterId];
   if (deathSfx) {
     playGameSfx(deathSfx);
+  }
+};
+
+const handleFieldDamageResolvedEffect = (event) => {
+  const targetPlayer = getPlayerEntityByUid(event.targetPlayerUid ?? event.playerUid);
+  const target = targetPlayer ?? { x: event.x, y: event.y, z: event.z };
+  playCombatEffectAtTarget(event.damageType, "statusTick", target);
+  if ((event.targetPlayerUid ?? event.playerUid) === playerState.uid) {
+    showFloatingTextAbovePlayer(event.damageApplied, event.damageType);
+    refreshPlayerVitalsUi();
+  }
+};
+
+const handlePlayerPvpFieldResolvedEffect = (event) => {
+  const targetPlayer = getPlayerEntityByUid(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
+  if (!targetPlayer) {
+    return;
+  }
+  playCombatEffectAtTarget(event.damageType, "statusTick", targetPlayer);
+  showFloatingTextAbovePlayer(event.attackResult?.finalDamage ?? 0, event.damageType, targetPlayer);
+  updateRemotePlayerVisual(targetPlayer);
+  if (targetPlayer.uid === playerState.uid) {
+    refreshPlayerVitalsUi();
   }
 };
 
@@ -9060,11 +9237,13 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "inventory-move-completed": (event) => playGameSfx(event.sfx),
   "item-use-resolved": handleItemUseResolvedEffect,
   "monster-damage-resolved": handleMonsterDamageResolvedEffect,
+  "field-damage-resolved": handleFieldDamageResolvedEffect,
   "monster-attack-resolved": handleMonsterAttackResolvedEffect,
   "npc-spoke": handleRemoteNpcSpeechEffect,
   "player-attack-resolved": handlePlayerAttackResolvedEffect,
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
   "player-pvp-rune-resolved": handlePlayerPvpRuneResolvedEffect,
+  "player-pvp-field-resolved": handlePlayerPvpFieldResolvedEffect,
   "player-died": handleServerPlayerDeathEffect,
   "player-pvp-state-changed": (event) => {
     if (event.playerUid === playerState.uid && event.pvp) {

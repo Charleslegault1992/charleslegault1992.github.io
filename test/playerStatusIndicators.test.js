@@ -13,6 +13,8 @@ test("player status indicators contain only active authoritative states", () => 
     combatLogoutExpiresAt: now + 120000,
     statusEffects: {
       poison: { expiresAt: now + 2000 },
+      electrified: { expiresAt: now + 2000 },
+      frozen: { expiresAt: now + 2000 },
       fire: { expiresAt: now - 1 },
     },
   };
@@ -20,6 +22,8 @@ test("player status indicators contain only active authoritative states", () => 
   assert.deepEqual(getActivePlayerStatusIndicators(player, now, { isInProtectionZone: true }), [
     PLAYER_STATUS_INDICATOR.whiteSkull,
     PLAYER_STATUS_INDICATOR.poison,
+    PLAYER_STATUS_INDICATOR.energy,
+    PLAYER_STATUS_INDICATOR.ice,
     PLAYER_STATUS_INDICATOR.combat,
     PLAYER_STATUS_INDICATOR.protection,
   ]);

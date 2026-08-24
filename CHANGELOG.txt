@@ -1,3 +1,9 @@
+0.3408 - Fields, runes et effets de combat
+    - Ajout des fields feu, poison, energie et glace avec trois stages animes et des degats qui diminuent.
+    - Ajout des runes elementaires, des runes de field et de la Dissipation Rune pour detruire les fields.
+    - Ajout des effets Pixi pour les projectiles, impacts, armes, miss, block et degats periodiques.
+    - Ajout des sorts de cure et d'un sac de test contenant les nouvelles runes pres de la cave.
+
 0.3407 - Menus de Kay
     - Les choix de Kay sont maintenant organises en menus Services et A propos.
     - Les actions Soin et Sac gardent leurs choix utiles avec un retour clair au menu principal.

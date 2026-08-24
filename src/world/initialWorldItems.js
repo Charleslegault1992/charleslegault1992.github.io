@@ -1,13 +1,31 @@
 import { TILE_SIZE } from "../core/gameConstants.js";
-import { createGroundItem } from "../items/itemFactory.js";
+import { createGroundItem, createItemInstance } from "../items/itemFactory.js";
 
 const INITIAL_WORLD_ITEM_DEFINITIONS = Object.freeze([
-  Object.freeze({ itemId: "smallBox", col: 13, row: 10 }),
-  Object.freeze({ itemId: "smallBox", col: 14, row: 9 }),
-  Object.freeze({ itemId: "box", col: 14, row: 10 }),
-  Object.freeze({ itemId: "fireRune", col: 14, row: 10 }),
-  Object.freeze({ itemId: "smallBox", col: 14, row: 11 }),
-  Object.freeze({ itemId: "smallBox", col: 15, row: 10 }),
+  Object.freeze({ uid: -1, itemId: "smallBox", col: 13, row: 10, z: 0 }),
+  Object.freeze({ uid: -2, itemId: "smallBox", col: 14, row: 9, z: 0 }),
+  Object.freeze({ uid: -3, itemId: "box", col: 14, row: 10, z: 0 }),
+  Object.freeze({ uid: -4, itemId: "fireRune", col: 14, row: 10, z: 0 }),
+  Object.freeze({ uid: -5, itemId: "smallBox", col: 14, row: 11, z: 0 }),
+  Object.freeze({ uid: -6, itemId: "smallBox", col: 15, row: 10, z: 0 }),
+  Object.freeze({
+    uid: -100,
+    itemId: "runeSatchel",
+    col: 15,
+    row: 16,
+    z: -1,
+    contentItemIds: Object.freeze([
+      "fireRune",
+      "energyRune",
+      "poisonRune",
+      "iceRune",
+      "fireFieldRune",
+      "energyFieldRune",
+      "poisonFieldRune",
+      "iceFieldRune",
+      "dissipationRune",
+    ]),
+  }),
 ]);
 
 export const createInitialWorldItems = (z = 0) => {
@@ -15,18 +33,20 @@ export const createInitialWorldItems = (z = 0) => {
     return [];
   }
 
-  return INITIAL_WORLD_ITEM_DEFINITIONS.flatMap((definition, index) => {
+  return INITIAL_WORLD_ITEM_DEFINITIONS.filter((definition) => definition.z === z).flatMap((definition) => {
+    const content = (definition.contentItemIds ?? []).map((itemId) => createItemInstance(itemId, 1)).filter(Boolean);
     const item = createGroundItem(
       definition.itemId,
       1,
       definition.col * TILE_SIZE,
       definition.row * TILE_SIZE,
-      z,
+      definition.z,
+      content,
     );
     if (!item) {
       return [];
     }
-    item.uid = -(index + 1);
+    item.uid = definition.uid;
     return [item];
   });
 };

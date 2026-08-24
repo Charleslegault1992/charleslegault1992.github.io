@@ -175,7 +175,7 @@ export const calculateRuneAttackResult = (useData, player = playerState, random 
   const maxDamage = runeDamage + magicLevel * 0.85 + level * 0.25;
   const randomFloat = typeof random?.getFloat === "function" ? random.getFloat : getRandomFloat;
   const finalDamage = Math.floor(randomFloat(minDamage, maxDamage));
-  return { finalDamage, text: finalDamage, textType: "fire" };
+  return { finalDamage, text: finalDamage, textType: useData.damageType ?? "fire" };
 };
 
 export const calculateMonsterAttackResult = (attackerCombatData, player = playerState, random = DEFAULT_COMBAT_RANDOM) => {

@@ -26,6 +26,7 @@ export const createServerPlayerItemUse = ({
   monsters,
   players,
   executeRuneDamage,
+  onFieldCreated = () => {},
 }) => {
   const cooldowns = createItemCooldownState(player.cooldowns);
 
@@ -38,14 +39,19 @@ export const createServerPlayerItemUse = ({
   };
 
   const addOrRefreshGroundEffect = (groundEffectId, x, y, z, now) => {
-    if (!(groundEffectId in groundEffectsDatabase)) {
+    const groundEffectData = groundEffectsDatabase[groundEffectId];
+    if (!groundEffectData) {
       return null;
     }
-    const existing = groundEffects.getAt(x, y, z);
+    const existing = groundEffects
+      .getAllAt(x, y, z)
+      .find((effect) => groundEffectsDatabase[effect.groundEffectId]?.kind === groundEffectData.kind);
     if (existing) {
       existing.groundEffectId = groundEffectId;
       existing.decayStage = 0;
-      existing.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
+      existing.isPermanent = false;
+      existing.ownerUid = groundEffectData.kind === "field" ? player.uid : null;
+      existing.nextDecayAt = now + (groundEffectData.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS);
       return existing;
     }
     const groundEffect = {
@@ -55,7 +61,9 @@ export const createServerPlayerItemUse = ({
       y,
       z,
       decayStage: 0,
-      nextDecayAt: now + GROUND_EFFECT_DECAY_STAGE_MS,
+      isPermanent: false,
+      ownerUid: groundEffectData.kind === "field" ? player.uid : null,
+      nextDecayAt: now + (groundEffectData.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS),
     };
     return groundEffects.add(groundEffect) ? groundEffect : null;
   };
@@ -186,9 +194,107 @@ export const createServerPlayerItemUse = ({
       ...damageResult,
       changes: { ...damageResult.changes, itemUid: item.uid, charges: Math.max(item.charges, 0) },
       events: [
-        { type: "item-use-resolved", action: "attackRune", itemUid: item.uid, cooldownGroup: useData.cooldownGroup },
-        ...(damageResult.events ?? []),
+        {
+          type: "item-use-resolved",
+          action: "attackRune",
+          itemUid: item.uid,
+          cooldownGroup: useData.cooldownGroup,
+          damageType: useData.damageType ?? "fire",
+        },
+        ...(damageResult.events ?? []).map((event) => ({
+          ...event,
+          attackKind: "rune",
+          damageType: useData.damageType ?? "fire",
+        })),
       ],
+    };
+  };
+
+  const getValidRuneTileTarget = (target, useData) => {
+    if (target?.targetType !== "tile" || !isNear(player, target, useData.range)) {
+      return null;
+    }
+    const worldMap = worldMapsByZ.get(target.z);
+    const col = target.x / TILE_SIZE;
+    const row = target.y / TILE_SIZE;
+    if (
+      !worldMap ||
+      !Number.isInteger(col) ||
+      !Number.isInteger(row) ||
+      !getWorldChunkForTilePosition(worldMap, col, row) ||
+      isTiledCollisionAtTile(worldMap, col, row) ||
+      !hasLineOfSightBetweenTiles(
+        worldMap,
+        { col: player.x / TILE_SIZE, row: player.y / TILE_SIZE },
+        { col, row },
+      )
+    ) {
+      return null;
+    }
+    return { worldMap, col, row };
+  };
+
+  const consumeRuneCharge = (item, source) => {
+    item.charges--;
+    return item.charges > 0 || Boolean(inventory.removeItem(source));
+  };
+
+  const executeCreateFieldRune = (item, source, useData, target, requestedAt) => {
+    if (!getValidRuneTileTarget(target, useData) || groundEffectsDatabase[useData.groundEffectId]?.kind !== "field") {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    if (!consumeRuneCharge(item, source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    const groundEffect = addOrRefreshGroundEffect(useData.groundEffectId, target.x, target.y, target.z, requestedAt);
+    if (!groundEffect) {
+      return { success: false, reason: "field-create-failed" };
+    }
+    onFieldCreated(groundEffect, requestedAt);
+    return {
+      success: true,
+      changes: { itemUid: item.uid, charges: Math.max(item.charges, 0), groundEffectUid: groundEffect.uid },
+      events: [{
+        type: "item-use-resolved",
+        action: "createField",
+        itemUid: item.uid,
+        groundEffectUid: groundEffect.uid,
+        damageType: groundEffectsDatabase[useData.groundEffectId].damageType,
+        x: target.x,
+        y: target.y,
+        z: target.z,
+      }],
+    };
+  };
+
+  const executeDispelFieldRune = (item, source, useData, target) => {
+    if (!getValidRuneTileTarget(target, useData)) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    const groundEffect = groundEffects
+      .getAllAt(target.x, target.y, target.z)
+      .find((effect) => groundEffectsDatabase[effect.groundEffectId]?.kind === "field");
+    if (groundEffectsDatabase[groundEffect?.groundEffectId]?.kind !== "field") {
+      return { success: false, reason: "field-not-found" };
+    }
+    if (!consumeRuneCharge(item, source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    if (!groundEffects.remove(groundEffect.uid)) {
+      return { success: false, reason: "field-remove-failed" };
+    }
+    return {
+      success: true,
+      changes: { itemUid: item.uid, charges: Math.max(item.charges, 0), removedGroundEffectUid: groundEffect.uid },
+      events: [{
+        type: "item-use-resolved",
+        action: "dispelField",
+        itemUid: item.uid,
+        removedGroundEffectUid: groundEffect.uid,
+        x: target.x,
+        y: target.y,
+        z: target.z,
+      }],
     };
   };
 
@@ -206,6 +312,10 @@ export const createServerPlayerItemUse = ({
       result = executePotion(item, useData, payload.target, payload.requestedAt);
     } else if (useData.action === "attackRune") {
       result = executeRune(item, payload.source, useData, payload.target);
+    } else if (useData.action === "createField") {
+      result = executeCreateFieldRune(item, payload.source, useData, payload.target, payload.requestedAt);
+    } else if (useData.action === "dispelField") {
+      result = executeDispelFieldRune(item, payload.source, useData, payload.target);
     } else {
       result = { success: false, reason: "unsupported-item-action" };
     }

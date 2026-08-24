@@ -61,6 +61,7 @@ import { executePlayerSpellCast } from "../src/spells/spellCasting.js";
 import { executeRewardChestTransaction } from "../src/quests/rewardChestTransaction.js";
 import { createServerNpcConversationService } from "./serverNpcConversationService.js";
 import { createServerMonsterAi } from "./serverMonsterAi.js";
+import { createServerFieldEffectSystem } from "./serverFieldEffectSystem.js";
 import { advancePlayerRegeneration } from "../src/player/playerRegeneration.js";
 import { playerClassesDatabase } from "../src/data/playerClassesDatabase.js";
 import { applyPlayerDeathState } from "../src/player/playerDeath.js";
@@ -143,6 +144,7 @@ export const createAuthoritativeWorldRuntime = ({
   let indexedPlayerRevision = -1;
   let nextWorldDecayAt = 0;
   let nextAutosaveSweepAt = Number.POSITIVE_INFINITY;
+  let fieldEffectSystem = null;
 
   for (const worldMap of worldMapsByZ.values()) {
     for (const chunk of worldMap.chunksByKey.values()) {
@@ -158,6 +160,7 @@ export const createAuthoritativeWorldRuntime = ({
       return false;
     }
     player.tileStackOrder = nextPlayerTileStackOrder++;
+    fieldEffectSystem?.applyFieldAtEntity(player, "player", currentServerTime);
     return true;
   };
 
@@ -285,14 +288,19 @@ export const createAuthoritativeWorldRuntime = ({
   });
 
   const addOrRefreshGroundEffect = (groundEffectId, x, y, z, decayStage = 0) => {
-    if (!(groundEffectId in groundEffectsDatabase)) {
+    const groundEffectData = groundEffectsDatabase[groundEffectId];
+    if (!groundEffectData) {
       return null;
     }
-    const existing = worldEntities.groundEffects.getAt(x, y, z);
+    const existing = worldEntities.groundEffects
+      .getAllAt(x, y, z)
+      .find((effect) => groundEffectsDatabase[effect.groundEffectId]?.kind === groundEffectData.kind);
     if (existing) {
       existing.groundEffectId = groundEffectId;
       existing.decayStage = decayStage;
-      existing.nextDecayAt = currentServerTime + GROUND_EFFECT_DECAY_STAGE_MS;
+      existing.isPermanent = false;
+      existing.ownerUid = null;
+      existing.nextDecayAt = currentServerTime + (groundEffectData.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS);
       return existing;
     }
     const groundEffect = {
@@ -302,7 +310,9 @@ export const createAuthoritativeWorldRuntime = ({
       y,
       z,
       decayStage,
-      nextDecayAt: currentServerTime + GROUND_EFFECT_DECAY_STAGE_MS,
+      isPermanent: false,
+      ownerUid: null,
+      nextDecayAt: currentServerTime + (groundEffectData.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS),
     };
     return worldEntities.groundEffects.add(groundEffect) ? groundEffect : null;
   };
@@ -419,7 +429,9 @@ export const createAuthoritativeWorldRuntime = ({
     let experienceReward = 0;
     let levelProgression = null;
     let groundEffect = null;
-    recordPlayerCombatActivity(player.uid);
+    if (player) {
+      recordPlayerCombatActivity(player.uid);
+    }
     if (healthResult.success) {
       groundEffect = addOrRefreshGroundEffect(
         monsterData?.bloodEffectId,
@@ -451,7 +463,7 @@ export const createAuthoritativeWorldRuntime = ({
       if (!corpse || !worldEntities.worldItems.add(corpse)) {
         corpse = null;
       }
-      experienceReward = applyMonsterExperienceReward(player, monsterData);
+      experienceReward = player ? applyMonsterExperienceReward(player, monsterData) : 0;
       if (experienceReward > 0) {
         levelProgression = applyPlayerLevelProgression(player);
       }
@@ -463,7 +475,7 @@ export const createAuthoritativeWorldRuntime = ({
     if (healthResult.success) {
       events.push({
         type: "monster-damage-resolved",
-        playerUid: player.uid,
+        playerUid: player?.uid ?? null,
         monsterUid: monster.uid,
         monsterId: monster.monsterId,
         damageApplied: healthResult.damageApplied,
@@ -518,12 +530,14 @@ export const createAuthoritativeWorldRuntime = ({
     }
     const attackResult = calculatePlayerAttackResult(monster, player, combatRandom ?? undefined);
     const skillProgression = applyPlayerAttackSkillProgression(player, attackResult, currentServerTime);
+    const weaponType = getEquippedWeaponCombatData(player)?.weaponType ?? "fist";
     return resolvePlayerDamageToMonster(player, monster, attackResult, [
       {
         type: "player-attack-resolved",
         playerUid: player.uid,
         monsterUid: monster.uid,
         attackResult,
+        weaponType,
         skillProgression,
         targetRenderSnapshot: {
           uid: monster.uid,
@@ -656,9 +670,64 @@ export const createAuthoritativeWorldRuntime = ({
     );
     if (result?.events?.[0]) {
       result.events[0].skillProgression = skillProgression;
+      result.events[0].weaponType = getEquippedWeaponCombatData(player)?.weaponType ?? "fist";
     }
     return result;
   };
+
+  fieldEffectSystem = createServerFieldEffectSystem({
+    groundEffects: worldEntities.groundEffects,
+    players: playersByUid,
+    monsters: worldEntities.monsters,
+    applyDamageTick: ({ entity, entityType, damage, damageType, sourcePlayerUid }) => {
+      const attackResult = {
+        didHit: true,
+        wasBlocked: false,
+        finalDamage: damage,
+        text: damage,
+        textType: damageType,
+      };
+      if (entityType === "monster") {
+        const sourcePlayer = playersByUid.get(sourcePlayerUid) ?? null;
+        const result = resolvePlayerDamageToMonster(sourcePlayer, entity, attackResult);
+        result.events = (result.events ?? []).map((event) => ({ ...event, attackKind: "fieldTick", damageType }));
+        return result;
+      }
+
+      const sourcePlayer = playersByUid.get(sourcePlayerUid) ?? null;
+      if (sourcePlayer && sourcePlayer !== entity) {
+        if (!canInitiatePlayerPvpAttack(sourcePlayer, entity, currentServerTime)) {
+          return { success: false, events: [] };
+        }
+        const result = resolvePlayerPvpDamage(sourcePlayer, entity, attackResult, "player-pvp-field-resolved");
+        if (result.events?.[0]) {
+          result.events[0].damageType = damageType;
+          result.events[0].attackKind = "fieldTick";
+        }
+        return result;
+      }
+
+      applyDamageToPlayer(entity, damage);
+      recordPlayerCombatActivity(entity.uid);
+      const deathResult = entity.hp <= 0 ? resolvePlayerDeath(entity) : null;
+      return {
+        success: true,
+        events: [
+          {
+            type: "field-damage-resolved",
+            playerUid: entity.uid,
+            targetPlayerUid: entity.uid,
+            damageApplied: damage,
+            damageType,
+            x: entity.x,
+            y: entity.y,
+            z: entity.z,
+          },
+          ...(deathResult ? [deathResult.event] : []),
+        ],
+      };
+    },
+  });
 
   const updateMonsterCombat = () => {
     const changedPlayers = new Map();
@@ -718,6 +787,9 @@ export const createAuthoritativeWorldRuntime = ({
     const removedGroundEffectUids = [];
 
     for (const effect of worldEntities.groundEffects.values()) {
+      if (effect.isPermanent === true) {
+        continue;
+      }
       if (currentServerTime < effect.nextDecayAt) {
         continue;
       }
@@ -726,7 +798,9 @@ export const createAuthoritativeWorldRuntime = ({
         removedGroundEffectUids.push(effect.uid);
       } else {
         effect.decayStage++;
-        effect.nextDecayAt = currentServerTime + GROUND_EFFECT_DECAY_STAGE_MS;
+        effect.nextDecayAt =
+          currentServerTime +
+          (groundEffectsDatabase[effect.groundEffectId]?.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS);
         upsertedGroundEffects.push(effect);
       }
     }
@@ -991,6 +1065,17 @@ export const createAuthoritativeWorldRuntime = ({
         }
         return resolvePlayerDamageToMonster(player, target, attackResult);
       },
+      onFieldCreated: (field, requestedAt) => {
+        for (const worldPlayer of playersByUid.values()) {
+          if (worldPlayer.x === field.x && worldPlayer.y === field.y && worldPlayer.z === field.z) {
+            fieldEffectSystem.applyFieldAtEntity(worldPlayer, "player", requestedAt);
+          }
+        }
+        const monster = worldEntities.monsters.getAt(field.x, field.y, field.z);
+        if (monster) {
+          fieldEffectSystem.applyFieldAtEntity(monster, "monster", requestedAt);
+        }
+      },
     });
     inventoriesByPlayerUid.set(playerUid, inventory);
     const persistenceSession = {
@@ -1154,6 +1239,10 @@ export const createAuthoritativeWorldRuntime = ({
         if (changedGroundEffect) {
           upserts.groundEffects = [serializeGroundEffectState(changedGroundEffect)];
         }
+      }
+      const removedGroundEffectUid = result.changes?.removedGroundEffectUid;
+      if (Number.isInteger(removedGroundEffectUid)) {
+        removals.groundEffects = [removedGroundEffectUid];
       }
       journal.record({
         serverTime: currentServerTime,
@@ -1378,6 +1467,9 @@ export const createAuthoritativeWorldRuntime = ({
         updateWorldDecay();
       }
       const changedMonsters = monsterAi.update(currentServerTime);
+      for (const monster of changedMonsters) {
+        fieldEffectSystem.applyFieldAtEntity(monster, "monster", currentServerTime);
+      }
       if (changedMonsters.length > 0) {
         journal.record({
           serverTime: currentServerTime,
@@ -1394,6 +1486,42 @@ export const createAuthoritativeWorldRuntime = ({
             groundEffects: monsterCombatResult.changedGroundEffects.map(serializeGroundEffectState),
           },
           events: monsterCombatResult.events,
+        });
+      }
+      const fieldEffectResult = fieldEffectSystem.update(currentServerTime);
+      if (
+        fieldEffectResult.changedPlayers.length > 0 ||
+        fieldEffectResult.changedMonsters.length > 0 ||
+        fieldEffectResult.events.length > 0
+      ) {
+        for (const player of fieldEffectResult.changedPlayers) {
+          markPlayerPersistenceDirty(player.uid);
+        }
+        const removedMonsterUids = fieldEffectResult.events
+          .filter((event) => event.type === "monster-damage-resolved" && event.didDie)
+          .map((event) => event.monsterUid);
+        const changedWorldItemUids = fieldEffectResult.events
+          .map((event) => event.corpseUid)
+          .filter(Number.isInteger);
+        const changedGroundEffectUids = fieldEffectResult.events
+          .map((event) => event.groundEffectUid)
+          .filter(Number.isInteger);
+        journal.record({
+          serverTime: currentServerTime,
+          upserts: {
+            players: fieldEffectResult.changedPlayers.map(serializePlayerPublicState),
+            monsters: fieldEffectResult.changedMonsters.map(serializeMonsterState),
+            worldItems: changedWorldItemUids
+              .map((uid) => worldEntities.worldItems.get(uid))
+              .filter(Boolean)
+              .map(serializeWorldItem),
+            groundEffects: changedGroundEffectUids
+              .map((uid) => worldEntities.groundEffects.get(uid))
+              .filter(Boolean)
+              .map(serializeGroundEffectState),
+          },
+          removals: { monsters: removedMonsterUids },
+          events: fieldEffectResult.events,
         });
       }
       const regeneratedPlayers = [];

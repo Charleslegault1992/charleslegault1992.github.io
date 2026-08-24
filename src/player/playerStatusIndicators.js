@@ -3,6 +3,8 @@ export const PLAYER_STATUS_INDICATOR = Object.freeze({
   redSkull: "red-skull",
   poison: "poison",
   fire: "fire",
+  energy: "energy",
+  ice: "ice",
   combat: "combat",
   protection: "protection",
 });
@@ -38,6 +40,12 @@ export const getActivePlayerStatusIndicators = (player, now, { isInProtectionZon
     isStatusEffectActive(player.statusEffects?.burning, now)
   ) {
     indicators.push(PLAYER_STATUS_INDICATOR.fire);
+  }
+  if (isStatusEffectActive(player.statusEffects?.electrified, now)) {
+    indicators.push(PLAYER_STATUS_INDICATOR.energy);
+  }
+  if (isStatusEffectActive(player.statusEffects?.frozen, now)) {
+    indicators.push(PLAYER_STATUS_INDICATOR.ice);
   }
   if (Number.isFinite(player.combatLogoutExpiresAt) && player.combatLogoutExpiresAt > now) {
     indicators.push(PLAYER_STATUS_INDICATOR.combat);

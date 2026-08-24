@@ -46,5 +46,6 @@ export const createMonster = (monsterId, x, y, z) => {
     nextAggroCheckAt: 0,
     nextWanderAt: 0,
     wanderStepsRemaining: 0,
+    statusEffects: {},
   };
 };

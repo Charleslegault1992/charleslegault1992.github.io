@@ -72,6 +72,7 @@ export const clearPixiGroundEffectVisuals = (...args) => callPixiRenderer("clear
 export const setPixiItemUseTargets = (...args) => callPixiRenderer("setPixiItemUseTargets", args, false);
 export const clearPixiItemUseTargets = (...args) => callPixiRenderer("clearPixiItemUseTargets", args);
 export const playPixiItemProjectile = (...args) => callPixiRenderer("playPixiItemProjectile", args, false);
+export const playPixiCombatEffect = (...args) => callPixiRenderer("playPixiCombatEffect", args, false);
 export const playPixiRewardChestEffect = (...args) => callPixiRenderer("playPixiRewardChestEffect", args, false);
 export const playPixiSpellEffect = (...args) => callPixiRenderer("playPixiSpellEffect", args, false);
 export const renderPixiFrame = (...args) => callPixiRenderer("renderPixiFrame", args);

@@ -776,6 +776,54 @@ test("a top world rune can be used directly from the ground", async () => {
   assert.equal(runtime.getWorldEntities().worldItems.has(rune.uid), true);
 });
 
+test("field runes create and dispel an authoritative field from the ground", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "items", characterId: "field-runes" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const fieldRune = createGroundItem("fireFieldRune", 1, player.x, player.y, player.z);
+  runtime.getWorldEntities().worldItems.add(fieldRune);
+  const target = { targetType: "tile", x: player.x, y: player.y, z: player.z };
+
+  const createResult = runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: { locationType: "worldItem", itemUid: fieldRune.uid },
+      itemUid: fieldRune.uid,
+      target,
+      requestedAt: serverTime,
+    }),
+  );
+  const field = runtime.getWorldEntities().groundEffects
+    .getAllAt(player.x, player.y, player.z)
+    .find((effect) => effect.groundEffectId === "fireField");
+
+  assert.equal(createResult.success, true);
+  assert.equal(fieldRune.charges, 4);
+  assert.ok(field);
+  assert.equal(player.statusEffects.burning.active, true);
+
+  serverTime += 2000;
+  const dispelRune = createGroundItem("dissipationRune", 1, player.x, player.y, player.z);
+  runtime.getWorldEntities().worldItems.add(dispelRune);
+  const dispelResult = runtime.dispatchAction(
+    session,
+    createUseItemAction({
+      source: { locationType: "worldItem", itemUid: dispelRune.uid },
+      itemUid: dispelRune.uid,
+      target,
+      requestedAt: serverTime,
+    }),
+  );
+
+  assert.equal(dispelResult.success, true);
+  assert.equal(dispelRune.charges, 4);
+  assert.equal(runtime.getWorldEntities().groundEffects.has(field.uid), false);
+});
+
 test("learned spells consume authoritative mana and share the spell cooldown", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;
@@ -796,6 +844,25 @@ test("learned spells consume authoritative mana and share the spell cooldown", a
   assert.ok(player.spellEffects.light.expiresAt > serverTime);
   assert.equal(cooldownResult.reason, "cooldown");
   assert.equal(unlearnedResult.reason, "spell-not-learned");
+});
+
+test("cure spells remove their matching authoritative status effect", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "test", characterId: "cure-spell" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  player.mana = 30;
+  player.maxMana = 30;
+  player.skills.magic.level = 1;
+  player.statusEffects.poison = { active: true, expiresAt: 10000 };
+
+  const result = runtime.dispatchAction(session, createCastSpellAction("purgaVenenum", 1000));
+
+  assert.equal(result.success, true);
+  assert.equal(player.statusEffects.poison, undefined);
+  assert.equal(player.mana, 15);
 });
 
 test("reward chests grant items and commit quest progress exactly once on the server", async () => {

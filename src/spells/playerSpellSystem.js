@@ -201,6 +201,7 @@ export const createPlayerSpellSystem = ({
         cooldown: getGameUiText("exhausted"),
         "not-enough-mana": getGameUiText("spellNotEnoughMana"),
         "full-health": getGameUiText("fullHealth"),
+        "status-effect-not-active": getGameUiText("statusEffectNotActive"),
       };
       showGameStatusMessage(failureMessageByReason[result?.reason] ?? getGameUiText("spellNotLearned"));
       playPlayerSpellEffect(spellData, false);

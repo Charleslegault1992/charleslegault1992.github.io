@@ -1,5 +1,5 @@
-import { DECAY_REFRESH_COOLDOWN_MS, SPRITE_SIZE } from "../core/gameConstants.js";
-import { getAtlasSource } from "../core/atlasUtils.js";
+import { ATLAS_CELL_SIZE, ATLAS_PADDING, DECAY_REFRESH_COOLDOWN_MS, SPRITE_SIZE } from "../core/gameConstants.js";
+import { EFFECT_ATLAS_CELL_SIZE } from "../data/combatEffectsDatabase.js";
 import { GROUND_EFFECT_DECAY_STAGE_MS, groundEffectsDatabase } from "../data/groundEffectsDatabase.js";
 import {
   clearPixiGroundEffectVisuals,
@@ -16,6 +16,14 @@ export const getGroundEffectData = (groundEffectId) => {
   return groundEffectsDatabase[groundEffectId] ?? null;
 };
 
+const getGroundEffectTileCategoryKey = (groundEffectId, x, y, z) => {
+  const kind = getGroundEffectData(groundEffectId)?.kind;
+  if (!kind) {
+    return null;
+  }
+  return `${getWorldTileStackKey(x, y, z)}:${kind}`;
+};
+
 export const renderGroundEffect = (groundEffect) => {
   if (!groundEffect || groundEffect.z !== playerState.z) {
     return false;
@@ -26,14 +34,23 @@ export const renderGroundEffect = (groundEffect) => {
     return false;
   }
 
-  const source = getAtlasSource(
-    groundEffectData.atlasCol + groundEffect.decayStage,
-    groundEffectData.atlasRow,
-    SPRITE_SIZE,
-  );
+  const framesPerStage = groundEffectData.framesPerStage ?? 1;
+  const atlasCol = groundEffectData.atlasCol + groundEffect.decayStage * framesPerStage;
+  const atlasCellSize = groundEffectData.atlas === "effects" ? EFFECT_ATLAS_CELL_SIZE : ATLAS_CELL_SIZE;
+  const atlasPadding = groundEffectData.atlas === "effects" ? 0 : ATLAS_PADDING;
+  const source = {
+    sourceX: atlasCol * atlasCellSize + atlasPadding,
+    sourceY: groundEffectData.atlasRow * atlasCellSize + atlasPadding,
+    sourceWidth: SPRITE_SIZE,
+    sourceHeight: SPRITE_SIZE,
+  };
   return upsertPixiGroundEffectVisual({
     uid: groundEffect.uid,
     ...source,
+    textureKey: groundEffectData.atlas,
+    animationFrames: framesPerStage,
+    animationFrameMs: groundEffectData.animationFrameMs ?? 0,
+    frameStride: atlasCellSize,
     x: groundEffect.x,
     y: groundEffect.y,
   });
@@ -45,7 +62,12 @@ export const removeGroundEffect = (groundEffectUid) => {
     return false;
   }
 
-  const tileKey = getWorldTileStackKey(groundEffect.x, groundEffect.y, groundEffect.z);
+  const tileKey = getGroundEffectTileCategoryKey(
+    groundEffect.groundEffectId,
+    groundEffect.x,
+    groundEffect.y,
+    groundEffect.z,
+  );
   if (groundEffectUidByTileKey.get(tileKey) === groundEffectUid) {
     groundEffectUidByTileKey.delete(tileKey);
   }
@@ -68,7 +90,10 @@ export const addOrRefreshGroundEffectState = (groundEffectId, x, y, z, decayStag
     return null;
   }
 
-  const tileKey = getWorldTileStackKey(x, y, z);
+  const tileKey = getGroundEffectTileCategoryKey(groundEffectId, x, y, z);
+  if (!tileKey) {
+    return null;
+  }
   const existingUid = groundEffectUidByTileKey.get(tileKey) ?? null;
   let groundEffect = groundEffectsByUid.get(existingUid) ?? null;
 
@@ -80,14 +105,16 @@ export const addOrRefreshGroundEffectState = (groundEffectId, x, y, z, decayStag
       y,
       z,
       decayStage,
-      nextDecayAt: now + GROUND_EFFECT_DECAY_STAGE_MS,
+      isPermanent: false,
+      ownerUid: null,
+      nextDecayAt: now + (getGroundEffectData(groundEffectId)?.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS),
     };
     groundEffectsByUid.set(groundEffect.uid, groundEffect);
     groundEffectUidByTileKey.set(tileKey, groundEffect.uid);
   } else {
     groundEffect.groundEffectId = groundEffectId;
     groundEffect.decayStage = decayStage;
-    groundEffect.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
+    groundEffect.nextDecayAt = now + (getGroundEffectData(groundEffectId)?.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS);
   }
 
   return groundEffect;
@@ -107,6 +134,9 @@ export const updateGroundEffectDecay = (now) => {
   gameplayTimingState.nextGroundEffectDecayRefresh = now + DECAY_REFRESH_COOLDOWN_MS;
 
   for (const groundEffect of [...groundEffectsByUid.values()]) {
+    if (groundEffect.isPermanent === true) {
+      continue;
+    }
     if (now < groundEffect.nextDecayAt) {
       continue;
     }
@@ -115,7 +145,7 @@ export const updateGroundEffectDecay = (now) => {
       continue;
     }
     groundEffect.decayStage += 1;
-    groundEffect.nextDecayAt = now + GROUND_EFFECT_DECAY_STAGE_MS;
+    groundEffect.nextDecayAt = now + (getGroundEffectData(groundEffect.groundEffectId)?.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS);
     renderGroundEffect(groundEffect);
   }
 };

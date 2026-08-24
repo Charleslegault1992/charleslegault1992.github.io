@@ -49,6 +49,11 @@ export const executePlayerSpellCast = ({ player, spellData, now, cooldowns, rand
   } else if (spellData.action === "lightSelf") {
     player.spellEffects.light.radius = spellData.lightRadius;
     player.spellEffects.light.expiresAt = now + spellData.durationMs;
+  } else if (spellData.action === "cureStatusEffect") {
+    if (!player.statusEffects?.[spellData.statusEffectId]) {
+      return { success: false, reason: "status-effect-not-active" };
+    }
+    delete player.statusEffects[spellData.statusEffectId];
   } else {
     return { success: false, reason: "unsupported-spell-action" };
   }
@@ -71,6 +76,7 @@ export const executePlayerSpellCast = ({ player, spellData, now, cooldowns, rand
       restoredAmount,
       magicSkill: structuredClone(player.skills.magic),
       spellEffects: structuredClone(player.spellEffects),
+      statusEffects: structuredClone(player.statusEffects ?? {}),
     },
     events: [{ type: "spell-cast-resolved", playerUid: player.uid, spellId: spellData.spellId, restoredAmount }],
   };

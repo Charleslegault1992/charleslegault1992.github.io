@@ -17,6 +17,13 @@ import {
 import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
+import {
+  combatEffectsDatabase,
+  EFFECT_ATLAS_CELL_SIZE,
+  EFFECT_ATLAS_FILE_NAME,
+  getElementCombatEffects,
+} from "./data/combatEffectsDatabase.js";
+import { groundEffectsDatabase } from "./data/groundEffectsDatabase.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
@@ -83,6 +90,11 @@ const tilesetImageUrlModulesByPath = import.meta.glob("./assets/tilesets/*.png",
   import: "default",
   eager: true,
 });
+const effectImageUrlModulesByPath = import.meta.glob("./assets/images/effects/*.png", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
 //#endregion  -----  ASSETS - MODULES VITE  -----
 
 /* ==================================================== */
@@ -112,6 +124,10 @@ let monsterVisualsByUid = null;
 let npcVisualsByUid = null;
 let worldItemVisualsByUid = null;
 let groundEffectVisualsByUid = null;
+let groundEffectAnimationFrame = 0;
+let groundEffectAnimationElapsedMs = 0;
+let combatEffectVisualPool = null;
+let availableCombatEffectVisuals = null;
 let itemUseTargetVisualsByKey = null;
 let itemUseTargetAnimationElapsedMs = 0;
 let worldItemSelectionFilter = null;
@@ -830,6 +846,43 @@ const getEntityFrameTexture = (textureKey, sourceX, sourceY, sourceWidth, source
   return texture;
 };
 
+const prewarmEffectFrameTextures = () => {
+  if (!worldEntityTextureByKey?.has("effects")) {
+    return;
+  }
+
+  for (const effectData of Object.values(groundEffectsDatabase)) {
+    if (effectData.atlas !== "effects") {
+      continue;
+    }
+    const frameCount = (effectData.framesPerStage ?? 1) * 3;
+    for (let frame = 0; frame < frameCount; frame++) {
+      getEntityFrameTexture(
+        "effects",
+        (effectData.atlasCol + frame) * EFFECT_ATLAS_CELL_SIZE,
+        effectData.atlasRow * EFFECT_ATLAS_CELL_SIZE,
+        EFFECT_ATLAS_CELL_SIZE,
+        EFFECT_ATLAS_CELL_SIZE,
+      );
+    }
+  }
+
+  const animationDefinitions = Object.values(combatEffectsDatabase).flatMap((effectData) =>
+    Number.isInteger(effectData?.row) ? [effectData] : Object.values(effectData ?? {}),
+  );
+  for (const animation of animationDefinitions) {
+    for (let frame = 0; frame < animation.frameCount; frame++) {
+      getEntityFrameTexture(
+        "effects",
+        (animation.startCol + frame) * EFFECT_ATLAS_CELL_SIZE,
+        animation.row * EFFECT_ATLAS_CELL_SIZE,
+        EFFECT_ATLAS_CELL_SIZE,
+        EFFECT_ATLAS_CELL_SIZE,
+      );
+    }
+  }
+};
+
 export const loadPixiWorldEntityTextures = async ({
   playerTextureUrlsByLayer = null,
   itemTextureUrl = null,
@@ -868,6 +921,10 @@ export const loadPixiWorldEntityTextures = async ({
     }
     textureUrlsByKey.set(`npc:${npcId}`, textureUrl);
   }
+  const effectTextureEntry = Object.entries(effectImageUrlModulesByPath).find(([path]) => path.endsWith(`/${EFFECT_ATLAS_FILE_NAME}`));
+  if (effectTextureEntry) {
+    textureUrlsByKey.set("effects", effectTextureEntry[1]);
+  }
 
   const unloadedEntries = [...textureUrlsByKey.entries()]
     .filter(([textureKey]) => !worldEntityTextureByKey.has(textureKey));
@@ -875,6 +932,7 @@ export const loadPixiWorldEntityTextures = async ({
   unloadedEntries.forEach(([textureKey], index) => worldEntityTextureByKey.set(textureKey, textures[index]));
 
   entityFrameTextureByCacheKey = new Map();
+  prewarmEffectFrameTextures();
   return true;
 };
 
@@ -1404,7 +1462,19 @@ export const clearPixiWorldItemVisuals = () => {
 /* ==================================================== */
 //#region     -----  RENDU - EFFETS DE SOL  -----
 /* ==================================================== */
-export const upsertPixiGroundEffectVisual = ({ uid, sourceX, sourceY, sourceWidth, sourceHeight, x, y }) => {
+export const upsertPixiGroundEffectVisual = ({
+  uid,
+  sourceX,
+  sourceY,
+  sourceWidth,
+  sourceHeight,
+  textureKey = "items",
+  animationFrames = 1,
+  animationFrameMs = 0,
+  frameStride = sourceWidth,
+  x,
+  y,
+}) => {
   if (
     !groundEffectContainer ||
     !(groundEffectVisualsByUid instanceof Map) ||
@@ -1415,32 +1485,42 @@ export const upsertPixiGroundEffectVisual = ({ uid, sourceX, sourceY, sourceWidt
     return false;
   }
 
-  const texture = getEntityFrameTexture("items", sourceX, sourceY, sourceWidth, sourceHeight);
+  const texture = getEntityFrameTexture(textureKey, sourceX, sourceY, sourceWidth, sourceHeight);
   if (!texture) {
     return false;
   }
 
-  let sprite = groundEffectVisualsByUid.get(uid);
-  if (!sprite) {
-    sprite = new Sprite(texture);
+  let refs = groundEffectVisualsByUid.get(uid);
+  if (!refs) {
+    const sprite = new Sprite(texture);
     sprite.label = `ground-effect:${uid}`;
     groundEffectContainer.addChild(sprite);
-    groundEffectVisualsByUid.set(uid, sprite);
+    refs = { sprite };
+    groundEffectVisualsByUid.set(uid, refs);
   } else {
-    sprite.texture = texture;
+    refs.sprite.texture = texture;
   }
 
-  sprite.x = x;
-  sprite.y = y;
+  refs.textureKey = textureKey;
+  refs.sourceX = sourceX;
+  refs.sourceY = sourceY;
+  refs.sourceWidth = sourceWidth;
+  refs.sourceHeight = sourceHeight;
+  refs.animationFrames = Math.max(1, animationFrames);
+  refs.animationFrameMs = Math.max(0, animationFrameMs);
+  refs.frameStride = frameStride;
+  refs.renderedFrame = 0;
+  refs.sprite.x = x;
+  refs.sprite.y = y;
   return true;
 };
 
 export const removePixiGroundEffectVisual = (uid) => {
-  const sprite = groundEffectVisualsByUid?.get(uid);
-  if (!sprite) {
+  const refs = groundEffectVisualsByUid?.get(uid);
+  if (!refs) {
     return false;
   }
-  sprite.destroy();
+  refs.sprite.destroy();
   groundEffectVisualsByUid.delete(uid);
   return true;
 };
@@ -1603,6 +1683,138 @@ export const playPixiItemProjectile = ({
 
   pixiApp.ticker.add(updateProjectile);
   return true;
+};
+
+const getCombatEffectAnimation = (effectId, variant) => {
+  const elementalEffects = getElementCombatEffects(effectId);
+  if (elementalEffects && variant in elementalEffects) {
+    return elementalEffects[variant];
+  }
+  return combatEffectsDatabase[effectId] ?? null;
+};
+
+const setCombatEffectFrame = (refs, frame) => {
+  if (refs.renderedFrame === frame) {
+    return;
+  }
+  refs.sprite.texture = getEntityFrameTexture(
+    "effects",
+    (refs.animation.startCol + frame) * EFFECT_ATLAS_CELL_SIZE,
+    refs.animation.row * EFFECT_ATLAS_CELL_SIZE,
+    EFFECT_ATLAS_CELL_SIZE,
+    EFFECT_ATLAS_CELL_SIZE,
+  );
+  refs.renderedFrame = frame;
+};
+
+const acquireCombatEffectVisual = () => {
+  let refs = availableCombatEffectVisuals.pop() ?? null;
+  if (!refs) {
+    const sprite = new Sprite(Texture.EMPTY);
+    sprite.anchor.set(0.5);
+    sprite.visible = false;
+    sprite.label = "combat-effect";
+    feedbackEffectContainer.addChild(sprite);
+    refs = { sprite, active: false, renderedFrame: -1 };
+    combatEffectVisualPool.push(refs);
+  }
+  refs.active = true;
+  refs.sprite.visible = true;
+  refs.renderedFrame = -1;
+  return refs;
+};
+
+const releaseCombatEffectVisual = (refs) => {
+  if (!refs.active) {
+    return;
+  }
+  refs.active = false;
+  refs.sprite.visible = false;
+  refs.animation = null;
+  refs.impactAnimation = null;
+  availableCombatEffectVisuals.push(refs);
+};
+
+export const playPixiCombatEffect = ({
+  effectId,
+  variant = "impact",
+  startX,
+  startY,
+  targetX = startX,
+  targetY = startY,
+  speedPixelsPerSecond = 900,
+}) => {
+  if (
+    !feedbackEffectContainer ||
+    !(combatEffectVisualPool instanceof Array) ||
+    !worldEntityTextureByKey?.has("effects") ||
+    !Number.isFinite(startX) ||
+    !Number.isFinite(startY) ||
+    !Number.isFinite(targetX) ||
+    !Number.isFinite(targetY)
+  ) {
+    return false;
+  }
+  const animation = getCombatEffectAnimation(effectId, variant);
+  if (!animation) {
+    return false;
+  }
+  const refs = acquireCombatEffectVisual();
+  refs.effectId = effectId;
+  refs.variant = variant;
+  refs.animation = animation;
+  refs.impactAnimation = variant === "projectile" ? getCombatEffectAnimation(effectId, "impact") : null;
+  refs.elapsedMs = 0;
+  refs.startX = startX;
+  refs.startY = startY;
+  refs.targetX = targetX;
+  refs.targetY = targetY;
+  refs.distanceX = targetX - startX;
+  refs.distanceY = targetY - startY;
+  refs.travelDurationMs = variant === "projectile"
+    ? Math.max(100, Math.min((Math.hypot(refs.distanceX, refs.distanceY) / speedPixelsPerSecond) * 1000, 600))
+    : 0;
+  refs.sprite.x = startX;
+  refs.sprite.y = startY;
+  setCombatEffectFrame(refs, 0);
+  return true;
+};
+
+const updatePixiCombatEffects = (ticker) => {
+  if (!(combatEffectVisualPool instanceof Array)) {
+    return;
+  }
+  for (const refs of combatEffectVisualPool) {
+    if (!refs.active) {
+      continue;
+    }
+    refs.elapsedMs += ticker.deltaMS;
+    if (refs.variant === "projectile") {
+      const progress = Math.min(refs.elapsedMs / refs.travelDurationMs, 1);
+      refs.sprite.x = refs.startX + refs.distanceX * progress;
+      refs.sprite.y = refs.startY + refs.distanceY * progress;
+      if (progress < 1) {
+        continue;
+      }
+      if (!refs.impactAnimation) {
+        releaseCombatEffectVisual(refs);
+        continue;
+      }
+      refs.variant = "impact";
+      refs.animation = refs.impactAnimation;
+      refs.impactAnimation = null;
+      refs.elapsedMs = 0;
+      refs.renderedFrame = -1;
+      setCombatEffectFrame(refs, 0);
+      continue;
+    }
+    const frame = Math.floor(refs.elapsedMs / refs.animation.frameMs);
+    if (frame >= refs.animation.frameCount) {
+      releaseCombatEffectVisual(refs);
+      continue;
+    }
+    setCombatEffectFrame(refs, frame);
+  }
 };
 //#endregion  -----  RENDU - PROJECTILES  -----
 
@@ -1965,6 +2177,10 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     npcVisualsByUid = new Map();
     worldItemVisualsByUid = new Map();
     groundEffectVisualsByUid = new Map();
+    groundEffectAnimationFrame = 0;
+    groundEffectAnimationElapsedMs = 0;
+    combatEffectVisualPool = [];
+    availableCombatEffectVisuals = [];
     itemUseTargetVisualsByKey = new Map();
     itemUseTargetAnimationElapsedMs = 0;
     minimapChunkCanvasesByWorldMap = new WeakMap();
@@ -1972,12 +2188,43 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldItemSelectionFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
     initializePixiLighting({ gameWidth, gameHeight, lightingPresets });
     pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
+    pixiApp.ticker.add(updatePixiGroundEffectAnimations);
+    pixiApp.ticker.add(updatePixiCombatEffects);
     pixiApp.stop();
     console.log("[Pixi] Initialization complete");
     return true;
   } catch (error) {
     console.error("[Pixi] Initialization failed:", error);
     return false;
+  }
+};
+
+const updatePixiGroundEffectAnimations = (ticker) => {
+  if (!(groundEffectVisualsByUid instanceof Map) || groundEffectVisualsByUid.size === 0) {
+    return;
+  }
+  groundEffectAnimationElapsedMs += ticker.deltaMS;
+  const nextGlobalFrame = Math.floor(groundEffectAnimationElapsedMs / 180);
+  if (nextGlobalFrame === groundEffectAnimationFrame) {
+    return;
+  }
+  groundEffectAnimationFrame = nextGlobalFrame;
+  for (const refs of groundEffectVisualsByUid.values()) {
+    if (refs.animationFrames <= 1 || refs.animationFrameMs <= 0) {
+      continue;
+    }
+    const frame = Math.floor(groundEffectAnimationElapsedMs / refs.animationFrameMs) % refs.animationFrames;
+    if (frame === refs.renderedFrame) {
+      continue;
+    }
+    refs.sprite.texture = getEntityFrameTexture(
+      refs.textureKey,
+      refs.sourceX + frame * refs.frameStride,
+      refs.sourceY,
+      refs.sourceWidth,
+      refs.sourceHeight,
+    );
+    refs.renderedFrame = frame;
   }
 };
 //#endregion  -----  PIXI - INITIALISATION  -----

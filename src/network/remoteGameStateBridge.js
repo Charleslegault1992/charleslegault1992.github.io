@@ -358,8 +358,7 @@ export const createRemoteGameStateBridge = ({
     const nextSelf = event.predictedSelf ?? replicationStore.getSelf();
     const isLocalMovementPrediction =
       event.type === "prediction-updated" && event.action?.type === GAMEPLAY_ACTION_TYPE.movePlayer;
-    const shouldUsePredictedMovementTiming =
-      isLocalMovementPrediction || event.hasEffectiveMovementPrediction === true;
+    const shouldUsePredictedMovementTiming = isLocalMovementPrediction || event.hasEffectiveMovementPrediction === true;
 
     const previousX = playerState.x;
     const previousY = playerState.y;

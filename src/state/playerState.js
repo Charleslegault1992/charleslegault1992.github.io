@@ -93,6 +93,7 @@ export const createPlayerState = () => ({
       expiresAt: 0,
     },
   },
+  statusEffects: {},
   cooldowns: {
     item: 0,
     rune: 0,
