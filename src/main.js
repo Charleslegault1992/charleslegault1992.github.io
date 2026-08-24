@@ -30,6 +30,7 @@ import {
   upsertPixiRemotePlayerAppearance,
   upsertPixiWorldItemVisual,
 } from "./pixiRendererFacade.js";
+import { startClientUpdateMonitor } from "./update/clientUpdateController.js";
 import { loadWorldMaps } from "./worldLoader.js";
 import {
   createCharacterProfile,
@@ -423,6 +424,9 @@ import {
   REMOTE_INTERPOLATED_ENTITY_TYPES,
   remoteEntityInterpolationStore,
 } from "./network/remoteEntityInterpolationStore.js";
+
+startClientUpdateMonitor();
+
 /* ==================================================== */
 //#region     -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 /* ==================================================== */
@@ -2640,6 +2644,10 @@ const refreshPvpButtonState = () => {
   pvpButton?.classList.toggle("equipment-ui-button-pvp-skull-red", skullType === "red");
   pvpButton?.setAttribute("aria-pressed", String(pvpEnabled));
   refreshPlayerSkull(skullType);
+  const mobilePvpButton = document.querySelector('[data-mobile-action="toggle-pvp"]');
+  mobilePvpButton?.classList.toggle("mobile-panel-button-active", pvpEnabled);
+  mobilePvpButton?.classList.toggle("mobile-pvp-skull-active", skullType !== "none");
+  mobilePvpButton?.setAttribute("aria-pressed", String(pvpEnabled));
 };
 
 const togglePvpMode = () => {
@@ -4183,7 +4191,8 @@ const updatePlayerSkillLevel = (skillKey) => {
   if (!skillKey || !(skillKey in playerState.skills)) {
     return;
   }
-  const skillLevelByExperience = getSkillLevelFromExperience(playerState.skills[skillKey].experience);
+  const currentSkillLevel = playerState.skills[skillKey].level;
+  const skillLevelByExperience = getSkillLevelFromExperience(playerState.skills[skillKey].experience, currentSkillLevel);
   if (playerState.skills[skillKey].level < skillLevelByExperience) {
     addSkillLevelUpFeedback(skillKey, skillLevelByExperience);
   }
@@ -4193,7 +4202,7 @@ const updatePlayerSkillLevel = (skillKey) => {
 
 const updateAllPlayerSkillLevels = () => {
   for (const [skillKey, skill] of Object.entries(playerState.skills)) {
-    skill.level = getSkillLevelFromExperience(skill.experience);
+    skill.level = getSkillLevelFromExperience(skill.experience, skill.level);
     updateSkillStatRow(skillKey);
   }
 };
@@ -4412,6 +4421,27 @@ const syncMobileFollowButton = () => {
   followButton?.setAttribute("aria-pressed", String(isActive));
 };
 
+const syncMobileTorchButton = () => {
+  const torchButton = document.querySelector('[data-mobile-action="toggle-torch"]');
+  const torch = getEquipmentSlotItem("ammo");
+  const isTorch = Boolean(getItemData(torch?.itemId)?.lightSource);
+  torchButton?.toggleAttribute("disabled", !isTorch);
+  torchButton?.classList.toggle("mobile-panel-button-active", isTorch && torch.isLit === true);
+  torchButton?.setAttribute("aria-pressed", String(isTorch && torch.isLit === true));
+};
+
+const toggleMobileTorch = () => {
+  const torch = getEquipmentSlotItem("ammo");
+  if (!getItemData(torch?.itemId)?.lightSource) {
+    syncMobileTorchButton();
+    return;
+  }
+  executeDirectItemUse(torch, {
+    locationType: "equipmentSlot",
+    equipmentSlotName: "ammo",
+  });
+};
+
 const toggleMobileBackpack = () => {
   const backpack = getEquipmentSlotItem("backpack");
   if (!backpack || !isOpenableContainerItem(backpack)) {
@@ -4439,6 +4469,8 @@ const syncMobileGameLayout = () => {
   }
   syncMobilePlayerHud();
   syncMobileTargetHud();
+  syncMobileTorchButton();
+  refreshPvpButtonState();
   syncMobileBackpackButton();
   syncMobileFollowButton();
   syncMobileStanceButton();
@@ -4869,22 +4901,22 @@ const showFloatingTextAboveMonster = (monster, text, type) => {
   });
 };
 
-const getPlayerCombatTextWorldPosition = () => {
-  if (!Number.isFinite(playerState.x) || !Number.isFinite(playerState.y) || !Number.isInteger(playerState.z)) {
+const getPlayerCombatTextWorldPosition = (target = playerState) => {
+  if (!Number.isFinite(target?.x) || !Number.isFinite(target?.y) || !Number.isInteger(target?.z)) {
     return null;
   }
 
-  const surfaceOffsetY = getEntitySurfaceOffsetY(playerState);
+  const surfaceOffsetY = getEntitySurfaceOffsetY(target);
 
   return {
-    worldX: playerState.x + TILE_SIZE / 2,
-    worldY: playerState.y - surfaceOffsetY,
-    z: playerState.z,
+    worldX: target.x + TILE_SIZE / 2,
+    worldY: target.y - surfaceOffsetY,
+    z: target.z,
   };
 };
 
-const showFloatingTextAbovePlayer = (text, type) => {
-  const position = getPlayerCombatTextWorldPosition();
+const showFloatingTextAbovePlayer = (text, type, target = playerState) => {
+  const position = getPlayerCombatTextWorldPosition(target);
   if (!position) {
     return false;
   }
@@ -5003,6 +5035,23 @@ const updateLight = (source) => {
         radius,
         torchCount,
       );
+    }
+    for (const remotePlayer of playersByUid.values()) {
+      if (remotePlayer.z !== playerState.z) {
+        continue;
+      }
+      const remoteX = Number.isFinite(remotePlayer.renderX) ? remotePlayer.renderX : remotePlayer.x;
+      const remoteY = Number.isFinite(remotePlayer.renderY) ? remotePlayer.renderY : remotePlayer.y;
+      const screenX = remoteX - camera.x + TILE_SIZE / 2;
+      const screenY = remoteY - camera.y + TILE_SIZE / 2 - getEntitySurfaceOffsetY(remotePlayer);
+      const equippedRadius = remotePlayer.light?.equippedRadius;
+      if (Number.isFinite(equippedRadius) && equippedRadius > 0) {
+        torchCount = appendPixiTorchLight(screenX, screenY, equippedRadius, torchCount);
+      }
+      const spellRadius = remotePlayer.light?.spellRadius;
+      if (Number.isFinite(spellRadius) && spellRadius > 0) {
+        torchCount = appendPixiTorchLight(screenX, screenY, spellRadius, torchCount);
+      }
     }
     pixiLightingFrame.torchCount = torchCount;
   }
@@ -5994,6 +6043,14 @@ for (const button of mobileActionButtons) {
       cycleMobileCombatMode();
     } else if (button.dataset.mobileAction === "toggle-spells") {
       toggleSpellWindow();
+    } else if (button.dataset.mobileAction === "toggle-torch") {
+      toggleMobileTorch();
+    } else if (button.dataset.mobileAction === "toggle-pvp") {
+      togglePvpMode();
+    } else if (button.dataset.mobileAction === "toggle-options") {
+      toggleOptionsWindow();
+    } else if (button.dataset.mobileAction === "logout") {
+      logoutCurrentCharacter();
     }
   });
 }
@@ -6364,6 +6421,12 @@ const clearRemotePlayerSelection = () => {
 
 const selectRemotePlayer = (remotePlayer) => {
   if (!remotePlayer || remotePlayer.uid === playerState.uid) {
+    return false;
+  }
+  if (!canInitiatePlayerPvpAttack(playerState, remotePlayer, Date.now())) {
+    clearRemotePlayerSelection();
+    syncMobileTargetHud();
+    showGameStatusMessage(getGameUiText("pvpRequiresBothPlayers"));
     return false;
   }
   const wasSelected = combatTargetState.playerUid === remotePlayer.uid;
@@ -7637,6 +7700,12 @@ const updateCombat = (now) => {
       showGameStatusMessage(getGameUiText("targetLost"));
       return;
     }
+    if (!canInitiatePlayerPvpAttack(playerState, targetPlayer, now)) {
+      clearRemotePlayerSelection();
+      syncMobileTargetHud();
+      showGameStatusMessage(getGameUiText("pvpRequiresBothPlayers"));
+      return;
+    }
     if (!isNearPlayer(targetPlayer, getPlayerAttackRange()) || now < gameplayTimingState.nextPlayerAttackTime) {
       return;
     }
@@ -8428,13 +8497,16 @@ const handlePlayerPvpAttackResolvedEffect = (event) => {
   playPlayerWeaponProjectile(event.targetRenderSnapshot);
   const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
   if (targetPlayer) {
-    showFloatingTextAboveTarget(
+    showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
-      70,
-      targetPlayer,
       event.attackResult?.textType ?? "damage",
+      targetPlayer,
     );
     updateRemotePlayerVisual(targetPlayer);
+  }
+  const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
+  if (groundEffect) {
+    renderGroundEffect(groundEffect);
   }
   playPlayerAttackResultSfx(event.attackResult);
   syncMobileTargetHud();
@@ -8443,13 +8515,16 @@ const handlePlayerPvpAttackResolvedEffect = (event) => {
 const handlePlayerPvpRuneResolvedEffect = (event) => {
   const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
   if (targetPlayer) {
-    showFloatingTextAboveTarget(
+    showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
-      70,
-      targetPlayer,
       event.attackResult?.textType ?? "fire",
+      targetPlayer,
     );
     updateRemotePlayerVisual(targetPlayer);
+  }
+  const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
+  if (groundEffect) {
+    renderGroundEffect(groundEffect);
   }
   syncMobileTargetHud();
 };
@@ -8464,6 +8539,7 @@ const handleServerPlayerDeathEffect = (event) => {
     clearRemotePlayerSelection();
     clearMonsterSelection();
     stopPlayerNavigation();
+    closeAllContainer();
     refreshPlayerVitalsUi();
     showGameStatusMessage(getGameUiText("youDied"));
   }
@@ -8510,7 +8586,8 @@ const handleMonsterDamageResolvedEffect = (event) => {
 
   const monsterData = getMonsterData(event.monsterId);
   const localizedMonsterData = getLocalizedMonsterData(event.monsterId) ?? monsterData;
-  if (localizedMonsterData) {
+  const wasLocalPlayerAttack = event.playerUid === playerState.uid;
+  if (wasLocalPlayerAttack && localizedMonsterData) {
     addLogMessage(getGameUiText("damageDealt")(event.damageApplied, localizedMonsterData.name), "combat");
   }
   const liveMonster = findMonsterByUid(event.monsterUid);
@@ -8531,10 +8608,13 @@ const handleMonsterDamageResolvedEffect = (event) => {
   removeMonsterRender(event.monsterUid);
   clearSelectedMonsterIfNeeded(event.targetRenderSnapshot);
   addLootLogMessage(event.lootContent, localizedMonsterData?.name ?? null);
-  if (event.experienceReward > 0) {
+  if (wasLocalPlayerAttack && event.experienceReward > 0) {
     addExperienceGainFeedback(event.experienceReward, localizedMonsterData?.name ?? null);
-    addLevelUpFeedbackFromExperienceReward(event.experienceReward);
-    updatePlayerExperience();
+    const previousLevel = event.levelProgression?.previousLevel ?? playerState.level;
+    const nextLevel = event.levelProgression?.nextLevel ?? playerState.level;
+    for (let level = previousLevel + 1; level <= nextLevel; level++) {
+      addLevelUpFeedback(level);
+    }
   }
 
   const deathSfxByMonsterId = {
@@ -8574,6 +8654,7 @@ const handleItemUseResolvedEffect = (event) => {
     playGameSfx(event.sfx);
   }
   updateItemCooldownOverlays(Date.now());
+  syncMobileTorchButton();
 };
 
 gameSimulation = createGameSimulation({
@@ -8653,7 +8734,17 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
   "player-pvp-rune-resolved": handlePlayerPvpRuneResolvedEffect,
   "player-died": handleServerPlayerDeathEffect,
-  "player-pvp-state-changed": () => refreshPvpButtonState(),
+  "player-pvp-state-changed": (event) => {
+    if (event.playerUid === playerState.uid && event.pvp) {
+      playerState.pvp = structuredClone(event.pvp);
+      refreshPvpButtonState();
+    }
+    const remotePlayer = playersByUid.get(event.playerUid) ?? null;
+    if (remotePlayer) {
+      remotePlayer.pvp = structuredClone(event.pvp);
+      updateRemotePlayerVisual(remotePlayer);
+    }
+  },
   "player-world-transitioned": () => presentPlayerWorldTransition(),
   "reward-chest-completed": handleRewardChestCompletedEffect,
 });
@@ -8668,6 +8759,7 @@ const remoteSelfUiSignatures = {
   inventory: null,
   vitals: null,
   experience: null,
+  pvp: null,
 };
 
 const hasReplicatedEntityChanges = (event, entityType) => {
@@ -8691,6 +8783,7 @@ const synchronizeRemoteSelfUi = (forceRefresh = false) => {
     classId: playerState.classId,
     skills: playerState.skills,
   });
+  const pvpSignature = JSON.stringify(playerState.pvp);
 
   if (forceRefresh || inventorySignature !== remoteSelfUiSignatures.inventory) {
     remoteSelfUiSignatures.inventory = inventorySignature;
@@ -8703,6 +8796,11 @@ const synchronizeRemoteSelfUi = (forceRefresh = false) => {
   if (forceRefresh || experienceSignature !== remoteSelfUiSignatures.experience) {
     remoteSelfUiSignatures.experience = experienceSignature;
     updatePlayerExperience();
+    updateAllPlayerSkillLevels();
+  }
+  if (forceRefresh || pvpSignature !== remoteSelfUiSignatures.pvp) {
+    remoteSelfUiSignatures.pvp = pvpSignature;
+    refreshPvpButtonState();
   }
 };
 

@@ -68,7 +68,7 @@ export const createPlayerMovementPrediction = () => {
       if (index < 0) {
         return false;
       }
-      pendingActions.splice(index, 1);
+      pendingActions.splice(index);
       return true;
     },
     reconcile(authoritativePlayer, acknowledgedRequestId = null) {

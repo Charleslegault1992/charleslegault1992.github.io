@@ -48,6 +48,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         activePlayerUid: null,
         waitingPlayerUids: [],
         pendingAction: null,
+        tradeType: null,
         lastInteractionAt: 0,
       });
     }
@@ -55,6 +56,26 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
   };
 
   const getDialogue = (player, npcData) => npcData.dialogue?.[player.language] ?? npcData.dialogue?.en;
+  const getShopCategorySuggestions = (npcData, player, tradeType) => {
+    const priceField = tradeType === "sell" ? "sellPrice" : "buyPrice";
+    const availableCategoryIds = new Set(
+      Object.values(npcData.service?.offers ?? {})
+        .filter((offer) => Number.isInteger(offer?.[priceField]) && offer[priceField] > 0)
+        .map((offer) => offer.category),
+    );
+    return Object.entries(npcData.service?.categories ?? {})
+      .filter(([categoryId]) => availableCategoryIds.has(categoryId))
+      .map(([, category]) => category.labels?.[player.language] ?? category.labels?.en)
+      .filter(Boolean);
+  };
+
+  const getShopOfferSuggestions = (npcData, categoryId, tradeType) => {
+    const priceField = tradeType === "sell" ? "sellPrice" : "buyPrice";
+    return Object.entries(npcData.service?.offers ?? {})
+      .filter(([, offer]) => offer.category === categoryId && Number.isInteger(offer[priceField]) && offer[priceField] > 0)
+      .map(([, offer]) => offer.keywords?.[0])
+      .filter(Boolean);
+  };
   const createReply = (npc, player, text, suggestions = [], extraEvents = []) => ({
     success: true,
     changes: { npcUid: npc.uid, conversationActive: true },
@@ -106,6 +127,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
   const release = (npc, state, now) => {
     state.activePlayerUid = null;
     state.pendingAction = null;
+    state.tradeType = null;
     state.lastInteractionAt = 0;
     return promoteQueue(npc, state, now);
   };
@@ -300,14 +322,49 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
 
     if (npcData.service?.type === "itemShop") {
-      const quantityMatch = normalize(text).match(/\b(\d{1,3})\b/);
-      const quantity = Math.min(Math.max(Number(quantityMatch?.[1] ?? 1), 1), MAX_ITEM_STACK_SIZE);
       const offerEntry = Object.entries(npcData.service.offers).find(([, offer]) =>
         offer.keywords?.some((keyword) => normalize(text).includes(normalize(keyword))),
       );
+      const wantsBuy = hasAnyWord(words, ["buy", "purchase", "achat", "acheter", "achete"]);
+      const wantsSell = hasAnyWord(words, ["sell", "selling", "vente", "vendre", "vends"]);
+      const wantsTrade = hasAnyWord(words, ["trade", "offers", "offres", "commerce"]);
+      const categoryEntry = Object.entries(npcData.service.categories ?? {}).find(([, category]) =>
+        category.keywords?.some((keyword) => normalize(text).includes(normalize(keyword))),
+      );
+      if (wantsBuy) {
+        state.tradeType = "buy";
+      } else if (wantsSell) {
+        state.tradeType = "sell";
+      }
+      if (!offerEntry && (wantsBuy || wantsSell || state.tradeType) && categoryEntry) {
+        const [categoryId, category] = categoryEntry;
+        const tradeType = state.tradeType ?? (wantsSell ? "sell" : "buy");
+        const categoryName = category.labels?.[player.language] ?? category.labels?.en ?? categoryId;
+        return createReply(
+          npc,
+          player,
+          format(tradeType === "sell" ? dialogue.sellCategoryMenu : dialogue.buyCategoryMenu, player, { categoryName }),
+          getShopOfferSuggestions(npcData, categoryId, tradeType),
+        );
+      }
+      if (!offerEntry && (wantsBuy || wantsSell)) {
+        const tradeType = state.tradeType;
+        return createReply(
+          npc,
+          player,
+          tradeType === "sell" ? dialogue.sellMenu : dialogue.buyMenu,
+          getShopCategorySuggestions(npcData, player, tradeType),
+        );
+      }
+      if (wantsTrade) {
+        return createReply(npc, player, dialogue.trade, dialogue.greetingSuggestions);
+      }
+      const quantityMatch = normalize(text).match(/\b(\d{1,3})\b/);
+      const quantity = Math.min(Math.max(Number(quantityMatch?.[1] ?? 1), 1), MAX_ITEM_STACK_SIZE);
       if (offerEntry) {
         const [itemId, offer] = offerEntry;
-        const isSelling = hasAnyWord(words, ["sell", "selling", "vente", "vendre", "vends"]);
+        const isSelling = wantsSell || (!wantsBuy && state.tradeType === "sell");
+        state.tradeType = isSelling ? "sell" : "buy";
         const unitPrice = isSelling ? offer.sellPrice : offer.buyPrice;
         if (!Number.isInteger(unitPrice) || unitPrice <= 0) {
           return createReply(npc, player, dialogue.unavailable);
@@ -331,6 +388,12 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       }
     }
     if (npcData.service?.type === "spellTeacher") {
+      if (hasAnyWord(words, ["spell", "spells", "sort", "sorts", "magic", "magie"])) {
+        const suggestions = npcData.service.spellIds
+          .map((spellId) => spellsDatabase[spellId]?.learningKeywords?.[0] ?? spellsDatabase[spellId]?.name)
+          .filter(Boolean);
+        return createReply(npc, player, dialogue.spells, suggestions);
+      }
       const spellId = npcData.service.spellIds.find((candidate) => {
         const spell = spellsDatabase[candidate];
         return [spell.name, spell.nameFr, ...(spell.learningKeywords ?? [])]

@@ -1,3 +1,5 @@
+import { getItemData, getTorchFuelStage } from "../items/itemModel.js";
+
 const cloneOrNull = (value) => (value == null ? null : structuredClone(value));
 
 const valuesFrom = (collection) => {
@@ -9,6 +11,20 @@ const valuesFrom = (collection) => {
 
 const sortByUid = (entities) => {
   return entities.sort((first, second) => String(first.uid).localeCompare(String(second.uid)));
+};
+
+const getPlayerPublicLightState = (player) => {
+  const equippedLight = player?.equipment?.ammo;
+  const equippedLightData = equippedLight?.isLit === true ? getItemData(equippedLight.itemId)?.lightSource : null;
+  const fuelStage = equippedLightData ? getTorchFuelStage(equippedLight) : null;
+  const equippedRadius = Number.isInteger(fuelStage)
+    ? (equippedLightData.radiusByStage?.[fuelStage] ?? 0)
+    : 0;
+  const spellRadius = Number.isFinite(player?.spellEffects?.light?.radius) ? player.spellEffects.light.radius : 0;
+  return {
+    equippedRadius: Math.max(equippedRadius, 0),
+    spellRadius: Math.max(spellRadius, 0),
+  };
 };
 
 export const serializeItem = (item) => {
@@ -68,6 +84,7 @@ export const serializePlayerPublicState = (player) => {
     maxHp: player.maxHp,
     level: player.level,
     speed: player.speed,
+    light: getPlayerPublicLightState(player),
     pvp: {
       enabled: player.pvp?.enabled === true,
       skullType: player.pvp?.skullType ?? "none",

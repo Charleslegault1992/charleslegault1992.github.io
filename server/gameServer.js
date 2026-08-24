@@ -21,6 +21,8 @@ const REQUIRED_RUNTIME_METHODS = [
 const MAX_SOCKET_BUFFERED_BYTES = 1024 * 1024;
 const DEFAULT_NETWORK_RATE_HZ = 20;
 const DEFAULT_MAX_DELTAS_PER_FLUSH = 8;
+const HEARTBEAT_INTERVAL_MS = 15000;
+const HEARTBEAT_TIMEOUT_MS = 30000;
 
 export const createGameServer = ({
   runtime,
@@ -80,6 +82,7 @@ export const createGameServer = ({
     },
   });
   const sessionsBySocket = new Map();
+  let nextHeartbeatAt = 0;
 
   const send = (session, type, payload) => {
     if (session.socket.readyState !== WebSocket.OPEN) {
@@ -266,8 +269,12 @@ export const createGameServer = ({
       rateLimitWindowStartedAt: Date.now(),
       messagesInWindow: 0,
       nextNetworkFlushAt: 0,
+      lastPongAt: Date.now(),
     };
     sessionsBySocket.set(socket, session);
+    socket.on("pong", () => {
+      session.lastPongAt = Date.now();
+    });
     socket.on("message", (message, isBinary) => handleClientMessage(session, message, isBinary));
     socket.on("close", () => closeSession(session));
     socket.on("error", () => closeSession(session));
@@ -288,6 +295,19 @@ export const createGameServer = ({
     tickRateHz,
     onTick: (now, stepMs) => {
       runtime.update(now, stepMs);
+      if (now >= nextHeartbeatAt) {
+        nextHeartbeatAt = now + HEARTBEAT_INTERVAL_MS;
+        for (const session of [...sessionsBySocket.values()]) {
+          if (now - session.lastPongAt > HEARTBEAT_TIMEOUT_MS) {
+            session.socket.terminate();
+            closeSession(session);
+            continue;
+          }
+          if (session.socket.readyState === WebSocket.OPEN) {
+            session.socket.ping();
+          }
+        }
+      }
       for (const session of sessionsBySocket.values()) {
         if (!session.isAuthenticated) {
           continue;

@@ -50,7 +50,7 @@ test("movement prediction keeps the local movement animation timing", () => {
   assert.equal(predictedPlayer.moveDuration, 149);
 });
 
-test("movement prediction reports when a pending chain can no longer be replayed", () => {
+test("rejecting a predicted movement removes every dependent movement", () => {
   const prediction = createPlayerMovementPrediction();
   const first = createMove(0, 64);
   const second = createMove(64, 128);
@@ -62,5 +62,5 @@ test("movement prediction reports when a pending chain can no longer be replayed
 
   assert.equal(predictionState.player.x, 0);
   assert.equal(predictionState.appliedActionCount, 0);
-  assert.deepEqual(prediction.getPendingRequestIds(), [second.requestId]);
+  assert.deepEqual(prediction.getPendingRequestIds(), []);
 });

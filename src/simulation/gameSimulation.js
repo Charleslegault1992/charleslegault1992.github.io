@@ -19,12 +19,13 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
 
   const executeMovePlayer = (payload) => {
     const player = state.player;
+    const movementCooldownToleranceMs = Math.max(rules.getMovementCooldownToleranceMs?.() ?? 0, 0);
     if (
       player.x !== payload.fromX ||
       player.y !== payload.fromY ||
       player.z !== payload.fromZ ||
       player.hp <= 0 ||
-      payload.requestedAt < state.timing.nextPlayerMoveTime
+      payload.requestedAt + movementCooldownToleranceMs < state.timing.nextPlayerMoveTime
     ) {
       return rejectCommand("player-state-changed");
     }
@@ -42,15 +43,16 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
       return rejectCommand("movement-blocked");
     }
 
+    const movementStartedAt = Math.max(payload.requestedAt, state.timing.nextPlayerMoveTime);
     player.oldX = payload.fromX;
     player.oldY = payload.fromY;
-    player.moveStartTime = payload.requestedAt;
+    player.moveStartTime = movementStartedAt;
     player.moveDuration = moveTiming.duration;
     player.x = payload.toX;
     player.y = payload.toY;
     player.direction = payload.direction;
     commands.recordPlayerTileEntry?.(player);
-    state.timing.nextPlayerMoveTime = payload.requestedAt + moveTiming.cooldown;
+    state.timing.nextPlayerMoveTime = movementStartedAt + moveTiming.cooldown;
 
     const events = [
       {

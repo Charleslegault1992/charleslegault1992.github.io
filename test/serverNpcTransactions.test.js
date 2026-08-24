@@ -29,6 +29,14 @@ test("server NPC sales and bank deposits commit complete transactions", async ()
   Object.assign(player, { x: ben.x, y: ben.y, z: ben.z });
 
   assert.equal(speak(runtime, session, player, "salut").success, true);
+  const buyMenu = speak(runtime, session, player, "achat");
+  const buyMenuReply = buyMenu.events.find((event) => event.type === "npc-spoke");
+  assert.equal(buyMenuReply.text, "Quelle categorie veux-tu acheter?");
+  assert.ok(buyMenuReply.suggestions.includes("Provisions"));
+  const suppliesMenu = speak(runtime, session, player, "provisions");
+  const suppliesMenuReply = suppliesMenu.events.find((event) => event.type === "npc-spoke");
+  assert.equal(suppliesMenuReply.text, "Quel article dans Provisions veux-tu acheter?");
+  assert.ok(suppliesMenuReply.suggestions.includes("apple"));
   assert.equal(speak(runtime, session, player, "vendre 2 pommes").success, true);
   const sale = speak(runtime, session, player, "oui");
   assert.equal(sale.success, true);

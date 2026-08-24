@@ -171,9 +171,9 @@ export const getSkillLevelFromExperience = (skillExperience, baseLevel = 0) => {
   return getLevelFromExperienceByFormula(skillExperience, getSkillExperienceRequiredForLevel, baseLevel);
 };
 
-export const getPlayerExperienceProgressData = () => {
-  const experience = playerState.experience;
-  const level = getLevelFromExperience(experience);
+export const getPlayerExperienceProgressData = (player = playerState) => {
+  const experience = player.experience;
+  const level = Math.max(getLevelFromExperience(experience), Number.isFinite(player.level) ? player.level : 0);
   const currentLevelExperienceRequired = getExperienceRequiredForLevel(level);
   const nextLevelExperienceRequired = getExperienceRequiredForLevel(level + 1);
   const experienceInCurrentLevel = getExperienceProgressForLevel(experience, level);
@@ -192,13 +192,13 @@ export const getPlayerExperienceProgressData = () => {
   };
 };
 
-export const getSkillProgressData = (skillKey) => {
-  const skill = playerState.skills[skillKey] ?? null;
+export const getSkillProgressData = (skillKey, player = playerState) => {
+  const skill = player.skills?.[skillKey] ?? null;
   if (!skill) {
     return null;
   }
   const experience = skill.experience;
-  const level = getSkillLevelFromExperience(experience);
+  const level = getSkillLevelFromExperience(experience, skill.level);
   const currentLevelExperienceRequired = getSkillExperienceRequiredForLevel(level);
   const nextLevelExperienceRequired = getSkillExperienceRequiredForLevel(level + 1);
   const experienceInCurrentLevel = experience - currentLevelExperienceRequired;

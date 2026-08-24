@@ -1,3 +1,15 @@
+0.333 - Stabilisation multijoueur et mises a jour automatiques
+    - Ajout d'une verification automatique de version qui recharge le client quand une nouvelle build est publiee.
+    - Les assets Vite gardent leur cache optimise tandis que le fichier de version contourne toujours le vieux cache.
+    - Les joueurs voient maintenant les torches et les sorts de lumiere des autres joueurs.
+    - Correction des conversations NPC avec conservation du contexte achat ou vente entre les reponses.
+    - Ajout du combat logout de deux minutes avec reconnexion au meme personnage et heartbeat WebSocket.
+    - Correction de la progression serveur des niveaux, de la mana, des armes et du shielding sans niveau en boucle.
+    - Correction du ciblage PVP, du skull local, de la couleur des degats et du sang multijoueur.
+    - Les sacs ouverts se ferment maintenant correctement a la mort du joueur.
+    - Reorganisation des actions mobiles avec acces rapide aux stances, follow, torche, PVP, options et logout.
+    - Reduction des pauses de mouvement causees par le jitter sans permettre d'accelerer le cooldown serveur.
+
 0.332 - Optimisation FPS et ping reseau
     - Ajout du ping en millisecondes sous le compteur de FPS avec une mesure reseau lissee.
     - Suppression de la copie complete des deltas reseau avant leur affichage.

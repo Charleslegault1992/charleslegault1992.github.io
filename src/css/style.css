@@ -3355,7 +3355,7 @@ body.item-drag-active * {
     right: calc(10px + env(safe-area-inset-right));
     bottom: calc(14px + env(safe-area-inset-bottom));
     display: grid;
-    grid-template-columns: repeat(8, 48px);
+    grid-template-columns: repeat(6, 48px);
     gap: 6px;
     max-width: calc(100% - 150px - env(safe-area-inset-left) - env(safe-area-inset-right));
     overflow-x: auto;
@@ -3364,6 +3364,37 @@ body.item-drag-active * {
     scrollbar-width: none;
     pointer-events: auto;
     touch-action: pan-x;
+  }
+
+  .mobile-quick-actions {
+    position: absolute;
+    right: calc(10px + env(safe-area-inset-right));
+    top: 50%;
+    z-index: 4;
+    display: grid;
+    grid-template-columns: repeat(2, 48px);
+    gap: 6px;
+    transform: translateY(-50%);
+    pointer-events: auto;
+  }
+
+  .mobile-game-controls-panel-open .mobile-quick-actions,
+  .mobile-game-controls-chat-open .mobile-quick-actions {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mobile-panel-icon-torch,
+  .mobile-panel-icon-pvp {
+    width: auto;
+    height: auto;
+    font-size: 10px;
+    line-height: 12px;
+  }
+
+  .mobile-pvp-skull-active {
+    border-color: rgba(255, 78, 70, 0.9);
+    box-shadow: 0 0 8px rgba(255, 62, 55, 0.48);
   }
 
   .mobile-panel-buttons::-webkit-scrollbar {
@@ -3650,8 +3681,12 @@ body.item-drag-active * {
   .mobile-panel-buttons {
     right: calc(10px + env(safe-area-inset-right));
     bottom: calc(10px + env(safe-area-inset-bottom));
-    grid-template-columns: repeat(8, 44px);
+    grid-template-columns: repeat(6, 44px);
     gap: 5px;
+  }
+
+  .mobile-quick-actions {
+    grid-template-columns: repeat(2, 44px);
   }
 
   .mobile-panel-button {

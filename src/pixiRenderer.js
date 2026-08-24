@@ -1057,7 +1057,7 @@ export const updatePixiRemotePlayerVisual = ({
   const skullType = pvp?.skullType ?? "none";
   refs.skull.visible = skullType === "white" || skullType === "red";
   refs.skullHead.tint = skullType === "red" ? 0xd9362d : 0xffffff;
-  refs.name.tint = skullType === "red" ? 0xff5a50 : pvp?.enabled === true ? 0xffa09a : 0xffffff;
+  refs.name.tint = skullType === "red" ? 0xff5a50 : 0xffffff;
   const nextName = String(name ?? "");
   if (refs.name.text !== nextName) {
     refs.name.text = nextName;

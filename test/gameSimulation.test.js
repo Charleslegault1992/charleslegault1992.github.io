@@ -121,6 +121,35 @@ test("movement is authoritative, rate limited and can apply a floor transition",
   assert.equal(tooEarly.success, false);
 });
 
+test("movement jitter tolerance preserves the authoritative cooldown cadence", () => {
+  const player = { uid: "player-1", x: 0, y: 0, z: 0, hp: 100, direction: "down" };
+  const timing = { nextPlayerMoveTime: 200, nextPlayerAttackTime: 0 };
+  const simulation = createGameSimulation({
+    state: { player, monstersByUid: new Map(), timing },
+    rules: {
+      canPlayerMove: () => true,
+      getMovementCooldownToleranceMs: () => 50,
+      getPlayerMoveTiming: () => ({ duration: 100, cooldown: 200 }),
+    },
+    commands: {},
+  });
+
+  const result = simulation.dispatch(createMovePlayerAction({
+    fromX: 0,
+    fromY: 0,
+    fromZ: 0,
+    toX: 64,
+    toY: 0,
+    direction: "right",
+    isNavigationMovement: false,
+    requestedAt: 150,
+  }));
+
+  assert.equal(result.success, true);
+  assert.equal(player.moveStartTime, 200);
+  assert.equal(timing.nextPlayerMoveTime, 400);
+});
+
 test("combat is resolved by uid and enforces the shared attack cooldown", () => {
   const { monster, timing, transport } = createFixture();
 

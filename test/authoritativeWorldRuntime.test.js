@@ -956,6 +956,9 @@ test("monster damage is calculated and replicated by the authoritative runtime",
 
   assert.equal(result.success, true);
   assert.ok(monster.hp < hpBefore);
+  assert.ok(player.skills.mace.experience > 100);
+  assert.ok(Number.isInteger(result.changes.groundEffectUid));
+  assert.equal(runtime.getWorldEntities().groundEffects.has(result.changes.groundEffectUid), true);
   assert.equal(deltas[0].upserts.monsters.find((entity) => entity.uid === monster.uid).hp, monster.hp);
   assert.equal(deltas[0].events.some((event) => event.type === "monster-damage-resolved"), true);
 });
@@ -1008,7 +1011,10 @@ test("monster death atomically grants experience, creates loot and schedules res
   player.z = monster.z;
   monster.hp = 1;
   const snapshot = runtime.createSnapshotForClient(session);
-  const experienceBefore = player.experience;
+  player.experience = 90;
+  player.level = 0;
+  player.maxMana = 0;
+  player.mana = 0;
 
   serverTime += 1000;
   runtime.update(serverTime);
@@ -1019,10 +1025,55 @@ test("monster death atomically grants experience, creates loot and schedules res
 
   assert.equal(result.changes.didDie, true);
   assert.equal(runtime.getWorldEntities().monsters.has(monster.uid), false);
-  assert.equal(player.experience, experienceBefore + 50);
+  assert.equal(player.experience, 140);
+  assert.equal(player.level, 1);
+  assert.equal(player.maxMana, 5);
+  assert.equal(player.mana, 5);
   assert.equal(corpse.itemId, "ratCorpse");
   assert.equal(corpse.content.length, 2);
   assert.equal(spawnState.pendingRespawnCount, 1);
   assert.deepEqual(delta.removals.monsters, [monster.uid]);
   assert.equal(delta.upserts.worldItems[0].uid, corpse.uid);
+});
+
+test("combat logout keeps the avatar for two minutes and allows reclaiming it", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    now: () => serverTime,
+    combatRandom: { getInt: () => 1, getFloat: (_minimum, maximum) => maximum },
+  });
+  const attackerSession = {};
+  const targetSession = {};
+  attackerSession.playerUid = runtime.connectClient(attackerSession, {
+    accountId: "combat-logout",
+    characterId: "attacker",
+  }).playerUid;
+  targetSession.playerUid = runtime.connectClient(targetSession, {
+    accountId: "combat-logout",
+    characterId: "target",
+  }).playerUid;
+  const attacker = runtime.getPlayer(attackerSession.playerUid);
+  const target = runtime.getPlayer(targetSession.playerUid);
+  Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
+  runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
+  runtime.dispatchAction(attackerSession, createAttackPlayerAction(target.uid, serverTime));
+
+  assert.equal(runtime.disconnectClient(attackerSession), true);
+  assert.equal(runtime.getPlayer(attacker.uid), attacker);
+
+  const reconnectSession = {};
+  const reconnectResult = runtime.connectClient(reconnectSession, {
+    accountId: "combat-logout",
+    characterId: "attacker",
+  });
+  assert.equal(reconnectResult.success, true);
+  reconnectSession.playerUid = reconnectResult.playerUid;
+  assert.equal(runtime.getPlayer(reconnectResult.playerUid), attacker);
+
+  runtime.disconnectClient(reconnectSession);
+  serverTime += 120001;
+  runtime.update(serverTime);
+  assert.equal(runtime.getPlayer(attacker.uid), null);
 });

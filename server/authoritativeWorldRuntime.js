@@ -35,7 +35,11 @@ import { createGroundItem, createItemInstance } from "../src/items/itemFactory.j
 import { getItemData } from "../src/items/itemModel.js";
 import { getMonsterData } from "../src/monsters/monsterModel.js";
 import { applyMonsterExperienceReward, generateMonsterLoot } from "../src/monsters/monsterRewards.js";
-import { getLevelFromExperience } from "../src/player/playerProgression.js";
+import {
+  applyPlayerAttackSkillProgression,
+  applyPlayerLevelProgression,
+  applyPlayerShieldingSkillProgression,
+} from "../src/player/playerProgressionModel.js";
 import { getTileMovementCost, hasLineOfSightBetweenTiles } from "../src/world/pathfinding.js";
 import {
   getChunkPositionFromWorldPosition,
@@ -60,7 +64,8 @@ import { createServerMonsterAi } from "./serverMonsterAi.js";
 import { advancePlayerRegeneration } from "../src/player/playerRegeneration.js";
 import { playerClassesDatabase } from "../src/data/playerClassesDatabase.js";
 import { applyPlayerDeathState } from "../src/player/playerDeath.js";
-import { GROUND_EFFECT_DECAY_STAGE_MS } from "../src/data/groundEffectsDatabase.js";
+import { GROUND_EFFECT_DECAY_STAGE_MS, groundEffectsDatabase } from "../src/data/groundEffectsDatabase.js";
+import { allocateGroundEffectUid } from "../src/state/uidAllocator.js";
 import {
   PVP_AGGRESSION_DURATION_MS,
   applyUnjustifiedPvpAggression,
@@ -74,6 +79,8 @@ import {
 const AUTOSAVE_INTERVAL_MS = 30000;
 const AUTOSAVE_RETRY_DELAY_MS = 5000;
 const MAX_AUTOSAVES_PER_TICK = 2;
+const COMBAT_LOGOUT_DURATION_MS = 2 * 60 * 1000;
+const NETWORK_MOVEMENT_COOLDOWN_TOLERANCE_MS = 50;
 const PLAYER_SPAWN_TILE_OFFSETS = Object.freeze([
   Object.freeze({ col: 0, row: 0 }),
   Object.freeze({ col: 1, row: 0 }),
@@ -126,6 +133,9 @@ export const createAuthoritativeWorldRuntime = ({
   const visiblePlayersByChunkKey = new Map();
   const serializedWorldChunksByKey = new Map();
   const pvpAggressionExpiresAtByPair = new Map();
+  const combatLogoutExpiresAtByPlayerUid = new Map();
+  const offlineCombatExpiresAtByPlayerUid = new Map();
+  const connectedPlayerUids = new Set();
   const journal = createWorldChangeJournal({ maxEntries: 512 });
   let currentServerTime = now();
   let isInitializingWorldEntities = true;
@@ -176,6 +186,18 @@ export const createAuthoritativeWorldRuntime = ({
       getPvpAggressionKey(attackerUid, targetUid),
       currentServerTime + PVP_AGGRESSION_DURATION_MS,
     );
+  };
+
+  const recordPlayerCombatActivity = (playerUid) => {
+    if (typeof playerUid !== "string" || !playersByUid.has(playerUid)) {
+      return false;
+    }
+    const expiresAt = currentServerTime + COMBAT_LOGOUT_DURATION_MS;
+    combatLogoutExpiresAtByPlayerUid.set(playerUid, expiresAt);
+    if (offlineCombatExpiresAtByPlayerUid.has(playerUid)) {
+      offlineCombatExpiresAtByPlayerUid.set(playerUid, expiresAt);
+    }
+    return true;
   };
 
   const isPlayerInPvpCombat = (playerUid) => {
@@ -252,6 +274,29 @@ export const createAuthoritativeWorldRuntime = ({
     npcs: worldEntities.npcs,
     worldItems: worldEntities.worldItems,
   });
+
+  const addOrRefreshGroundEffect = (groundEffectId, x, y, z, decayStage = 0) => {
+    if (!(groundEffectId in groundEffectsDatabase)) {
+      return null;
+    }
+    const existing = worldEntities.groundEffects.getAt(x, y, z);
+    if (existing) {
+      existing.groundEffectId = groundEffectId;
+      existing.decayStage = decayStage;
+      existing.nextDecayAt = currentServerTime + GROUND_EFFECT_DECAY_STAGE_MS;
+      return existing;
+    }
+    const groundEffect = {
+      uid: allocateGroundEffectUid(),
+      groundEffectId,
+      x,
+      y,
+      z,
+      decayStage,
+      nextDecayAt: currentServerTime + GROUND_EFFECT_DECAY_STAGE_MS,
+    };
+    return worldEntities.groundEffects.add(groundEffect) ? groundEffect : null;
+  };
 
   const findAvailableSpawnPosition = (worldMap, spawn) => {
     const validSpawnPositions = PLAYER_SPAWN_TILE_OFFSETS.flatMap((offset) => {
@@ -359,11 +404,23 @@ export const createAuthoritativeWorldRuntime = ({
       attackResult.finalDamage > 0
         ? applyDamageToMonsterHealth(monster, attackResult.finalDamage)
         : { success: false, damageApplied: 0, hp: monster.hp, didDie: false };
+    const monsterData = getMonsterData(monster.monsterId);
     let corpse = null;
     let lootContent = [];
     let experienceReward = 0;
+    let levelProgression = null;
+    let groundEffect = null;
+    recordPlayerCombatActivity(player.uid);
+    if (healthResult.success) {
+      groundEffect = addOrRefreshGroundEffect(
+        monsterData?.bloodEffectId,
+        monster.x,
+        monster.y,
+        monster.z,
+        healthResult.didDie ? 0 : 1,
+      );
+    }
     if (healthResult.didDie) {
-      const monsterData = getMonsterData(monster.monsterId);
       const randomInt = combatRandom?.getInt ?? getRandomInt;
       const itemOptions = {
         decayingItems: worldEntities.decayingItems,
@@ -387,7 +444,7 @@ export const createAuthoritativeWorldRuntime = ({
       }
       experienceReward = applyMonsterExperienceReward(player, monsterData);
       if (experienceReward > 0) {
-        player.level = getLevelFromExperience(player.experience);
+        levelProgression = applyPlayerLevelProgression(player);
       }
       worldEntities.respawnSystem.decreaseAliveCount(monster);
       worldEntities.respawnSystem.schedule(monster.spawnId, currentServerTime);
@@ -407,6 +464,8 @@ export const createAuthoritativeWorldRuntime = ({
         corpseUid: corpse?.uid ?? null,
         lootContent,
         experienceReward,
+        levelProgression,
+        groundEffectUid: groundEffect?.uid ?? null,
         targetRenderSnapshot,
       });
     }
@@ -420,6 +479,8 @@ export const createAuthoritativeWorldRuntime = ({
         didDie: healthResult.didDie,
         corpseUid: corpse?.uid ?? null,
         experienceReward,
+        levelProgression,
+        groundEffectUid: groundEffect?.uid ?? null,
       },
       events,
     };
@@ -447,12 +508,14 @@ export const createAuthoritativeWorldRuntime = ({
       return { success: false, reason: "ammunition-required" };
     }
     const attackResult = calculatePlayerAttackResult(monster, player, combatRandom ?? undefined);
+    const skillProgression = applyPlayerAttackSkillProgression(player, attackResult, currentServerTime);
     return resolvePlayerDamageToMonster(player, monster, attackResult, [
       {
         type: "player-attack-resolved",
         playerUid: player.uid,
         monsterUid: monster.uid,
         attackResult,
+        skillProgression,
         targetRenderSnapshot: {
           uid: monster.uid,
           monsterId: monster.monsterId,
@@ -498,6 +561,10 @@ export const createAuthoritativeWorldRuntime = ({
     }
     clearWhiteSkullOnDeath(target);
     clearPlayerPvpAggressions(target.uid);
+    combatLogoutExpiresAtByPlayerUid.delete(target.uid);
+    if (offlineCombatExpiresAtByPlayerUid.has(target.uid)) {
+      offlineCombatExpiresAtByPlayerUid.set(target.uid, currentServerTime);
+    }
     return {
       corpse,
       event: {
@@ -523,6 +590,8 @@ export const createAuthoritativeWorldRuntime = ({
     const isOpenPvpTarget = hasActivePlayerSkull(target, currentServerTime);
     const isUnjustifiedAttack = !isRetaliation && !isOpenPvpTarget;
     recordPvpAggression(player.uid, target.uid);
+    recordPlayerCombatActivity(player.uid);
+    recordPlayerCombatActivity(target.uid);
     if (isUnjustifiedAttack) {
       applyUnjustifiedPvpAggression(player, currentServerTime);
     }
@@ -533,6 +602,9 @@ export const createAuthoritativeWorldRuntime = ({
       recordUnjustifiedPlayerKill(player, currentServerTime);
     }
     const deathResult = target.hp <= 0 ? resolvePlayerDeath(target) : null;
+    const groundEffect = attackResult.finalDamage > 0
+      ? addOrRefreshGroundEffect("blood", targetRenderSnapshot.x, targetRenderSnapshot.y, targetRenderSnapshot.z, deathResult ? 0 : 1)
+      : null;
     return {
       success: true,
       changes: {
@@ -543,6 +615,7 @@ export const createAuthoritativeWorldRuntime = ({
         didDie: deathResult !== null,
         corpseUid: deathResult?.corpse?.uid ?? null,
         pvp: structuredClone(player.pvp),
+        groundEffectUid: groundEffect?.uid ?? null,
       },
       events: [
         {
@@ -553,6 +626,7 @@ export const createAuthoritativeWorldRuntime = ({
           isUnjustifiedAttack,
           attackerSkullType: player.pvp.skullType,
           targetRenderSnapshot,
+          groundEffectUid: groundEffect?.uid ?? null,
         },
         ...(deathResult ? [deathResult.event] : []),
       ],
@@ -563,17 +637,24 @@ export const createAuthoritativeWorldRuntime = ({
     if (!consumePlayerAttackAmmunition(player)) {
       return { success: false, reason: "ammunition-required" };
     }
-    return resolvePlayerPvpDamage(
+    const attackResult = calculatePlayerAttackResult(target, player, combatRandom ?? undefined);
+    const skillProgression = applyPlayerAttackSkillProgression(player, attackResult, currentServerTime);
+    const result = resolvePlayerPvpDamage(
       player,
       target,
-      calculatePlayerAttackResult(target, player, combatRandom ?? undefined),
+      attackResult,
       "player-pvp-attack-resolved",
     );
+    if (result?.events?.[0]) {
+      result.events[0].skillProgression = skillProgression;
+    }
+    return result;
   };
 
   const updateMonsterCombat = () => {
     const changedPlayers = new Map();
     const createdWorldItems = [];
+    const changedGroundEffects = new Map();
     const events = [];
     for (const monster of worldEntities.monsters.values()) {
       const target = playersByUid.get(monster.targetUid);
@@ -586,10 +667,16 @@ export const createAuthoritativeWorldRuntime = ({
       }
       const monsterData = getMonsterData(monster.monsterId);
       const attackResult = calculateMonsterAttackResult(monsterData?.combat, target, combatRandom ?? undefined);
+      const skillProgression = applyPlayerShieldingSkillProgression(target, attackResult, currentServerTime);
       monster.nextAttackTime = currentServerTime + MONSTER_ATTACK_COOLDOWN_MS;
       if (attackResult.finalDamage > 0) {
         applyDamageToPlayer(target, attackResult.finalDamage);
+        const bloodEffect = addOrRefreshGroundEffect("blood", target.x, target.y, target.z, target.hp <= 0 ? 0 : 1);
+        if (bloodEffect) {
+          changedGroundEffects.set(bloodEffect.uid, bloodEffect);
+        }
       }
+      recordPlayerCombatActivity(target.uid);
       if (target.hp <= 0) {
         const deathResult = resolvePlayerDeath(target);
         if (deathResult.corpse) {
@@ -604,9 +691,15 @@ export const createAuthoritativeWorldRuntime = ({
         monsterUid: monster.uid,
         playerUid: target.uid,
         attackResult,
+        skillProgression,
       });
     }
-    return { changedPlayers: [...changedPlayers.values()], createdWorldItems, events };
+    return {
+      changedPlayers: [...changedPlayers.values()],
+      createdWorldItems,
+      changedGroundEffects: [...changedGroundEffects.values()],
+      events,
+    };
   };
 
   const updateWorldDecay = () => {
@@ -698,6 +791,7 @@ export const createAuthoritativeWorldRuntime = ({
         canPlayerMove: (payload) => isPlayerDestinationAvailable(player, payload),
         canPlayerUseWorldTransition: (movingPlayer, transition) => isPlayerNearTiledObject(movingPlayer, transition, 1),
         getPlayerMoveTiming: (payload) => getPlayerMovementTiming(player, payload),
+        getMovementCooldownToleranceMs: () => NETWORK_MOVEMENT_COOLDOWN_TOLERANCE_MS,
         getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
       },
       commands: {
@@ -805,6 +899,11 @@ export const createAuthoritativeWorldRuntime = ({
     }
     const playerUid = `player:${accountId}:${characterId}`;
     if (playersByUid.has(playerUid)) {
+      if (offlineCombatExpiresAtByPlayerUid.has(playerUid) && !connectedPlayerUids.has(playerUid)) {
+        offlineCombatExpiresAtByPlayerUid.delete(playerUid);
+        connectedPlayerUids.add(playerUid);
+        return { success: true, playerUid };
+      }
       return { success: false, reason: "character-already-online" };
     }
     const player = createPlayerState();
@@ -855,6 +954,7 @@ export const createAuthoritativeWorldRuntime = ({
     player.renderY = player.y;
     recordPlayerTileEntry(player);
     playersByUid.set(playerUid, player);
+    connectedPlayerUids.add(playerUid);
     const inventory = createServerPlayerInventory({ player, worldMapsByZ, worldItems: worldEntities.worldItems });
     const itemUse = createServerPlayerItemUse({
       player,
@@ -906,31 +1006,56 @@ export const createAuthoritativeWorldRuntime = ({
     return { success: true, playerUid };
   };
 
+  const savePlayerPersistence = (playerUid) => {
+    const player = playersByUid.get(playerUid);
+    const persistenceSession = sessionsByPlayerUid.get(playerUid);
+    if (!player || !characterRepository || !persistenceSession) {
+      return true;
+    }
+    const saveResult = characterRepository.save(
+      persistenceSession.accountId,
+      persistenceSession.characterId,
+      serializePlayerPrivateState(player),
+      persistenceSession.version,
+      currentServerTime,
+    );
+    if (saveResult.success) {
+      persistenceSession.version = saveResult.version;
+    }
+    return saveResult.success;
+  };
+
+  const removePlayerFromWorld = (playerUid) => {
+    if (!playersByUid.has(playerUid)) {
+      return false;
+    }
+    savePlayerPersistence(playerUid);
+    playersByUid.delete(playerUid);
+    connectedPlayerUids.delete(playerUid);
+    offlineCombatExpiresAtByPlayerUid.delete(playerUid);
+    combatLogoutExpiresAtByPlayerUid.delete(playerUid);
+    clearPlayerPvpAggressions(playerUid);
+    simulationsByPlayerUid.delete(playerUid);
+    inventoriesByPlayerUid.delete(playerUid);
+    sessionsByPlayerUid.delete(playerUid);
+    journal.record({ serverTime: currentServerTime, removals: { players: [playerUid] } });
+    return true;
+  };
+
   const disconnectClient = (session) => {
-    const player = playersByUid.get(session.playerUid);
-    const persistenceSession = sessionsByPlayerUid.get(session.playerUid);
+    const playerUid = session?.playerUid;
+    const player = playersByUid.get(playerUid);
     if (!player) {
       return false;
     }
-    if (characterRepository && persistenceSession) {
-      const saveResult = characterRepository.save(
-        persistenceSession.accountId,
-        persistenceSession.characterId,
-        serializePlayerPrivateState(player),
-        persistenceSession.version,
-        currentServerTime,
-      );
-      if (saveResult.success) {
-        persistenceSession.version = saveResult.version;
-      }
+    connectedPlayerUids.delete(playerUid);
+    const combatExpiresAt = combatLogoutExpiresAtByPlayerUid.get(playerUid) ?? 0;
+    if (player.hp > 0 && combatExpiresAt > currentServerTime) {
+      savePlayerPersistence(playerUid);
+      offlineCombatExpiresAtByPlayerUid.set(playerUid, combatExpiresAt);
+      return true;
     }
-    playersByUid.delete(session.playerUid);
-    clearPlayerPvpAggressions(session.playerUid);
-    simulationsByPlayerUid.delete(session.playerUid);
-    inventoriesByPlayerUid.delete(session.playerUid);
-    sessionsByPlayerUid.delete(session.playerUid);
-    journal.record({ serverTime: currentServerTime, removals: { players: [session.playerUid] } });
-    return true;
+    return removePlayerFromWorld(playerUid);
   };
 
   const dispatchAction = (session, action) => {
@@ -1247,6 +1372,7 @@ export const createAuthoritativeWorldRuntime = ({
           upserts: {
             players: monsterCombatResult.changedPlayers.map(serializePlayerPublicState),
             worldItems: monsterCombatResult.createdWorldItems.map(serializeWorldItem),
+            groundEffects: monsterCombatResult.changedGroundEffects.map(serializeGroundEffectState),
           },
           events: monsterCombatResult.events,
         });
@@ -1294,6 +1420,16 @@ export const createAuthoritativeWorldRuntime = ({
         });
       }
       pruneExpiredPvpAggressions();
+      for (const [playerUid, expiresAt] of offlineCombatExpiresAtByPlayerUid) {
+        const currentCombatExpiry = combatLogoutExpiresAtByPlayerUid.get(playerUid) ?? expiresAt;
+        if (currentCombatExpiry > expiresAt) {
+          offlineCombatExpiresAtByPlayerUid.set(playerUid, currentCombatExpiry);
+          continue;
+        }
+        if (currentServerTime >= expiresAt) {
+          removePlayerFromWorld(playerUid);
+        }
+      }
       const npcEvents = npcConversationService.update(currentServerTime);
       if (npcEvents.length > 0) {
         journal.record({ serverTime: currentServerTime, events: npcEvents });

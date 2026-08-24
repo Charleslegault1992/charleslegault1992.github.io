@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createWorldDelta, createWorldSnapshot } from "../src/simulation/worldSnapshot.js";
+import { createWorldDelta, createWorldSnapshot, serializePlayerPublicState } from "../src/simulation/worldSnapshot.js";
+import { createItemInstance } from "../src/items/itemFactory.js";
 
 const player = {
   uid: "player-1",
@@ -61,4 +62,19 @@ test("a world snapshot is JSON serializable and excludes monster AI paths", () =
 test("a delta requires a strictly newer revision", () => {
   assert.equal(createWorldDelta({ baseRevision: 3, revision: 3, serverTime: 1 }), null);
   assert.equal(createWorldDelta({ baseRevision: 3, revision: 4, serverTime: 1 }).revision, 4);
+});
+
+test("public player snapshots expose compact light state without exposing equipment", () => {
+  const torch = createItemInstance("torch", 1);
+  torch.isLit = true;
+  const publicState = serializePlayerPublicState({
+    ...player,
+    equipment: { ammo: torch },
+    spellEffects: { light: { radius: 340, expiresAt: 5000 } },
+    pvp: {},
+  });
+
+  assert.ok(publicState.light.equippedRadius > 0);
+  assert.equal(publicState.light.spellRadius, 340);
+  assert.equal("equipment" in publicState, false);
 });

@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
     <!-- Google tag (gtag.js) -->
@@ -24,7 +27,7 @@
   <body>
     <div id="game-welcome" class="game-welcome-overlay">
       <button id="game-welcome-play" class="game-welcome-play-button" type="button">PLAY</button>
-      <div class="game-welcome-version">V 0.3308</div>
+      <div class="game-welcome-version">V __APP_VERSION__</div>
       <div class="game-welcome-language" role="group" aria-label="Language">
         <button class="game-welcome-language-button" type="button" data-game-language="en">EN</button>
         <button class="game-welcome-language-button" type="button" data-game-language="fr">FR</button>
@@ -252,6 +255,8 @@
               <span class="mobile-panel-icon mobile-panel-icon-spells" aria-hidden="true">*</span>
               <span class="mobile-panel-label" data-game-text="spells">Spells</span>
             </button>
+          </div>
+          <div class="mobile-quick-actions" aria-label="Combat controls">
             <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
               <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true"
                 >BAL</span
@@ -266,6 +271,22 @@
             >
               <span class="mobile-panel-icon mobile-panel-icon-follow" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="follow">Follow</span>
+            </button>
+            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-torch" aria-pressed="false">
+              <span class="mobile-panel-icon mobile-panel-icon-torch" aria-hidden="true">TOR</span>
+              <span class="mobile-panel-label" data-game-text="mobileTorch">Torch</span>
+            </button>
+            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-pvp" aria-pressed="false">
+              <span class="mobile-panel-icon mobile-panel-icon-pvp" aria-hidden="true">PVP</span>
+              <span class="mobile-panel-label">PVP</span>
+            </button>
+            <button class="mobile-panel-button" type="button" data-mobile-action="toggle-options">
+              <span class="mobile-panel-icon mobile-panel-icon-pvp" aria-hidden="true">OPT</span>
+              <span class="mobile-panel-label" data-game-text="options">Options</span>
+            </button>
+            <button class="mobile-panel-button" type="button" data-mobile-action="logout">
+              <span class="mobile-panel-icon mobile-panel-icon-pvp" aria-hidden="true">OUT</span>
+              <span class="mobile-panel-label" data-game-text="logout">Logout</span>
             </button>
           </div>
         </div>
