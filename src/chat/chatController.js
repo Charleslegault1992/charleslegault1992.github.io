@@ -266,6 +266,13 @@ export const createChatController = ({
     navigateHistory,
     render,
     renderMessages,
+    showChannel: (channelId) => {
+      if (!setActiveChannel(channelId)) {
+        return false;
+      }
+      render();
+      return true;
+    },
     sendPlayerMessage,
     submitInput,
   };

@@ -1,3 +1,10 @@
+0.334 - Interface mobile et combat synchronise
+    - Reorganisation des controles mobiles en deux barres compactes qui gardent le centre du jeu libre.
+    - Amelioration des zones tactiles, des sacs, du chat, des sorts et des panneaux sur telephone.
+    - Optimisation du joystick sans recalcul de position a chaque mouvement du doigt.
+    - Les reponses des NPC ouvrent maintenant le chat Local sur mobile pour rester visibles.
+    - Les stances attaque, equilibre et defense sont maintenant validees et conservees par le serveur.
+
 0.333 - Stabilisation multijoueur et mises a jour automatiques
     - Ajout d'une verification automatique de version qui recharge le client quand une nouvelle build est publiee.
     - Les assets Vite gardent leur cache optimise tandis que le fichier de version contourne toujours le vieux cache.

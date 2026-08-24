@@ -798,6 +798,10 @@ export const createAuthoritativeWorldRuntime = ({
         recordPlayerTileEntry,
         executeAttackMonster: (monster) => executePlayerAttack(player, monster),
         executeAttackPlayer: (target) => executePlayerPvpAttack(player, target),
+        executeSetCombatMode: (combatMode) => {
+          player.combatMode = combatMode;
+          return { success: true, changes: { combatMode } };
+        },
         executeSetPvpEnabled: (enabled) => {
           player.pvp.enabled = enabled;
           return {

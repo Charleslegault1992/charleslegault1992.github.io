@@ -3,6 +3,7 @@ import { registerGameplayActionHandlers } from "../actions/gameplayActions.js";
 import { registerInventoryActionHandlers } from "../inventory/inventoryActions.js";
 import { registerItemUseActionHandlers } from "../items/itemUseActions.js";
 import { canInitiatePlayerPvpAttack } from "../combat/playerPvpState.js";
+import { PLAYER_COMBAT_MODES } from "../core/gameConstants.js";
 
 const rejectCommand = (reason) => ({ success: false, reason });
 
@@ -156,6 +157,13 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     return commands.executeSetPvpEnabled?.(payload.enabled) ?? rejectCommand("missing-executor");
   };
 
+  const executeSetCombatMode = (payload) => {
+    if (!PLAYER_COMBAT_MODES.includes(payload.combatMode) || state.player.hp <= 0) {
+      return rejectCommand("invalid-combat-mode");
+    }
+    return commands.executeSetCombatMode?.(payload.combatMode) ?? rejectCommand("missing-executor");
+  };
+
   const executeSpeakToNpc = (payload) => {
     const player = commands.getPlayerByUid?.(payload.playerUid) ?? null;
     if (!player || player.hp <= 0) {
@@ -230,6 +238,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     executeSplitItemStack: commands.executeSplitItemStack,
     executeMovePlayer,
     executeSendChatMessage,
+    executeSetCombatMode,
     executeSetPvpEnabled,
     executeSpeakToNpc,
     executeUseItem,

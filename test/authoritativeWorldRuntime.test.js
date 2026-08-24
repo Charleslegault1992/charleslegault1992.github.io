@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createAttackPlayerAction,
+  createSetCombatModeAction,
   createSetPvpEnabledAction,
   createAttackMonsterAction,
   createCastSpellAction,
@@ -204,6 +205,25 @@ test("normal movement cannot enter another player's tile", async () => {
 
   assert.equal(result.success, false);
   assert.equal(result.reason, "movement-blocked");
+});
+
+test("combat stance changes are authoritative and replicated to the player", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "combat-stance",
+    characterId: "defender",
+  }).playerUid;
+
+  const result = runtime.dispatchAction(session, createSetCombatModeAction("fullDefense", serverTime));
+  const snapshot = runtime.createSnapshotForClient(session);
+
+  assert.equal(result.success, true);
+  assert.equal(result.changes.combatMode, "fullDefense");
+  assert.equal(runtime.getPlayer(session.playerUid).combatMode, "fullDefense");
+  assert.equal(snapshot.self.combatMode, "fullDefense");
 });
 
 test("PVP lets an aggressor attack an innocent player and opens skull targets to everyone", async () => {

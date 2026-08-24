@@ -12,6 +12,10 @@ export const createMobileJoystickController = ({ state, diagonalHoldMs, cancelPl
     state.joystickDiagonalTimeoutId = null;
     state.joystickClientX = null;
     state.joystickClientY = null;
+    state.joystickCenterX = null;
+    state.joystickCenterY = null;
+    state.joystickMaxDistance = null;
+    state.joystickDeadZone = null;
   };
 
   const reset = () => {
@@ -20,7 +24,7 @@ export const createMobileJoystickController = ({ state, diagonalHoldMs, cancelPl
     resetDiagonalHold();
     resetMovementKeys();
     if (mobileJoystickKnob) {
-      mobileJoystickKnob.style.transform = "translate(0px, 0px)";
+      mobileJoystickKnob.style.transform = "translate3d(0px, 0px, 0px)";
     }
     if (mobileJoystick) {
       mobileJoystick.style.removeProperty("top");
@@ -42,23 +46,29 @@ export const createMobileJoystickController = ({ state, diagonalHoldMs, cancelPl
     mobileJoystick.style.left = `${left}px`;
     mobileJoystick.style.top = `${top}px`;
     mobileJoystick.style.bottom = "auto";
+    state.joystickCenterX = zoneRect.left + left + joystickWidth / 2;
+    state.joystickCenterY = zoneRect.top + top + joystickHeight / 2;
+    state.joystickMaxDistance = joystickWidth * 0.32;
+    state.joystickDeadZone = state.joystickMaxDistance * 0.3;
   };
 
   const updateFromPointer = (clientX, clientY) => {
     if (!mobileJoystick || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return;
     }
-    const joystickRect = mobileJoystick.getBoundingClientRect();
-    const centerX = joystickRect.left + joystickRect.width / 2;
-    const centerY = joystickRect.top + joystickRect.height / 2;
-    const maxDistance = joystickRect.width * 0.32;
+    const centerX = state.joystickCenterX;
+    const centerY = state.joystickCenterY;
+    const maxDistance = state.joystickMaxDistance;
+    const deadZone = state.joystickDeadZone;
+    if (![centerX, centerY, maxDistance, deadZone].every(Number.isFinite)) {
+      return;
+    }
     const rawDeltaX = clientX - centerX;
     const rawDeltaY = clientY - centerY;
     const rawDistance = Math.hypot(rawDeltaX, rawDeltaY);
     const distanceScale = rawDistance > maxDistance ? maxDistance / rawDistance : 1;
     const deltaX = rawDeltaX * distanceScale;
     const deltaY = rawDeltaY * distanceScale;
-    const deadZone = maxDistance * 0.3;
     const absoluteDeltaX = Math.abs(deltaX);
     const absoluteDeltaY = Math.abs(deltaY);
     const dominantAxisDistance = Math.max(absoluteDeltaX, absoluteDeltaY);
@@ -117,7 +127,7 @@ export const createMobileJoystickController = ({ state, diagonalHoldMs, cancelPl
     }
     state.joystickWasMoving = isMoving;
     if (mobileJoystickKnob) {
-      mobileJoystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+      mobileJoystickKnob.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0px)`;
     }
   };
 

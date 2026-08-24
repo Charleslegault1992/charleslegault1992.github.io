@@ -41,6 +41,7 @@ export const createNpcConversationSystem = ({
   refreshInventoryUi,
   renderActiveChatMessages,
   renderSpellWindow,
+  showNpcConversationChat = null,
   showFloatingTextAboveTarget,
   showGameStatusMessage,
   sendPlayerSpeech = null,
@@ -185,7 +186,9 @@ export const createNpcConversationSystem = ({
       showFloatingTextAboveTarget(text, 70, npc, "speech", 4000);
     }
     addChatMessage("local", "npc", text, npc, suggestions);
-    if (getActiveChatChannelId() === "local") {
+    if (typeof showNpcConversationChat === "function") {
+      showNpcConversationChat();
+    } else if (getActiveChatChannelId() === "local") {
       renderActiveChatMessages();
     }
   };

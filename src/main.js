@@ -72,6 +72,7 @@ import {
   MOVE_SPEED,
   NPC_DIALOGUE_CONFIG,
   PLAYER_ATTACK_COOLDOWN_MS,
+  PLAYER_COMBAT_MODES,
   SKILL_EXPERIENCE_GAIN_PER_TRY,
   SPELL_HOTKEY_KEYS,
   SPRITE_SIZE,
@@ -94,6 +95,7 @@ import {
   createCastSpellAction,
   createMovePlayerAction,
   createSendChatMessageAction,
+  createSetCombatModeAction,
   createSetPvpEnabledAction,
   createSpeakToNpcAction,
   createUseWorldTransitionAction,
@@ -3858,10 +3860,26 @@ const executeDirectItemUse = (item, source) => {
 /* ---------- UI - COMBAT MODE ---------- */
 
 const setPlayerCombatMode = (combatMode) => {
+  const action = createSetCombatModeAction(combatMode, Date.now());
+  if (!action || combatMode === playerState.combatMode) {
+    return false;
+  }
+  const previousCombatMode = playerState.combatMode;
   playerState.combatMode = combatMode;
+  refreshCombatModeButtons();
+  handleGameActionResult(gameTransport.send(action), (result) => {
+    if (result?.success) {
+      return;
+    }
+    if (playerState.combatMode === combatMode) {
+      playerState.combatMode = previousCombatMode;
+      refreshCombatModeButtons();
+    }
+  });
+  return true;
 };
 
-const MOBILE_COMBAT_MODE_ORDER = ["fullAttack", "balanced", "fullDefense"];
+const MOBILE_COMBAT_MODE_ORDER = PLAYER_COMBAT_MODES;
 const MOBILE_COMBAT_MODE_SHORT_LABELS = {
   fullAttack: "ATK",
   balanced: "BAL",
@@ -3888,7 +3906,6 @@ const cycleMobileCombatMode = () => {
   const currentIndex = MOBILE_COMBAT_MODE_ORDER.indexOf(playerState.combatMode);
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % MOBILE_COMBAT_MODE_ORDER.length;
   setPlayerCombatMode(MOBILE_COMBAT_MODE_ORDER[nextIndex]);
-  refreshCombatModeButtons();
 };
 
 const refreshCombatModeButtons = () => {
@@ -3918,7 +3935,6 @@ const bindCombatModeButtons = () => {
       e.stopPropagation();
       const combatMode = stanceButton.getAttribute("data-combat-mode");
       setPlayerCombatMode(combatMode);
-      refreshCombatModeButtons();
     });
   });
 };
@@ -4284,6 +4300,10 @@ const mobileGameUiState = {
   joystickDiagonalTimeoutId: null,
   joystickClientX: null,
   joystickClientY: null,
+  joystickCenterX: null,
+  joystickCenterY: null,
+  joystickMaxDistance: null,
+  joystickDeadZone: null,
 };
 
 const isMobileGameLayout = () => {
@@ -6531,6 +6551,12 @@ const isPlayerWithinNpcTalkRange = (player, npc) => npcConversationSystem.isPlay
 const sayGreetingToNpc = (npc, player, now = Date.now()) => npcConversationSystem.sayGreeting(npc, player, now);
 const handleNpcGreetingFromPointerTarget = (target) => npcConversationSystem.handleGreetingFromPointerTarget(target);
 const getNpcReplySuggestions = (suggestions) => npcConversationSystem.getReplySuggestions(suggestions);
+const showNpcConversationChat = () => {
+  if (isMobileGameLayout() && mobileGameUiState.openPanel !== "chat") {
+    setOpenMobilePanel("chat");
+  }
+  chatController.showChannel("local");
+};
 const handleNpcPlayerSpeech = (text, player, now) => {
   const action = createSpeakToNpcAction(text, player?.uid, now);
   const result = gameTransport.send(action);
@@ -8137,6 +8163,7 @@ npcConversationSystem = createNpcConversationSystem({
   renderActiveChatMessages,
   renderSpellWindow,
   sendPlayerSpeech: handleNpcPlayerSpeech,
+  showNpcConversationChat,
   showFloatingTextAboveTarget,
   showGameStatusMessage,
   startPlayerActionNavigation,
@@ -8695,6 +8722,10 @@ gameSimulation = createGameSimulation({
           },
         ],
       };
+    },
+    executeSetCombatMode: (combatMode) => {
+      playerState.combatMode = combatMode;
+      return { success: true, changes: { combatMode } };
     },
     executeSetPvpEnabled: (enabled) => {
       playerState.pvp.enabled = enabled;
