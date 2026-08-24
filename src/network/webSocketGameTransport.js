@@ -22,6 +22,13 @@ const getMessageText = async (data) => {
   return data?.toString?.() ?? "";
 };
 
+const createClientInstanceId = () => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const createWebSocketGameTransport = ({
   url,
   socketFactory,
@@ -68,6 +75,7 @@ export const createWebSocketGameTransport = ({
   let pingTimeoutId = null;
   let roundTripTimeMs = null;
   let smoothedRoundTripTimeMs = null;
+  const clientInstanceId = createClientInstanceId();
 
   const getMovementPredictionState = (acknowledgedRequestId = null) => {
     const predictionState = movementPrediction.reconcileWithState(
@@ -344,7 +352,10 @@ export const createWebSocketGameTransport = ({
     if (!nextHelloPayload || typeof nextHelloPayload !== "object") {
       return Promise.reject(new TypeError("A client hello payload is required."));
     }
-    helloPayload = structuredClone(nextHelloPayload);
+    helloPayload = {
+      ...structuredClone(nextHelloPayload),
+      clientInstanceId,
+    };
     shouldReconnect = true;
     if (connectionState === "ready") {
       return Promise.resolve({ playerUid, snapshot: null });

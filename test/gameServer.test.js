@@ -8,6 +8,7 @@ import {
   createNetworkMessage,
   decodeNetworkMessage,
   encodeNetworkMessage,
+  SESSION_REPLACED_CLOSE_CODE,
   SERVER_MESSAGE_TYPE,
 } from "../src/network/networkProtocol.js";
 
@@ -139,7 +140,11 @@ test("a new authenticated socket replaces a stale session for the same character
   const firstSocket = new WebSocket(serverUrl);
   await new Promise((resolve) => firstSocket.once("open", resolve));
   const firstSnapshot = waitForMessage(firstSocket, SERVER_MESSAGE_TYPE.snapshot);
-  firstSocket.send(encodeNetworkMessage(createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one" }, 0)));
+  firstSocket.send(
+    encodeNetworkMessage(
+      createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one", clientInstanceId: "first-client" }, 0),
+    ),
+  );
   await firstSnapshot;
 
   const replacementError = waitForMessage(firstSocket, SERVER_MESSAGE_TYPE.error);
@@ -148,11 +153,73 @@ test("a new authenticated socket replaces a stale session for the same character
   testContext.after(() => secondSocket.close());
   await new Promise((resolve) => secondSocket.once("open", resolve));
   const secondSnapshot = waitForMessage(secondSocket, SERVER_MESSAGE_TYPE.snapshot);
-  secondSocket.send(encodeNetworkMessage(createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one" }, 0)));
+  secondSocket.send(
+    encodeNetworkMessage(
+      createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one", clientInstanceId: "second-client" }, 0),
+    ),
+  );
 
   assert.equal((await replacementError).payload.reason, "session-replaced");
   assert.equal(await firstSocketClosed, 4001);
   assert.equal((await secondSnapshot).payload.self.uid, "player:account-1:one");
+  assert.equal(disconnectCount, 1);
+});
+
+test("a legacy reconnect cannot replace an active modern character session", async (testContext) => {
+  let isCharacterOnline = false;
+  let disconnectCount = 0;
+  const runtime = {
+    connectClient: () => {
+      if (isCharacterOnline) {
+        return { success: false, reason: "character-already-online" };
+      }
+      isCharacterOnline = true;
+      return { success: true, playerUid: "player:account-1:one" };
+    },
+    disconnectClient: () => {
+      disconnectCount += 1;
+      isCharacterOnline = false;
+    },
+    dispatchAction: () => ({ success: true }),
+    createSnapshotForClient: () => ({ revision: 0, self: { uid: "player:account-1:one" } }),
+    getDeltasForClient: () => [],
+    update: () => {},
+  };
+  const server = createGameServer({
+    runtime,
+    authenticateClient: () => ({ accountId: "account-1" }),
+    port: 0,
+  });
+  await server.start();
+  testContext.after(() => server.stop());
+  const serverUrl = `ws://127.0.0.1:${server.getAddress().port}/game`;
+
+  const legacySocket = new WebSocket(serverUrl);
+  await new Promise((resolve) => legacySocket.once("open", resolve));
+  const legacySnapshot = waitForMessage(legacySocket, SERVER_MESSAGE_TYPE.snapshot);
+  legacySocket.send(encodeNetworkMessage(createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one" }, 0)));
+  await legacySnapshot;
+
+  const modernSocket = new WebSocket(serverUrl);
+  testContext.after(() => modernSocket.close());
+  await new Promise((resolve) => modernSocket.once("open", resolve));
+  const modernSnapshot = waitForMessage(modernSocket, SERVER_MESSAGE_TYPE.snapshot);
+  modernSocket.send(
+    encodeNetworkMessage(
+      createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one", clientInstanceId: "modern-client" }, 0),
+    ),
+  );
+  await modernSnapshot;
+
+  const staleSocket = new WebSocket(serverUrl);
+  await new Promise((resolve) => staleSocket.once("open", resolve));
+  const rejection = waitForMessage(staleSocket, SERVER_MESSAGE_TYPE.error);
+  const staleSocketClosed = new Promise((resolve) => staleSocket.once("close", (code) => resolve(code)));
+  staleSocket.send(encodeNetworkMessage(createNetworkMessage(CLIENT_MESSAGE_TYPE.hello, { characterId: "one" }, 0)));
+
+  assert.equal((await rejection).payload.reason, "connection-rejected");
+  assert.equal(await staleSocketClosed, SESSION_REPLACED_CLOSE_CODE);
+  assert.equal(modernSocket.readyState, WebSocket.OPEN);
   assert.equal(disconnectCount, 1);
 });
 

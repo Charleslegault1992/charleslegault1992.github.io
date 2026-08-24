@@ -5202,6 +5202,12 @@ const updateMovement = (now) => {
     return;
   }
 
+  if (gameRuntimeState.isRemoteSession && gameTransport?.getConnectionState?.() !== "ready") {
+    playerState.walkFrame = 1;
+    updatePlayerSprite();
+    return;
+  }
+
   if (now < gameplayTimingState.nextPlayerMoveTime) {
     return;
   }

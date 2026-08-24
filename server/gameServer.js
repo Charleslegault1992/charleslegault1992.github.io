@@ -25,6 +25,11 @@ const DEFAULT_MAX_DELTAS_PER_FLUSH = 8;
 const HEARTBEAT_INTERVAL_MS = 15000;
 const HEARTBEAT_TIMEOUT_MS = 30000;
 
+const getClientInstanceId = (payload) => {
+  const clientInstanceId = typeof payload?.clientInstanceId === "string" ? payload.clientInstanceId.trim() : "";
+  return /^[a-zA-Z0-9-]{1,128}$/.test(clientInstanceId) ? clientInstanceId : null;
+};
+
 export const createGameServer = ({
   runtime,
   authenticateClient,
@@ -162,6 +167,7 @@ export const createGameServer = ({
       return;
     }
     const characterId = typeof message.payload?.characterId === "string" ? message.payload.characterId.trim() : "";
+    const clientInstanceId = getClientInstanceId(message.payload);
     const existingSession = [...sessionsBySocket.values()].find(
       (candidate) =>
         candidate !== session &&
@@ -170,6 +176,11 @@ export const createGameServer = ({
         candidate.characterId === characterId,
     );
     if (existingSession) {
+      if (existingSession.clientInstanceId && !clientInstanceId) {
+        send(session, SERVER_MESSAGE_TYPE.error, { reason: "connection-rejected" });
+        session.socket.close(SESSION_REPLACED_CLOSE_CODE, "Client update required");
+        return;
+      }
       send(existingSession, SERVER_MESSAGE_TYPE.error, { reason: "session-replaced" });
       closeSession(existingSession);
       existingSession.socket.close(SESSION_REPLACED_CLOSE_CODE, "Session replaced");
@@ -183,6 +194,7 @@ export const createGameServer = ({
     session.isAuthenticated = true;
     session.accountId = identity.accountId;
     session.characterId = characterId;
+    session.clientInstanceId = clientInstanceId;
     session.playerUid = result.playerUid;
     send(session, SERVER_MESSAGE_TYPE.welcome, { clientId: session.clientId, playerUid: session.playerUid });
     sendSnapshot(session);
@@ -278,6 +290,7 @@ export const createGameServer = ({
       isAuthenticated: false,
       accountId: null,
       characterId: null,
+      clientInstanceId: null,
       playerUid: null,
       lastClientSequence: -1,
       nextServerSequence: 0,

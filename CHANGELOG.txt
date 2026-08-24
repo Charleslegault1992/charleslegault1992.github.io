@@ -1,3 +1,8 @@
+0.3401 - Session mobile et mouvement
+    - Chaque client garde maintenant une identite de session stable pendant ses reconnexions.
+    - Un ancien client ne peut plus reprendre le personnage et bloquer la session mobile active.
+    - Le joueur ne joue plus une fausse animation de marche lorsque la connexion nest pas prete.
+
 0.340 - Connexion mobile fiable
     - Une connexion bloquee est maintenant remplacee automatiquement apres un delai sans snapshot.
     - Une nouvelle connexion authentifiee reprend immediatement le meme personnage sans attendre le vieux heartbeat.

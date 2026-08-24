@@ -241,6 +241,7 @@ test("the WebSocket transport uses a refreshed token when it reconnects", async 
   await connection;
 
   assert.equal(initialHello.payload.authToken, "old-token");
+  assert.equal(typeof initialHello.payload.clientInstanceId, "string");
   assert.equal(transport.updateAuthenticationToken("fresh-token"), true);
 
   sockets[0].close();
@@ -249,6 +250,7 @@ test("the WebSocket transport uses a refreshed token when it reconnects", async 
   const reconnectHello = JSON.parse(sockets[1].sent[0]);
 
   assert.equal(reconnectHello.payload.authToken, "fresh-token");
+  assert.equal(reconnectHello.payload.clientInstanceId, initialHello.payload.clientInstanceId);
   transport.disconnect();
 });
 
