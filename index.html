@@ -112,6 +112,15 @@
                     &#9678;
                   </button>
                 </div>
+                <button
+                  class="mobile-window-close-button"
+                  type="button"
+                  aria-label="Close panel"
+                  data-game-title="closePanel"
+                  data-mobile-panel-close="map"
+                >
+                  &times;
+                </button>
               </div>
               <div class="separateur-panneau"></div>
               <div class="minimap-viewport">
@@ -158,6 +167,15 @@
           </section>
         </section>
         <section class="boite-chat" id="boite-chat">
+          <button
+            class="mobile-window-close-button"
+            type="button"
+            aria-label="Close panel"
+            data-game-title="closePanel"
+            data-mobile-panel-close="chat"
+          >
+            &times;
+          </button>
           <div id="chat-tabs" class="chat-tabs"></div>
           <div id="chat" class="chat"></div>
           <input id="chat-input" class="chat-input" />
@@ -197,16 +215,6 @@
             <span id="mobile-item-use-icon" class="mobile-item-use-icon" aria-hidden="true"></span>
             <span id="mobile-item-use-label" class="mobile-item-use-label"></span>
             <span class="mobile-item-use-cancel" aria-hidden="true">&times;</span>
-          </button>
-          <button
-            id="mobile-panel-close"
-            class="mobile-panel-close-button"
-            type="button"
-            aria-label="Close panel"
-            data-game-title="closePanel"
-            hidden
-          >
-            &times;
           </button>
           <div id="mobile-joystick-zone" class="mobile-joystick-zone">
             <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control" data-game-title="movementControl">

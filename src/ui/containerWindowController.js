@@ -363,8 +363,8 @@ export const createContainerWindowController = ({
       });
 
       const closeButton = document.createElement("button");
-      closeButton.classList.add("container-minimize-button");
-      closeButton.textContent = "X";
+      closeButton.classList.add("container-minimize-button", "container-close-button");
+      closeButton.textContent = "\u00d7";
       closeButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();

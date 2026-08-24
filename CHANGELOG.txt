@@ -1,3 +1,7 @@
+0.3404 - Fenetres mobiles compactes
+    - Chaque fenetre mobile garde maintenant son bouton de fermeture directement dans son entete.
+    - Les entetes des sacs et des corps prennent moins de place sans empecher leur deplacement.
+
 0.3403 - Sac et equipement mobile
     - Le sac et le panneau equipement peuvent maintenant rester ouverts ensemble pour deplacer les items.
     - Le menu mobile reste accessible et passe devant les sacs ouverts.

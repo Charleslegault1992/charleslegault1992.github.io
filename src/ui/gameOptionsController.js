@@ -166,7 +166,7 @@ export const createGameOptionsController = ({
     const closeButtonElement = document.createElement("button");
     closeButtonElement.classList.add("options-window-close-button");
     closeButtonElement.type = "button";
-    closeButtonElement.textContent = "x";
+    closeButtonElement.textContent = "\u00d7";
     closeButtonElement.title = getGameUiText("closeOptions");
     closeButtonElement.setAttribute("aria-label", getGameUiText("closeOptions"));
     closeButtonElement.addEventListener("click", close);

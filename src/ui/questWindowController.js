@@ -46,7 +46,7 @@ export const createQuestWindowController = ({ updatePlayerInventory }) => {
     const closeButtonElement = document.createElement("button");
     closeButtonElement.classList.add("quest-window-close-button");
     closeButtonElement.type = "button";
-    closeButtonElement.textContent = "x";
+    closeButtonElement.textContent = "\u00d7";
     closeButtonElement.title = getGameUiText("closeQuests");
     closeButtonElement.setAttribute("aria-label", getGameUiText("closeQuests"));
     closeButtonElement.addEventListener("click", close);

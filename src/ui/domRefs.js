@@ -49,7 +49,6 @@ export const mobilePanelButtons = document.querySelectorAll("[data-mobile-panel]
 export const mobileActionButtons = document.querySelectorAll("[data-mobile-action]");
 export const mobileActionMenu = document.querySelector("#mobile-action-menu");
 export const mobileActionMenuToggle = document.querySelector("#mobile-action-menu-toggle");
-export const mobilePanelCloseButton = document.querySelector("#mobile-panel-close");
 export const mobilePlayerName = document.querySelector("#mobile-player-name");
 export const mobilePlayerLevel = document.querySelector("#mobile-player-level");
 export const mobilePlayerHealthFill = document.querySelector("#mobile-player-health-fill");

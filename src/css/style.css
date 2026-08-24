@@ -677,6 +677,10 @@ main {
   font-weight: bold;
 }
 
+.mobile-window-close-button {
+  display: none;
+}
+
 /* ---------- PANNEAU - QUETES ---------- */
 
 .quest-window {
@@ -2890,9 +2894,22 @@ body.item-drag-active * {
     border: 1px solid #a0823a;
   }
 
-  #player-inventory .boite-jeux-titre,
   #player-inventory > .boite-boite > .equipment-panel > .separateur-panneau {
     display: none;
+  }
+
+  .mobile-panel-window-header {
+    position: relative;
+    display: flex;
+    min-height: 30px;
+    padding-right: 30px;
+    align-items: center;
+  }
+
+  .mobile-panel-window-header .boite-jeux-titre {
+    flex: 1;
+    min-height: 30px;
+    font-size: 10px;
   }
 
   #player-inventory .equipment-area {
@@ -2955,8 +2972,8 @@ body.item-drag-active * {
 
   .spell-window-header {
     display: flex;
-    min-height: 26px;
-    padding: 0 32px 0 3px;
+    min-height: 30px;
+    padding: 0 30px 0 3px;
     align-items: center;
   }
 
@@ -2965,10 +2982,10 @@ body.item-drag-active * {
   }
 
   .spell-window-close-button {
-    width: 40px;
-    height: 40px;
-    font-size: 17px;
-    line-height: 40px;
+    width: 30px;
+    height: 30px;
+    font-size: 19px;
+    line-height: 30px;
   }
 
   .spell-window .separateur-panneau,
@@ -3052,16 +3069,32 @@ body.item-drag-active * {
     touch-action: manipulation;
   }
 
-  .container-window-header {
-    min-height: 40px;
+  #player-containers .container-window-header {
+    min-height: 30px;
+    padding: 0;
   }
 
-  .container-minimize-button,
-  .container-back-button {
-    width: 40px;
-    height: 40px;
-    font-size: 18px;
-    line-height: 40px;
+  #player-containers .container-window-header .boite-jeux-titre {
+    min-height: 30px;
+    padding-left: 4px;
+    justify-content: flex-start;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #player-containers .container-minimize-button,
+  #player-containers .container-back-button {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    font-size: 16px;
+    line-height: 30px;
+  }
+
+  #player-containers .container-close-button {
+    border-left: 1px solid rgba(205, 193, 153, 0.22);
   }
 
   .minimap-control-button,
@@ -3118,6 +3151,12 @@ body.item-drag-active * {
     background-color: rgba(7, 7, 7, 0.78);
   }
 
+  .boite-chat .chat-tabs {
+    right: 32px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
   .mobile-game-controls {
     position: absolute;
     inset: 0;
@@ -3151,18 +3190,54 @@ body.item-drag-active * {
   }
 
   .mobile-target-hud[hidden],
-  .mobile-item-use-indicator[hidden],
-  .mobile-panel-close-button[hidden] {
-    display: none;
-  }
-
-  .quest-window-close-button {
+  .mobile-item-use-indicator[hidden] {
     display: none;
   }
 
   .quest-window-header {
-    min-height: 18px;
-    padding-right: 0;
+    min-height: 30px;
+    padding-right: 30px;
+  }
+
+  .options-window-header {
+    min-height: 30px;
+    padding-right: 30px;
+  }
+
+  #player-minimap .minimap-header {
+    position: relative;
+    padding-right: 30px;
+  }
+
+  .mobile-window-close-button,
+  .quest-window-close-button,
+  .options-window-close-button,
+  .spell-window-close-button {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 4;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    place-items: center;
+    color: #eee7d5;
+    border: 0;
+    border-left: 1px solid rgba(205, 193, 153, 0.28);
+    border-radius: 0 3px 0 0;
+    background: rgba(31, 29, 24, 0.78);
+    font: 400 19px/1 Arial, sans-serif;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  .mobile-window-close-button:active,
+  .quest-window-close-button:active,
+  .options-window-close-button:active,
+  .spell-window-close-button:active {
+    color: #ffffff;
+    background: rgba(105, 48, 38, 0.92);
   }
 
   .mobile-game-controls-panel-open .mobile-vitals-hud,
@@ -3330,26 +3405,6 @@ body.item-drag-active * {
 
   .mobile-target-health-fill {
     background: var(--mobile-target-hp-color, #d83434);
-  }
-
-  .mobile-panel-close-button {
-    position: absolute;
-    top: max(var(--mobile-edge), env(safe-area-inset-top));
-    right: max(var(--mobile-edge), env(safe-area-inset-right));
-    z-index: 2;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    color: #f2ead6;
-    border: 1px solid rgba(205, 193, 153, 0.68);
-    border-radius: 4px;
-    background: rgba(20, 20, 18, 0.92);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.7);
-    font:
-      400 25px/40px Arial,
-      sans-serif;
-    pointer-events: auto;
-    touch-action: manipulation;
   }
 
   .mobile-joystick-zone {

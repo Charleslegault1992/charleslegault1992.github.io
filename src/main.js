@@ -410,7 +410,6 @@ import {
   mobileActionButtons,
   mobileActionMenu,
   mobileActionMenuToggle,
-  mobilePanelCloseButton,
   mobilePlayerName,
   mobilePlayerLevel,
   mobilePlayerHealthFill,
@@ -2762,7 +2761,7 @@ const renderSpellWindow = () => {
   const closeButtonElement = document.createElement("button");
   closeButtonElement.classList.add("spell-window-close-button");
   closeButtonElement.type = "button";
-  closeButtonElement.textContent = "x";
+  closeButtonElement.textContent = "\u00d7";
   closeButtonElement.title = getGameUiText("closeSpells");
   closeButtonElement.setAttribute("aria-label", getGameUiText("closeSpells"));
   closeButtonElement.addEventListener("click", () => {
@@ -3028,7 +3027,10 @@ const bindPlayerFollowButton = () => {
 const updatePlayerInventory = () => {
   let html = `<div class="boite-boite">
               <div class="equipment-panel">
-                <div class="boite-jeux-titre">${getGameUiText("equipments")}</div>
+                <div class="mobile-panel-window-header">
+                  <div class="boite-jeux-titre">${getGameUiText("equipments")}</div>
+                  <button class="mobile-window-close-button" type="button" data-mobile-panel-close="inventory" aria-label="${getGameUiText("closePanel")}" title="${getGameUiText("closePanel")}">&times;</button>
+                </div>
                 <div class="separateur-panneau"></div>
 
                 <div id="equipment-area" class="equipment-area">
@@ -4115,9 +4117,19 @@ const createSimpleStatRowElement = (statKey, label) => {
 const createPlayerStatsUi = () => {
   const statsWrapperElement = document.createElement("div");
   statsWrapperElement.classList.add("boite-boite");
+  const headerElement = document.createElement("div");
+  headerElement.classList.add("mobile-panel-window-header");
   const titleElement = document.createElement("div");
   titleElement.classList.add("boite-jeux-titre");
   titleElement.textContent = getGameUiText("stats");
+  const closeButtonElement = document.createElement("button");
+  closeButtonElement.classList.add("mobile-window-close-button");
+  closeButtonElement.type = "button";
+  closeButtonElement.dataset.mobilePanelClose = "stats";
+  closeButtonElement.textContent = "\u00d7";
+  closeButtonElement.title = getGameUiText("closePanel");
+  closeButtonElement.setAttribute("aria-label", getGameUiText("closePanel"));
+  headerElement.append(titleElement, closeButtonElement);
   const separatorElement = document.createElement("div");
   separatorElement.classList.add("separateur-panneau");
   const nameElement = createSimpleStatRowElement("name", getGameUiText("nameLabel"));
@@ -4151,7 +4163,7 @@ const createPlayerStatsUi = () => {
     return;
   }
   statsWrapperElement.append(
-    titleElement,
+    headerElement,
     separatorElement,
     nameElement,
     hpElement,
@@ -4383,7 +4395,6 @@ const syncMobilePanelChrome = () => {
     "mobile-game-controls-chat-open",
     hasOpenPanel && mobileGameUiState.openPanel === "chat",
   );
-  mobilePanelCloseButton?.toggleAttribute("hidden", !hasOpenMobileSurface);
 };
 
 const setOpenMobilePanel = (panelName = null) => {
@@ -6176,14 +6187,17 @@ mobileItemUseIndicator?.addEventListener("click", (event) => {
   cancelItemUse();
 });
 
-mobilePanelCloseButton?.addEventListener("click", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  if (questUiState.isOpen) {
-    questWindowController.close();
+document.addEventListener("click", (event) => {
+  const targetElement = event.target instanceof Element ? event.target : null;
+  const closeButton = targetElement?.closest("[data-mobile-panel-close]");
+  if (!closeButton || !isMobileGameLayout()) {
     return;
   }
-  setOpenMobilePanel(null);
+  event.preventDefault();
+  event.stopPropagation();
+  if (mobileGameUiState.openPanel === closeButton.dataset.mobilePanelClose) {
+    setOpenMobilePanel(null);
+  }
 });
 
 mobileGameLayoutMedia.addEventListener("change", syncMobileGameLayout);
