@@ -802,6 +802,10 @@ export const createAuthoritativeWorldRuntime = ({
           player.combatMode = combatMode;
           return { success: true, changes: { combatMode } };
         },
+        executeSetLanguage: (language) => {
+          player.language = language;
+          return { success: true, changes: { language } };
+        },
         executeSetPvpEnabled: (enabled) => {
           player.pvp.enabled = enabled;
           return {

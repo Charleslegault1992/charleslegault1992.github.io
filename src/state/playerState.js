@@ -54,6 +54,7 @@ export const createPlayerState = () => ({
   moveDuration: 0,
   tileStackOrder: 0,
   name: "Charles",
+  language: "en",
   appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
   appearanceParts: normalizeCharacterAppearanceParts(DEFAULT_CHARACTER_APPEARANCE_PARTS),
   appearanceColors: normalizeCharacterAppearanceColors(DEFAULT_CHARACTER_APPEARANCE_COLORS),

@@ -38,6 +38,7 @@ export const createGameOptionsController = ({
   setAudioSettings,
   setMinimapZoom,
   refreshChatUi,
+  onLanguageChanged = null,
   updatePlayerInventory,
   updatePlayerStats,
 }) => {
@@ -110,9 +111,13 @@ export const createGameOptionsController = ({
     if (!SUPPORTED_GAME_LANGUAGES.has(language)) {
       return false;
     }
+    const previousLanguage = gameOptionsUiState.values.language;
     gameOptionsUiState.values.language = language;
     save();
     refreshLanguageDependentUi();
+    if (language !== previousLanguage) {
+      onLanguageChanged?.(language);
+    }
     return true;
   };
 
@@ -223,10 +228,14 @@ export const createGameOptionsController = ({
     resetButton.type = "button";
     resetButton.textContent = getGameUiText("restoreDefaults");
     resetButton.addEventListener("click", () => {
+      const previousLanguage = gameOptionsUiState.values.language;
       gameOptionsUiState.values = { ...DEFAULT_GAME_OPTIONS };
       save();
       apply();
       refreshLanguageDependentUi();
+      if (gameOptionsUiState.values.language !== previousLanguage) {
+        onLanguageChanged?.(gameOptionsUiState.values.language);
+      }
     });
     wrapperElement.append(headerElement, separatorElement, listElement, resetButton);
     gameOptionsWindow.appendChild(wrapperElement);

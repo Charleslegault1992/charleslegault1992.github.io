@@ -5,13 +5,14 @@ import {
   rejectGameAction,
   succeedGameAction,
 } from "./gameAction.js";
-import { PLAYER_COMBAT_MODES } from "../core/gameConstants.js";
+import { PLAYER_COMBAT_MODES, PLAYER_LANGUAGES } from "../core/gameConstants.js";
 
 export const GAMEPLAY_ACTION_TYPE = Object.freeze({
   movePlayer: "gameplay.move-player",
   attackMonster: "gameplay.attack-monster",
   attackPlayer: "gameplay.attack-player",
   setCombatMode: "gameplay.set-combat-mode",
+  setLanguage: "gameplay.set-language",
   setPvpEnabled: "gameplay.set-pvp-enabled",
   speakToNpc: "gameplay.speak-to-npc",
   interactWithWorld: "gameplay.interact-with-world",
@@ -79,6 +80,13 @@ export const createSetCombatModeAction = (combatMode, requestedAt) => {
     return null;
   }
   return createTimedGameAction(GAMEPLAY_ACTION_TYPE.setCombatMode, { combatMode }, requestedAt);
+};
+
+export const createSetLanguageAction = (language, requestedAt) => {
+  if (!PLAYER_LANGUAGES.includes(language)) {
+    return null;
+  }
+  return createTimedGameAction(GAMEPLAY_ACTION_TYPE.setLanguage, { language }, requestedAt);
 };
 
 export const createSpeakToNpcAction = (text, playerUid, requestedAt) => {
@@ -169,6 +177,7 @@ export const registerGameplayActionHandlers = (dispatcher) => {
     [GAMEPLAY_ACTION_TYPE.attackMonster, "executeAttackMonster"],
     [GAMEPLAY_ACTION_TYPE.attackPlayer, "executeAttackPlayer"],
     [GAMEPLAY_ACTION_TYPE.setCombatMode, "executeSetCombatMode"],
+    [GAMEPLAY_ACTION_TYPE.setLanguage, "executeSetLanguage"],
     [GAMEPLAY_ACTION_TYPE.setPvpEnabled, "executeSetPvpEnabled"],
     [GAMEPLAY_ACTION_TYPE.speakToNpc, "executeSpeakToNpc"],
     [GAMEPLAY_ACTION_TYPE.interactWithWorld, "executeWorldInteraction"],

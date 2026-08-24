@@ -7,6 +7,7 @@ import {
   createCastSpellAction,
   createMovePlayerAction,
   createSetCombatModeAction,
+  createSetLanguageAction,
   createSpeakToNpcAction,
   createUseWorldTransitionAction,
   createWorldInteractionAction,
@@ -27,6 +28,7 @@ test("gameplay action builders create serializable transport contracts", () => {
     }),
     createAttackMonsterAction(12, 101),
     createSetCombatModeAction("fullDefense", 101.5),
+    createSetLanguageAction("fr", 101.75),
     createSpeakToNpcAction("salut", "local-player", 102),
     createWorldInteractionAction({
       interactableId: "chest-1",
@@ -48,6 +50,7 @@ test("gameplay action builders create serializable transport contracts", () => {
 
   assert.equal(actions.every(Boolean), true);
   assert.equal(createSetCombatModeAction("invalid", 105), null);
+  assert.equal(createSetLanguageAction("invalid", 105), null);
   assert.doesNotThrow(() => JSON.stringify(actions));
 });
 

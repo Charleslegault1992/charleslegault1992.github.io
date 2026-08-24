@@ -1,7 +1,7 @@
-import { MINIMAP_DEFAULT_CELL_SIZE, MINIMAP_ZOOM_LEVELS } from "../core/gameConstants.js";
+import { MINIMAP_DEFAULT_CELL_SIZE, MINIMAP_ZOOM_LEVELS, PLAYER_LANGUAGES } from "../core/gameConstants.js";
 
 export const GAME_OPTIONS_STORAGE_KEY = "no-name-yet:game-options";
-export const SUPPORTED_GAME_LANGUAGES = new Set(["en", "fr"]);
+export const SUPPORTED_GAME_LANGUAGES = new Set(PLAYER_LANGUAGES);
 export const DEFAULT_GAME_OPTIONS = {
   showFps: true,
   showCreatureNames: true,

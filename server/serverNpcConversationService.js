@@ -13,6 +13,7 @@ import {
   rollbackPlayerCurrencyValuePlan,
 } from "../src/inventory/inventoryTransactions.js";
 import { spellsDatabase } from "../src/spellDatabase.js";
+import { getLocalizedItemNameForLanguage } from "../src/localization/gameLocalization.js";
 
 const normalize = (text) => String(text ?? "")
   .normalize("NFD")
@@ -42,6 +43,11 @@ const isInTalkRange = (player, npc) => {
 export const createServerNpcConversationService = ({ npcs, playersByUid, getInventory }) => {
   const statesByNpcUid = new Map();
 
+  const getPlayerItemName = (player, itemId, quantity = 1) =>
+    getLocalizedItemNameForLanguage(itemId, quantity, player?.language);
+  const getPlayerSpellName = (player, spell) =>
+    player?.language === "fr" ? spell?.nameFr ?? spell?.name : spell?.name;
+
   const getState = (npcUid) => {
     if (!statesByNpcUid.has(npcUid)) {
       statesByNpcUid.set(npcUid, {
@@ -69,11 +75,11 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       .filter(Boolean);
   };
 
-  const getShopOfferSuggestions = (npcData, categoryId, tradeType) => {
+  const getShopOfferSuggestions = (npcData, player, categoryId, tradeType) => {
     const priceField = tradeType === "sell" ? "sellPrice" : "buyPrice";
     return Object.entries(npcData.service?.offers ?? {})
       .filter(([, offer]) => offer.category === categoryId && Number.isInteger(offer[priceField]) && offer[priceField] > 0)
-      .map(([, offer]) => offer.keywords?.[0])
+      .map(([itemId]) => getPlayerItemName(player, itemId))
       .filter(Boolean);
   };
   const createReply = (npc, player, text, suggestions = [], extraEvents = []) => ({
@@ -161,12 +167,12 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       }
       completedText = pending.type === "learn-spell"
         ? format(dialogue.learned, player, {
-            spellName: spellsDatabase[pending.spellId].name,
+            spellName: getPlayerSpellName(player, spellsDatabase[pending.spellId]),
             incantation: spellsDatabase[pending.spellId].incantation,
           })
         : format(dialogue.bought, player, {
             quantity: pending.quantity,
-            itemName: getItemDataName(pending.itemId),
+            itemName: getPlayerItemName(player, pending.itemId, pending.quantity),
             price: pending.price,
           });
       transactionSucceeded = true;
@@ -192,7 +198,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       }
       completedText = format(dialogue.sold, player, {
         quantity: pending.quantity,
-        itemName: getItemDataName(pending.itemId),
+        itemName: getPlayerItemName(player, pending.itemId, pending.quantity),
         price: pending.price,
       });
       transactionSucceeded = true;
@@ -250,7 +256,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       }
       completedText = format(dialogue.exchanged, player, {
         outputQuantity: pending.outputQuantity,
-        outputName: pending.outputItemId,
+        outputName: getPlayerItemName(player, pending.outputItemId, pending.outputQuantity),
       });
       transactionSucceeded = true;
     }
@@ -261,15 +267,6 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
     inventory.refreshWeight();
     return createReply(npc, player, completedText, [], [{ type: "npc-transaction-completed", ...pending }]);
-  };
-
-  const getItemDataName = (itemId) => {
-    for (const npcData of Object.values(npcsDatabase)) {
-      if (npcData.service?.offers?.[itemId]) {
-        return itemId;
-      }
-    }
-    return itemId;
   };
 
   const handleSpeech = (text, player, now) => {
@@ -322,9 +319,15 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
 
     if (npcData.service?.type === "itemShop") {
-      const offerEntry = Object.entries(npcData.service.offers).find(([, offer]) =>
-        offer.keywords?.some((keyword) => normalize(text).includes(normalize(keyword))),
-      );
+      const offerEntry = Object.entries(npcData.service.offers).find(([itemId, offer]) => {
+        const itemNames = [
+          getPlayerItemName(player, itemId),
+          getPlayerItemName(player, itemId, 2),
+        ];
+        return [...(offer.keywords ?? []), ...itemNames]
+          .filter(Boolean)
+          .some((keyword) => normalize(text).includes(normalize(keyword)));
+      });
       const wantsBuy = hasAnyWord(words, ["buy", "purchase", "achat", "acheter", "achete"]);
       const wantsSell = hasAnyWord(words, ["sell", "selling", "vente", "vendre", "vends"]);
       const wantsTrade = hasAnyWord(words, ["trade", "offers", "offres", "commerce"]);
@@ -344,7 +347,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           npc,
           player,
           format(tradeType === "sell" ? dialogue.sellCategoryMenu : dialogue.buyCategoryMenu, player, { categoryName }),
-          getShopOfferSuggestions(npcData, categoryId, tradeType),
+          getShopOfferSuggestions(npcData, player, categoryId, tradeType),
         );
       }
       if (!offerEntry && (wantsBuy || wantsSell)) {
@@ -380,7 +383,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           player,
           format(isSelling ? dialogue.confirmSell : dialogue.confirmBuy, player, {
             quantity,
-            itemName: itemId,
+            itemName: getPlayerItemName(player, itemId, quantity),
             price: state.pendingAction.price,
           }),
           dialogue.confirmationSuggestions,
@@ -390,7 +393,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     if (npcData.service?.type === "spellTeacher") {
       if (hasAnyWord(words, ["spell", "spells", "sort", "sorts", "magic", "magie"])) {
         const suggestions = npcData.service.spellIds
-          .map((spellId) => spellsDatabase[spellId]?.learningKeywords?.[0] ?? spellsDatabase[spellId]?.name)
+          .map((spellId) => getPlayerSpellName(player, spellsDatabase[spellId]))
           .filter(Boolean);
         return createReply(npc, player, dialogue.spells, suggestions);
       }
@@ -409,7 +412,10 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         return createReply(
           npc,
           player,
-          format(dialogue.confirmLearn, player, { spellName: spell.name, price: spell.learnPrice }),
+          format(dialogue.confirmLearn, player, {
+            spellName: getPlayerSpellName(player, spell),
+            price: spell.learnPrice,
+          }),
           dialogue.confirmationSuggestions,
         );
       }
@@ -458,9 +464,9 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         state.pendingAction = { type: "exchange", ...recipe };
         return createReply(npc, player, format(dialogue.confirmExchange, player, {
           sourceQuantity: recipe.sourceQuantity,
-          sourceName: recipe.sourceItemId,
+          sourceName: getPlayerItemName(player, recipe.sourceItemId, recipe.sourceQuantity),
           outputQuantity: recipe.outputQuantity,
-          outputName: recipe.outputItemId,
+          outputName: getPlayerItemName(player, recipe.outputItemId, recipe.outputQuantity),
         }), dialogue.confirmationSuggestions);
       }
     }

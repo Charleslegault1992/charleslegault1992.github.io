@@ -119,6 +119,16 @@ export const GAME_UI_TEXT = {
     mobileBackpack: "Bag",
     mobileChat: "Chat",
     mobileTorch: "Torch",
+    mobileHealth: "HP",
+    mobileMana: "MP",
+    mobileFood: "FOOD",
+    mobileLevel: (level) => `Lv ${level}`,
+    playerStatus: "Player status",
+    targetStatus: "Target status",
+    movementControl: "Movement control",
+    closePanel: "Close panel",
+    gamePanels: "Game panels",
+    combatControls: "Combat controls",
     rotateDeviceTitle: "Rotate your phone",
     rotateDeviceText: "This game is played in landscape mode.",
     nameLabel: "Name:",
@@ -328,6 +338,16 @@ export const GAME_UI_TEXT = {
     mobileBackpack: "Sac",
     mobileChat: "Chat",
     mobileTorch: "Torche",
+    mobileHealth: "VIE",
+    mobileMana: "MANA",
+    mobileFood: "FAIM",
+    mobileLevel: (level) => `Niv. ${level}`,
+    playerStatus: "Etat du joueur",
+    targetStatus: "Etat de la cible",
+    movementControl: "Controle du mouvement",
+    closePanel: "Fermer le panneau",
+    gamePanels: "Panneaux du jeu",
+    combatControls: "Controles de combat",
     rotateDeviceTitle: "Tourne ton telephone",
     rotateDeviceText: "Le jeu se joue en mode paysage.",
     nameLabel: "Nom:",
@@ -523,10 +543,18 @@ export const getGameUiText = (textKey) => {
   return GAME_UI_TEXT[language]?.[textKey] ?? GAME_UI_TEXT.en[textKey] ?? textKey;
 };
 
-export const getLocalizedContentData = (contentType, contentId, fallbackData) => {
-  const language = getCurrentGameLanguage();
+export const getLocalizedContentDataForLanguage = (contentType, contentId, fallbackData, language) => {
   const localizedData = GAME_CONTENT_TEXT[language]?.[contentType]?.[contentId];
   return localizedData ? { ...fallbackData, ...localizedData } : fallbackData;
+};
+
+export const getLocalizedContentData = (contentType, contentId, fallbackData) => {
+  return getLocalizedContentDataForLanguage(contentType, contentId, fallbackData, getCurrentGameLanguage());
+};
+
+export const getLocalizedItemDataForLanguage = (itemId, language) => {
+  const itemData = getItemData(itemId);
+  return itemData ? getLocalizedContentDataForLanguage("items", itemId, itemData, language) : null;
 };
 
 export const getLocalizedItemData = (itemId) => {
@@ -550,7 +578,11 @@ export const getLocalizedQuestData = (questId) => {
 };
 
 export const getLocalizedItemName = (itemId, quantity = 1) => {
-  const itemData = getLocalizedItemData(itemId);
+  return getLocalizedItemNameForLanguage(itemId, quantity, getCurrentGameLanguage());
+};
+
+export const getLocalizedItemNameForLanguage = (itemId, quantity = 1, language = "en") => {
+  const itemData = getLocalizedItemDataForLanguage(itemId, language);
   if (!itemData) {
     return itemId;
   }

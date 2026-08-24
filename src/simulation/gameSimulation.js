@@ -3,7 +3,7 @@ import { registerGameplayActionHandlers } from "../actions/gameplayActions.js";
 import { registerInventoryActionHandlers } from "../inventory/inventoryActions.js";
 import { registerItemUseActionHandlers } from "../items/itemUseActions.js";
 import { canInitiatePlayerPvpAttack } from "../combat/playerPvpState.js";
-import { PLAYER_COMBAT_MODES } from "../core/gameConstants.js";
+import { PLAYER_COMBAT_MODES, PLAYER_LANGUAGES } from "../core/gameConstants.js";
 
 const rejectCommand = (reason) => ({ success: false, reason });
 
@@ -164,6 +164,13 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     return commands.executeSetCombatMode?.(payload.combatMode) ?? rejectCommand("missing-executor");
   };
 
+  const executeSetLanguage = (payload) => {
+    if (!PLAYER_LANGUAGES.includes(payload.language)) {
+      return rejectCommand("invalid-language");
+    }
+    return commands.executeSetLanguage?.(payload.language) ?? rejectCommand("missing-executor");
+  };
+
   const executeSpeakToNpc = (payload) => {
     const player = commands.getPlayerByUid?.(payload.playerUid) ?? null;
     if (!player || player.hp <= 0) {
@@ -239,6 +246,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     executeMovePlayer,
     executeSendChatMessage,
     executeSetCombatMode,
+    executeSetLanguage,
     executeSetPvpEnabled,
     executeSpeakToNpc,
     executeUseItem,

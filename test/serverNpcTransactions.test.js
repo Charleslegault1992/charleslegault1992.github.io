@@ -36,8 +36,16 @@ test("server NPC sales and bank deposits commit complete transactions", async ()
   const suppliesMenu = speak(runtime, session, player, "provisions");
   const suppliesMenuReply = suppliesMenu.events.find((event) => event.type === "npc-spoke");
   assert.equal(suppliesMenuReply.text, "Quel article dans Provisions veux-tu acheter?");
-  assert.ok(suppliesMenuReply.suggestions.includes("apple"));
-  assert.equal(speak(runtime, session, player, "vendre 2 pommes").success, true);
+  assert.ok(suppliesMenuReply.suggestions.includes("Pomme"));
+  const armorMenu = speak(runtime, session, player, "armures");
+  const armorMenuReply = armorMenu.events.find((event) => event.type === "npc-spoke");
+  assert.ok(armorMenuReply.suggestions.includes("Armure de cuir"));
+  const armorConfirmation = speak(runtime, session, player, "Armure de cuir");
+  assert.match(armorConfirmation.events.find((event) => event.type === "npc-spoke").text, /Armure de cuir/);
+  assert.equal(speak(runtime, session, player, "non").success, true);
+  const saleConfirmation = speak(runtime, session, player, "vendre 2 pommes");
+  assert.equal(saleConfirmation.success, true);
+  assert.match(saleConfirmation.events.find((event) => event.type === "npc-spoke").text, /2 Pommes/);
   const sale = speak(runtime, session, player, "oui");
   assert.equal(sale.success, true);
   assert.equal(getPlayerGoldAmount(player), 2);

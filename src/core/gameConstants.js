@@ -56,6 +56,7 @@ export const CORPSE_DECAY_COOLDOWN_MS = {
 };
 
 export const PLAYER_ATTACK_COOLDOWN_MS = 1000;
+export const PLAYER_LANGUAGES = Object.freeze(["en", "fr"]);
 export const PLAYER_COMBAT_MODES = Object.freeze(["fullAttack", "balanced", "fullDefense"]);
 export const PLAYER_MOVE_COOLDOWN_MS = 200;
 export const SKILL_TRAINING_COOLDOWN_MS = 45000;

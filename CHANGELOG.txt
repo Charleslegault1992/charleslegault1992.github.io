@@ -1,3 +1,9 @@
+0.335 - Traduction complete de l'interface et des marchands
+    - Les equipements et les objets proposes par Ben utilisent maintenant leur nom francais.
+    - Les achats, ventes, echanges et sorts gardent la langue du joueur sur le serveur.
+    - La langue change maintenant sans reconnexion dans les conversations online.
+    - Traduction des informations mobiles de vie, mana, faim, niveau et controles.
+
 0.334 - Interface mobile et combat synchronise
     - Reorganisation des controles mobiles en deux barres compactes qui gardent le centre du jeu libre.
     - Amelioration des zones tactiles, des sacs, du chat, des sorts et des panneaux sur telephone.

@@ -163,28 +163,28 @@
           <input id="chat-input" class="chat-input" />
         </section>
         <div id="mobile-game-controls" class="mobile-game-controls" aria-hidden="true">
-          <div id="mobile-player-hud" class="mobile-vitals-hud" aria-label="Player status">
+          <div id="mobile-player-hud" class="mobile-vitals-hud" aria-label="Player status" data-game-title="playerStatus">
             <div class="mobile-vitals-heading">
               <span id="mobile-player-name" class="mobile-vitals-name"></span>
               <span id="mobile-player-level" class="mobile-vitals-level"></span>
             </div>
             <div class="mobile-vital-row mobile-vital-row-health">
-              <span class="mobile-vital-label">HP</span>
+              <span class="mobile-vital-label" data-game-text="mobileHealth">HP</span>
               <div class="mobile-vital-track"><div id="mobile-player-health-fill" class="mobile-vital-fill"></div></div>
               <span id="mobile-player-health-value" class="mobile-vital-value"></span>
             </div>
             <div class="mobile-vital-row mobile-vital-row-mana">
-              <span class="mobile-vital-label">MP</span>
+              <span class="mobile-vital-label" data-game-text="mobileMana">MP</span>
               <div class="mobile-vital-track"><div id="mobile-player-mana-fill" class="mobile-vital-fill"></div></div>
               <span id="mobile-player-mana-value" class="mobile-vital-value"></span>
             </div>
             <div class="mobile-vital-row mobile-vital-row-sanity">
-              <span class="mobile-vital-label">FOOD</span>
+              <span class="mobile-vital-label" data-game-text="mobileFood">FOOD</span>
               <div class="mobile-vital-track"><div id="mobile-player-sanity-fill" class="mobile-vital-fill"></div></div>
               <span id="mobile-player-sanity-value" class="mobile-vital-value"></span>
             </div>
           </div>
-          <div id="mobile-target-hud" class="mobile-target-hud" hidden>
+          <div id="mobile-target-hud" class="mobile-target-hud" data-game-title="targetStatus" hidden>
             <div class="mobile-target-heading">
               <span id="mobile-target-name" class="mobile-target-name"></span>
               <span id="mobile-target-value" class="mobile-target-value"></span>
@@ -203,16 +203,17 @@
             class="mobile-panel-close-button"
             type="button"
             aria-label="Close panel"
+            data-game-title="closePanel"
             hidden
           >
             &times;
           </button>
           <div id="mobile-joystick-zone" class="mobile-joystick-zone">
-            <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control">
+            <div id="mobile-joystick" class="mobile-joystick" aria-label="Movement control" data-game-title="movementControl">
               <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
             </div>
           </div>
-          <div class="mobile-panel-buttons" role="toolbar" aria-label="Game panels">
+          <div class="mobile-panel-buttons" role="toolbar" aria-label="Game panels" data-game-title="gamePanels">
             <button class="mobile-panel-button" type="button" data-mobile-panel="map" data-game-title="mobileMap">
               <span class="mobile-panel-icon mobile-panel-icon-map" aria-hidden="true"></span>
               <span class="mobile-panel-label" data-game-text="mobileMap">Map</span>
@@ -256,7 +257,7 @@
               <span class="mobile-panel-label" data-game-text="spells">Spells</span>
             </button>
           </div>
-          <div class="mobile-quick-actions" role="toolbar" aria-label="Combat controls">
+          <div class="mobile-quick-actions" role="toolbar" aria-label="Combat controls" data-game-title="combatControls">
             <button class="mobile-panel-button mobile-stance-button" type="button" data-mobile-action="cycle-stance">
               <span id="mobile-stance-icon" class="mobile-panel-icon mobile-panel-icon-stance" aria-hidden="true"
                 >BAL</span

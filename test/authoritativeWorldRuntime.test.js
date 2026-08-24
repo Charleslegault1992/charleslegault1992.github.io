@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   createAttackPlayerAction,
   createSetCombatModeAction,
+  createSetLanguageAction,
   createSetPvpEnabledAction,
   createAttackMonsterAction,
   createCastSpellAction,
@@ -224,6 +225,23 @@ test("combat stance changes are authoritative and replicated to the player", asy
   assert.equal(result.changes.combatMode, "fullDefense");
   assert.equal(runtime.getPlayer(session.playerUid).combatMode, "fullDefense");
   assert.equal(snapshot.self.combatMode, "fullDefense");
+});
+
+test("language changes are authoritative for online NPC conversations", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "language",
+    characterId: "translator",
+    language: "en",
+  }).playerUid;
+
+  const result = runtime.dispatchAction(session, createSetLanguageAction("fr", 1000));
+
+  assert.equal(result.success, true);
+  assert.equal(result.changes.language, "fr");
+  assert.equal(runtime.getPlayer(session.playerUid).language, "fr");
 });
 
 test("PVP lets an aggressor attack an innocent player and opens skull targets to everyone", async () => {

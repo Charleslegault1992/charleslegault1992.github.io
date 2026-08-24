@@ -96,6 +96,7 @@ import {
   createMovePlayerAction,
   createSendChatMessageAction,
   createSetCombatModeAction,
+  createSetLanguageAction,
   createSetPvpEnabledAction,
   createSpeakToNpcAction,
   createUseWorldTransitionAction,
@@ -4174,7 +4175,10 @@ const updatePlayerStatsUi = () => {
     rows.sanity.progressBarRefs,
     playerState.maxSanity > 0 ? playerState.sanity / playerState.maxSanity : 0,
   );
-  setProgressTooltipText(rows.hp.tooltipElement, `${playerState.hp}/${playerState.maxHp} HP`);
+  setProgressTooltipText(
+    rows.hp.tooltipElement,
+    `${playerState.hp}/${playerState.maxHp} ${getGameUiText("healthLabel").replace(":", "").toLowerCase()}`,
+  );
   setProgressTooltipText(rows.mana.tooltipElement, `${playerState.mana}/${playerState.maxMana} mana`);
   setProgressTooltipText(
     rows.sanity.tooltipElement,
@@ -4379,7 +4383,10 @@ const syncMobilePlayerHud = () => {
     return;
   }
   mobilePlayerName.textContent = playerState.name;
-  mobilePlayerLevel.textContent = `Lv ${playerState.level}`;
+  const mobileLevelText = getGameUiText("mobileLevel");
+  mobilePlayerLevel.textContent = typeof mobileLevelText === "function"
+    ? mobileLevelText(playerState.level)
+    : String(playerState.level);
   setMobileHudProgress(mobilePlayerHealthFill, mobilePlayerHealthValue, playerState.hp, playerState.maxHp);
   setMobileHudProgress(mobilePlayerManaFill, mobilePlayerManaValue, playerState.mana, playerState.maxMana);
   setMobileHudProgress(mobilePlayerSanityFill, mobilePlayerSanityValue, playerState.sanity, playerState.maxSanity);
@@ -8066,6 +8073,15 @@ gameOptionsController = createGameOptionsController({
   setAudioSettings: setGameAudioSettings,
   setMinimapZoom,
   refreshChatUi,
+  onLanguageChanged: (language) => {
+    if (!gameRuntimeState.isStarted || !gameTransport) {
+      return;
+    }
+    const action = createSetLanguageAction(language, Date.now());
+    if (action) {
+      gameTransport.send(action);
+    }
+  },
   updatePlayerInventory,
   updatePlayerStats,
 });
@@ -8726,6 +8742,10 @@ gameSimulation = createGameSimulation({
     executeSetCombatMode: (combatMode) => {
       playerState.combatMode = combatMode;
       return { success: true, changes: { combatMode } };
+    },
+    executeSetLanguage: (language) => {
+      playerState.language = language;
+      return { success: true, changes: { language } };
     },
     executeSetPvpEnabled: (enabled) => {
       playerState.pvp.enabled = enabled;
