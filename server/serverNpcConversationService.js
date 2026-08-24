@@ -57,6 +57,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         activePlayerUid: null,
         waitingPlayerUids: [],
         pendingAction: null,
+        activeMenu: null,
         tradeType: null,
         lastInteractionAt: 0,
       });
@@ -136,6 +137,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
   const release = (npc, state, now) => {
     state.activePlayerUid = null;
     state.pendingAction = null;
+    state.activeMenu = null;
     state.tradeType = null;
     state.lastInteractionAt = 0;
     return promoteQueue(npc, state, now);
@@ -304,6 +306,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     state.lastInteractionAt = now;
 
     if (isGreeting) {
+      state.activeMenu = null;
       return createReply(npc, player, format(dialogue.greeting, player, {
         bankBalance: player.bank.goldBalance,
       }), dialogue.greetingSuggestions);
@@ -327,25 +330,47 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
 
     if (npcData.service?.type === "newcomerSupport") {
+      if (hasAnyWord(words, ["back", "retour"])) {
+        state.activeMenu = null;
+        return createReply(npc, player, format(dialogue.greeting, player), dialogue.greetingSuggestions);
+      }
+      if (hasAnyWord(words, ["service", "services", "support", "help", "aide"])) {
+        state.activeMenu = "support";
+        return createReply(npc, player, dialogue.supportMenu, dialogue.supportSuggestions);
+      }
+      if (hasAnyWord(words, ["about", "propos"])) {
+        state.activeMenu = "about";
+        return createReply(npc, player, dialogue.aboutMenu, dialogue.aboutSuggestions);
+      }
+      if (hasAnyWord(words, ["name", "nom"])) {
+        state.activeMenu = "about";
+        return createReply(npc, player, dialogue.name, dialogue.aboutSuggestions);
+      }
+      if (hasAnyWord(words, ["job", "work", "travail", "metier"])) {
+        state.activeMenu = "about";
+        return createReply(npc, player, dialogue.job, dialogue.aboutSuggestions);
+      }
       if (hasAnyWord(words, ["heal", "healing", "soin", "soins", "guerir", "guerison"])) {
+        state.activeMenu = "support";
         const targetHp = Math.ceil(player.maxHp * 0.5);
         if (player.hp >= targetHp) {
-          return createReply(npc, player, dialogue.alreadyHealthy, dialogue.greetingSuggestions);
+          return createReply(npc, player, dialogue.alreadyHealthy, dialogue.supportSuggestions);
         }
         const restoredAmount = targetHp - player.hp;
         player.hp = targetHp;
-        return createReply(npc, player, dialogue.healed, dialogue.greetingSuggestions, [
+        return createReply(npc, player, dialogue.healed, dialogue.supportSuggestions, [
           { type: "npc-heal-completed", npcUid: npc.uid, playerUid: player.uid, restoredAmount },
         ]);
       }
 
       if (hasAnyWord(words, ["bag", "backpack", "sac", "sacs"])) {
+        state.activeMenu = "support";
         if (player.equipment.backpack) {
-          return createReply(npc, player, dialogue.bagAlreadyEquipped, dialogue.greetingSuggestions);
+          return createReply(npc, player, dialogue.bagAlreadyEquipped, dialogue.supportSuggestions);
         }
         const inventory = getInventory(player.uid);
         if (!inventory) {
-          return createReply(npc, player, dialogue.unavailable, dialogue.greetingSuggestions);
+          return createReply(npc, player, dialogue.unavailable, dialogue.supportSuggestions);
         }
         player.progress.dailyNpcRewardsByNpcId ??= {};
         const currentDay = Math.floor(now / DAY_DURATION_MS);
@@ -355,18 +380,23 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           player.progress.dailyNpcRewardsByNpcId[npc.npcId] = dailyReward;
         }
         if (dailyReward.count >= npcData.service.maxDailyBags) {
-          return createReply(npc, player, dialogue.dailyBagLimit, dialogue.greetingSuggestions);
+          return createReply(npc, player, dialogue.dailyBagLimit, dialogue.supportSuggestions);
         }
         const bag = createItemInstance("bag", 1);
         if (!bag) {
-          return createReply(npc, player, dialogue.unavailable, dialogue.greetingSuggestions);
+          return createReply(npc, player, dialogue.unavailable, dialogue.supportSuggestions);
         }
         player.equipment.backpack = bag;
         dailyReward.count++;
         inventory.refreshWeight();
-        return createReply(npc, player, dialogue.bagGiven, dialogue.greetingSuggestions, [
+        return createReply(npc, player, dialogue.bagGiven, dialogue.supportSuggestions, [
           { type: "npc-transaction-completed", transactionType: "free-bag", itemId: "bag", quantity: 1 },
         ]);
+      }
+      const menuText = state.activeMenu === "support" ? dialogue.supportMenu : dialogue.aboutMenu;
+      const menuSuggestions = state.activeMenu === "support" ? dialogue.supportSuggestions : dialogue.aboutSuggestions;
+      if (state.activeMenu) {
+        return createReply(npc, player, menuText, menuSuggestions);
       }
     }
 

@@ -1,3 +1,7 @@
+0.3407 - Menus de Kay
+    - Les choix de Kay sont maintenant organises en menus Services et A propos.
+    - Les actions Soin et Sac gardent leurs choix utiles avec un retour clair au menu principal.
+
 0.3406 - Interactions mobiles et aide de Kay
     - Le ciblage mobile des items ne declenche plus le joystick et les runes au sol sont utilisables.
     - Kay soigne les joueurs sous la moitie de leur vie et donne jusqua cinq sacs gratuits par jour.

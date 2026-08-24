@@ -82,11 +82,41 @@ test("Kay heals to half health and limits free bags to five per server day", asy
   const kay = [...runtime.getWorldEntities().npcs.values()].find((npc) => npc.npcId === "kay");
   Object.assign(player, { x: kay.x, y: kay.y, z: kay.z, hp: 10, maxHp: 101 });
 
-  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const greeting = speak(runtime, session, player, "salut");
+  assert.equal(greeting.success, true);
+  assert.deepEqual(
+    greeting.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Services", "A propos", "Bye"],
+  );
+  const services = speak(runtime, session, player, "services");
+  assert.deepEqual(
+    services.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Soin", "Sac", "Retour"],
+  );
   const heal = speak(runtime, session, player, "soin");
   assert.equal(heal.success, true);
   assert.equal(player.hp, 51);
   assert.equal(heal.events.some((event) => event.type === "npc-heal-completed"), true);
+  assert.deepEqual(
+    heal.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Soin", "Sac", "Retour"],
+  );
+
+  const rootMenu = speak(runtime, session, player, "retour");
+  assert.deepEqual(
+    rootMenu.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Services", "A propos", "Bye"],
+  );
+  const aboutMenu = speak(runtime, session, player, "a propos");
+  assert.deepEqual(
+    aboutMenu.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Nom", "Job", "Retour"],
+  );
+  const nameReply = speak(runtime, session, player, "nom");
+  assert.deepEqual(
+    nameReply.events.find((event) => event.type === "npc-spoke").suggestions,
+    ["Nom", "Job", "Retour"],
+  );
 
   for (let count = 1; count <= 5; count++) {
     player.equipment.backpack = null;
