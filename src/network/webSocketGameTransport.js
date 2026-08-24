@@ -3,6 +3,7 @@ import {
   createNetworkMessage,
   decodeNetworkMessage,
   encodeNetworkMessage,
+  SESSION_REPLACED_CLOSE_CODE,
   SERVER_MESSAGE_TYPE,
 } from "./networkProtocol.js";
 import { createClientReplicationStore } from "./clientReplicationStore.js";
@@ -27,6 +28,7 @@ export const createWebSocketGameTransport = ({
   replicationStore = createClientReplicationStore(),
   reconnectDelayMs = 250,
   maxReconnectDelayMs = 5000,
+  connectionAttemptTimeoutMs = 8000,
   pingIntervalMs = 5000,
   now = () => Date.now(),
 }) => {
@@ -38,6 +40,8 @@ export const createWebSocketGameTransport = ({
     !Number.isFinite(maxReconnectDelayMs) ||
     reconnectDelayMs < 0 ||
     maxReconnectDelayMs < reconnectDelayMs ||
+    !Number.isFinite(connectionAttemptTimeoutMs) ||
+    connectionAttemptTimeoutMs <= 0 ||
     !Number.isFinite(pingIntervalMs) ||
     pingIntervalMs <= 0 ||
     typeof now !== "function"
@@ -56,6 +60,7 @@ export const createWebSocketGameTransport = ({
   let rejectConnection = null;
   let helloPayload = null;
   let reconnectTimeoutId = null;
+  let connectionAttemptTimeoutId = null;
   let reconnectAttempt = 0;
   let connectionState = "disconnected";
   let shouldReconnect = false;
@@ -103,6 +108,13 @@ export const createWebSocketGameTransport = ({
     if (pingTimeoutId !== null) {
       clearTimeout(pingTimeoutId);
       pingTimeoutId = null;
+    }
+  };
+
+  const clearConnectionAttemptTimeout = () => {
+    if (connectionAttemptTimeoutId !== null) {
+      clearTimeout(connectionAttemptTimeoutId);
+      connectionAttemptTimeoutId = null;
     }
   };
 
@@ -166,6 +178,7 @@ export const createWebSocketGameTransport = ({
       ...movementPredictionState,
     });
     if (message.type === SERVER_MESSAGE_TYPE.snapshot) {
+      clearConnectionAttemptTimeout();
       reconnectAttempt = 0;
       setConnectionState("ready", { playerUid });
       startPingLoop();
@@ -178,8 +191,12 @@ export const createWebSocketGameTransport = ({
     }
   };
 
-  const handleMessage = async (event) => {
-    const message = decodeNetworkMessage(await getMessageText(event.data));
+  const handleMessage = async (event, generation) => {
+    const messageText = await getMessageText(event.data);
+    if (generation !== socketGeneration) {
+      return;
+    }
+    const message = decodeNetworkMessage(messageText);
     if (!message) {
       publish({ type: "protocol-error", reason: "invalid-server-message" });
       return;
@@ -225,9 +242,10 @@ export const createWebSocketGameTransport = ({
     }
     if (
       message.type === SERVER_MESSAGE_TYPE.error &&
-      ["authentication-failed", "connection-rejected"].includes(message.payload?.reason)
+      ["authentication-failed", "connection-rejected", "session-replaced"].includes(message.payload?.reason)
     ) {
       shouldReconnect = false;
+      clearConnectionAttemptTimeout();
       rejectConnection?.(new Error(message.payload.reason));
       resolveConnection = null;
       rejectConnection = null;
@@ -252,8 +270,28 @@ export const createWebSocketGameTransport = ({
     setConnectionState("reconnecting", { attempt: reconnectAttempt, delay });
     reconnectTimeoutId = setTimeout(() => {
       reconnectTimeoutId = null;
+      if (!shouldReconnect) {
+        return;
+      }
       openSocket();
     }, delay);
+  };
+
+  const startConnectionAttemptTimeout = (generation) => {
+    clearConnectionAttemptTimeout();
+    connectionAttemptTimeoutId = setTimeout(() => {
+      connectionAttemptTimeoutId = null;
+      if (generation !== socketGeneration || connectionState === "ready" || !shouldReconnect) {
+        return;
+      }
+      const expiredSocket = socket;
+      socketGeneration += 1;
+      socket = null;
+      playerUid = null;
+      publish({ type: "connection-timeout", attempt: reconnectAttempt + 1 });
+      expiredSocket?.close();
+      scheduleReconnect();
+    }, connectionAttemptTimeoutMs);
   };
 
   const openSocket = () => {
@@ -261,6 +299,7 @@ export const createWebSocketGameTransport = ({
     nextSequence = 0;
     socket = socketFactory(url);
     setConnectionState(reconnectAttempt > 0 ? "reconnecting" : "connecting", { attempt: reconnectAttempt });
+    startConnectionAttemptTimeout(generation);
     socket.addEventListener("open", () => {
       if (generation !== socketGeneration) {
         return;
@@ -271,7 +310,7 @@ export const createWebSocketGameTransport = ({
     });
     socket.addEventListener("message", (event) => {
       if (generation === socketGeneration) {
-        handleMessage(event);
+        handleMessage(event, generation);
       }
     });
     socket.addEventListener("error", () => {
@@ -279,9 +318,13 @@ export const createWebSocketGameTransport = ({
         publish({ type: "connection-error" });
       }
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (generation !== socketGeneration) {
         return;
+      }
+      clearConnectionAttemptTimeout();
+      if (event?.code === SESSION_REPLACED_CLOSE_CODE) {
+        shouldReconnect = false;
       }
       socket = null;
       playerUid = null;
@@ -368,6 +411,7 @@ export const createWebSocketGameTransport = ({
         clearTimeout(reconnectTimeoutId);
         reconnectTimeoutId = null;
       }
+      clearConnectionAttemptTimeout();
       stopPingLoop();
       publishDisconnectedLatency();
       const activeSocket = socket;

@@ -1,4 +1,5 @@
 export const NETWORK_PROTOCOL_VERSION = 1;
+export const SESSION_REPLACED_CLOSE_CODE = 4001;
 
 export const CLIENT_MESSAGE_TYPE = Object.freeze({
   hello: "client.hello",

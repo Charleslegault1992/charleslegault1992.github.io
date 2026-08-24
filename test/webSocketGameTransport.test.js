@@ -131,9 +131,9 @@ class FakeSocket {
     this.sent.push(message);
   }
 
-  close() {
+  close(code = 1000) {
     this.readyState = 3;
-    this.emit("close");
+    this.emit("close", { code });
   }
 }
 
@@ -181,6 +181,42 @@ test("the WebSocket transport reconnects and requires a fresh snapshot", async (
   assert.equal(transport.getConnectionState(), "ready");
   assert.equal(transport.getReplicationStore().getRevision(), 4);
   assert.equal(states.includes("reconnecting"), true);
+  transport.disconnect();
+});
+
+test("a stalled connection attempt is replaced until a snapshot arrives", async () => {
+  const sockets = [];
+  const transportEvents = [];
+  let resolveReplacementSocket;
+  const replacementSocketCreated = new Promise((resolve) => {
+    resolveReplacementSocket = resolve;
+  });
+  const transport = createWebSocketGameTransport({
+    url: "ws://test/game",
+    socketFactory: () => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      if (sockets.length === 2) {
+        resolveReplacementSocket(socket);
+      }
+      return socket;
+    },
+    reconnectDelayMs: 0,
+    maxReconnectDelayMs: 0,
+    connectionAttemptTimeoutMs: 20,
+  });
+  transport.subscribe((event) => transportEvents.push(event));
+
+  const connection = transport.connect({ characterId: "stalled" });
+  const activeSocket = await replacementSocketCreated;
+  activeSocket.open();
+  activeSocket.receive(SERVER_MESSAGE_TYPE.welcome, { playerUid: "player:stalled" }, 0);
+  activeSocket.receive(SERVER_MESSAGE_TYPE.snapshot, createReconnectSnapshot(2), 1);
+  const result = await connection;
+
+  assert.equal(result.playerUid, "player:stalled");
+  assert.equal(transport.getConnectionState(), "ready");
+  assert.equal(transportEvents.some((event) => event.type === "connection-timeout"), true);
   transport.disconnect();
 });
 

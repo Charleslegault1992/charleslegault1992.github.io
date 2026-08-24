@@ -1,3 +1,8 @@
+0.340 - Connexion mobile fiable
+    - Une connexion bloquee est maintenant remplacee automatiquement apres un delai sans snapshot.
+    - Une nouvelle connexion authentifiee reprend immediatement le meme personnage sans attendre le vieux heartbeat.
+    - Les anciennes sockets sont arretees proprement et le loading affiche les nouvelles tentatives.
+
 0.339 - Panneaux mobiles
     - Les panneaux mobiles restent maintenant ouverts pendant les interactions avec le monde.
     - La fenetre Quetes utilise maintenant le gros bouton de fermeture mobile en haut a droite.

@@ -6,6 +6,7 @@ import {
   CLIENT_MESSAGE_TYPE,
   decodeNetworkMessage,
   encodeNetworkPayload,
+  SESSION_REPLACED_CLOSE_CODE,
   SERVER_MESSAGE_TYPE,
 } from "../src/network/networkProtocol.js";
 import { createServerTickLoop } from "./serverTickLoop.js";
@@ -160,6 +161,19 @@ export const createGameServer = ({
       session.socket.close(1008, "Authentication failed");
       return;
     }
+    const characterId = typeof message.payload?.characterId === "string" ? message.payload.characterId.trim() : "";
+    const existingSession = [...sessionsBySocket.values()].find(
+      (candidate) =>
+        candidate !== session &&
+        candidate.isAuthenticated &&
+        candidate.accountId === identity.accountId &&
+        candidate.characterId === characterId,
+    );
+    if (existingSession) {
+      send(existingSession, SERVER_MESSAGE_TYPE.error, { reason: "session-replaced" });
+      closeSession(existingSession);
+      existingSession.socket.close(SESSION_REPLACED_CLOSE_CODE, "Session replaced");
+    }
     const result = runtime.connectClient(session, { ...message.payload, accountId: identity.accountId });
     if (!result?.success || typeof result.playerUid !== "string") {
       send(session, SERVER_MESSAGE_TYPE.error, { reason: result?.reason ?? "connection-rejected" });
@@ -167,6 +181,8 @@ export const createGameServer = ({
       return;
     }
     session.isAuthenticated = true;
+    session.accountId = identity.accountId;
+    session.characterId = characterId;
     session.playerUid = result.playerUid;
     send(session, SERVER_MESSAGE_TYPE.welcome, { clientId: session.clientId, playerUid: session.playerUid });
     sendSnapshot(session);
@@ -260,6 +276,8 @@ export const createGameServer = ({
       clientId: randomUUID(),
       socket,
       isAuthenticated: false,
+      accountId: null,
+      characterId: null,
       playerUid: null,
       lastClientSequence: -1,
       nextServerSequence: 0,

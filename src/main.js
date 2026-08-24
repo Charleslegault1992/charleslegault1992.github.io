@@ -9108,6 +9108,8 @@ const initializeRemoteGameSession = async () => {
       }
       if (gameRuntimeState.isStarted && state === "reconnecting") {
         showGameStatusMessage("Connection lost. Reconnecting...");
+      } else if (gameRuntimeState.isStarting && state === "reconnecting") {
+        gameLoadingController.setStage("loadingNetworkRetrying", 0.4);
       }
     },
   });
