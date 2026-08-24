@@ -1,3 +1,8 @@
+0.3409 - Runes de soin
+    - Ajout des petites et grandes runes de soin pour soi-meme ou les autres joueurs.
+    - Les runes de soin utilisent les charges, la portee, la ligne de vue et le cooldown commun des runes.
+    - Ajout des deux runes dans le sac de test runique de la cave.
+
 0.3408 - Fields, runes et effets de combat
     - Ajout des fields feu, poison, energie et glace avec trois stages animes et des degats qui diminuent.
     - Ajout des runes elementaires, des runes de field et de la Dissipation Rune pour detruire les fields.

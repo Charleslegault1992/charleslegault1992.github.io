@@ -28,6 +28,8 @@ test("the cave contains a runic test bag with every new rune", () => {
     "energyRune",
     "poisonRune",
     "iceRune",
+    "smallHealingRune",
+    "greatHealingRune",
     "fireFieldRune",
     "energyFieldRune",
     "poisonFieldRune",

@@ -3367,6 +3367,17 @@ const isPlayerValidRuneTarget = (targetPlayer, useData, now = Date.now()) => {
   );
 };
 
+const isPlayerValidHealingRuneTarget = (targetPlayer, useData) => {
+  return (
+    targetPlayer?.hp > 0 &&
+    targetPlayer.hp < targetPlayer.maxHp &&
+    targetPlayer.z === playerState.z &&
+    useData?.action === "healRune" &&
+    Number.isFinite(useData.range) &&
+    isNearPlayer(targetPlayer, useData.range)
+  );
+};
+
 const getRuneItemUseTargetIndicators = (useData) => {
   const chunkRadius = Math.ceil(useData.range / CHUNK_SIZE_TILES);
   const nearbyMonsters = getMonstersInChunkRadius(playerState.x, playerState.y, playerState.z, chunkRadius);
@@ -3408,6 +3419,26 @@ const getRuneItemUseTargetIndicators = (useData) => {
   return indicators;
 };
 
+const getHealingRuneTargetIndicators = (useData) => {
+  const indicators = [];
+  for (const targetPlayer of [playerState, ...playersByUid.values()]) {
+    if (!isPlayerValidHealingRuneTarget(targetPlayer, useData)) {
+      continue;
+    }
+    const renderPosition = getItemUseTargetRenderPosition(targetPlayer);
+    if (!renderPosition) {
+      continue;
+    }
+    indicators.push({
+      key: `player:${targetPlayer.uid}`,
+      x: renderPosition.x,
+      y: renderPosition.y,
+      color: 0x62d47d,
+    });
+  }
+  return indicators;
+};
+
 const syncItemUseTargetIndicators = () => {
   if (!itemUseState.isUsingItem || !itemUseState.useData) {
     clearPixiItemUseTargets();
@@ -3433,6 +3464,11 @@ const syncItemUseTargetIndicators = () => {
 
   if (itemUseState.useData.action === "attackRune") {
     setPixiItemUseTargets(getRuneItemUseTargetIndicators(itemUseState.useData));
+    return;
+  }
+
+  if (itemUseState.useData.action === "healRune") {
+    setPixiItemUseTargets(getHealingRuneTargetIndicators(itemUseState.useData));
     return;
   }
 
@@ -3657,8 +3693,9 @@ const handleDrinkPotionUse = (source, item, useData, target) => {
 };
 
 const handleRuneUse = (source, item, useData, target) => {
-  const targetEntity = target.monster ?? target.player ?? null;
-  const targetType = target.monster ? "monster" : target.player ? "player" : null;
+  const isHealingRune = useData.action === "healRune";
+  const targetEntity = isHealingRune ? (target.player ?? null) : (target.monster ?? target.player ?? null);
+  const targetType = isHealingRune ? (target.player ? "player" : null) : target.monster ? "monster" : target.player ? "player" : null;
   let result = null;
   if (targetEntity?.hp > 0 && targetEntity.z === playerState.z && !isNearPlayer(targetEntity, useData.range)) {
     startPlayerActionNavigation({
@@ -3723,6 +3760,9 @@ const completeItemUseFromEvent = (e) => {
     handleDrinkPotionUse(source, item, useData, target);
   }
   if (useData.action === "attackRune") {
+    handleRuneUse(source, item, useData, target);
+  }
+  if (useData.action === "healRune") {
     handleRuneUse(source, item, useData, target);
   }
   if (useData.action === "createField" || useData.action === "dispelField") {
@@ -8763,6 +8803,48 @@ const executeSimulationItemUse = (item, useData, payload) => {
     };
   }
 
+  if (useData.action === "healRune") {
+    const targetPlayer = payload.target?.targetType === "player"
+      ? (playersByUid.get(payload.target.playerUid) ?? (payload.target.playerUid === playerState.uid ? playerState : null))
+      : payload.target?.targetType === "self"
+        ? playerState
+        : null;
+    if (!isPlayerValidHealingRuneTarget(targetPlayer, useData)) {
+      return { success: false, reason: targetPlayer?.hp >= targetPlayer?.maxHp ? "fullHealth" : "target-out-of-range" };
+    }
+    if (!hasPlayerLineOfSightToEntity(targetPlayer)) {
+      return { success: false, reason: "line-of-sight-blocked" };
+    }
+    if (!consumeOneChargeFromRune(item, payload.source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    const restoredAmount = Math.min(useData.healAmount, targetPlayer.maxHp - targetPlayer.hp);
+    targetPlayer.hp += restoredAmount;
+    if (!beginUseCooldown(cooldownGroup, payload.requestedAt)) {
+      return { success: false, reason: "invalid-cooldown" };
+    }
+    return {
+      success: true,
+      changes: {
+        itemUid: item.uid,
+        charges: item.charges ?? 0,
+        targetPlayerUid: targetPlayer.uid,
+        hp: targetPlayer.hp,
+        restoredAmount,
+      },
+      events: [{
+        type: "item-use-resolved",
+        action: "healRune",
+        itemUid: item.uid,
+        targetPlayerUid: targetPlayer.uid,
+        restoredAmount,
+        floatingTextType: "heal",
+        cooldownGroup,
+        sfx: GAME_SFX.runeUse,
+      }],
+    };
+  }
+
   if (useData.action === "attackRune") {
     const targetType = payload.target?.targetType;
     const targetEntity = targetType === "monster"
@@ -9148,7 +9230,14 @@ const handleItemUseResolvedEffect = (event) => {
   refreshAllByUid(event.itemUid);
   refreshInventoryUi();
   if (event.restoredAmount > 0 && event.floatingTextType) {
-    showFloatingTextAbovePlayer(event.restoredAmount, event.floatingTextType);
+    const targetPlayer = event.targetPlayerUid === playerState.uid
+      ? playerState
+      : playersByUid.get(event.targetPlayerUid) ?? playerState;
+    showFloatingTextAbovePlayer(event.restoredAmount, event.floatingTextType, targetPlayer);
+    if (targetPlayer !== playerState) {
+      updateRemotePlayerVisual(targetPlayer);
+      syncMobileTargetHud();
+    }
   }
   refreshPlayerVitalsUi();
   if (event.sfx) {

@@ -379,9 +379,9 @@ export const createPlayerNavigationController = ({
       if (action.targetType === "player") {
         const targetPlayer = findPlayerByUid(action.targetUid);
         if (
-          useData.action !== "attackRune" ||
+          !["attackRune", "healRune"].includes(useData.action) ||
           !targetPlayer ||
-          targetPlayer.uid === playerState.uid ||
+          (useData.action === "attackRune" && targetPlayer.uid === playerState.uid) ||
           targetPlayer.hp <= 0 ||
           targetPlayer.z !== playerState.z
         ) {

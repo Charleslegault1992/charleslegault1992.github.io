@@ -542,6 +542,8 @@ export const GAME_CONTENT_TEXT = {
       iceRune: { name: "Rune de glace", pluralName: "Runes de glace", desc: "Une rune chargee d'un froid mordant.", suffix: "une" },
       energyRune: { name: "Rune d'energie", pluralName: "Runes d'energie", desc: "Une rune chargee d'energie instable.", suffix: "une" },
       poisonRune: { name: "Rune de poison", pluralName: "Runes de poison", desc: "Une rune imbibee d'un poison virulent.", suffix: "une" },
+      smallHealingRune: { name: "Petite rune de soin", pluralName: "Petites runes de soin", desc: "Une rune simple qui redonne un peu de vie.", suffix: "une" },
+      greatHealingRune: { name: "Grande rune de soin", pluralName: "Grandes runes de soin", desc: "Une rune puissante qui redonne beaucoup de vie.", suffix: "une" },
       energyFieldRune: { name: "Rune de champ d'energie", pluralName: "Runes de champ d'energie", desc: "Cree un champ d'energie au sol.", suffix: "une" },
       poisonFieldRune: { name: "Rune de champ empoisonne", pluralName: "Runes de champ empoisonne", desc: "Cree un champ empoisonne au sol.", suffix: "une" },
       iceFieldRune: { name: "Rune de champ glace", pluralName: "Runes de champ glace", desc: "Cree un champ glace au sol.", suffix: "une" },

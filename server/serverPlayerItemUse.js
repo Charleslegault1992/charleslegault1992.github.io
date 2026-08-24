@@ -239,6 +239,60 @@ export const createServerPlayerItemUse = ({
     return item.charges > 0 || Boolean(inventory.removeItem(source));
   };
 
+  const executeHealingRune = (item, source, useData, target) => {
+    const targetPlayer = target?.targetType === "self"
+      ? player
+      : target?.targetType === "player"
+        ? players.get(target.playerUid)
+        : null;
+    if (
+      !targetPlayer ||
+      targetPlayer.hp <= 0 ||
+      !Number.isFinite(targetPlayer.maxHp) ||
+      !Number.isFinite(useData.healAmount) ||
+      useData.healAmount <= 0 ||
+      !isNear(player, targetPlayer, useData.range)
+    ) {
+      return { success: false, reason: "target-out-of-range" };
+    }
+    if (targetPlayer.hp >= targetPlayer.maxHp) {
+      return { success: false, reason: "fullHealth" };
+    }
+    const worldMap = worldMapsByZ.get(player.z);
+    if (!hasLineOfSightBetweenTiles(
+      worldMap,
+      { col: player.x / TILE_SIZE, row: player.y / TILE_SIZE },
+      { col: targetPlayer.x / TILE_SIZE, row: targetPlayer.y / TILE_SIZE },
+    )) {
+      return { success: false, reason: "line-of-sight-blocked" };
+    }
+    if (!consumeRuneCharge(item, source)) {
+      return { success: false, reason: "item-consume-failed" };
+    }
+    const restoredAmount = Math.min(useData.healAmount, targetPlayer.maxHp - targetPlayer.hp);
+    targetPlayer.hp += restoredAmount;
+    return {
+      success: true,
+      changes: {
+        itemUid: item.uid,
+        charges: Math.max(item.charges, 0),
+        targetPlayerUid: targetPlayer.uid,
+        hp: targetPlayer.hp,
+        restoredAmount,
+      },
+      events: [{
+        type: "item-use-resolved",
+        action: "healRune",
+        itemUid: item.uid,
+        targetPlayerUid: targetPlayer.uid,
+        restoredAmount,
+        floatingTextType: "heal",
+        cooldownGroup: useData.cooldownGroup,
+        sfx: "RuneUse",
+      }],
+    };
+  };
+
   const executeCreateFieldRune = (item, source, useData, target, requestedAt) => {
     if (!getValidRuneTileTarget(target, useData) || groundEffectsDatabase[useData.groundEffectId]?.kind !== "field") {
       return { success: false, reason: "target-out-of-range" };
@@ -312,6 +366,8 @@ export const createServerPlayerItemUse = ({
       result = executePotion(item, useData, payload.target, payload.requestedAt);
     } else if (useData.action === "attackRune") {
       result = executeRune(item, payload.source, useData, payload.target);
+    } else if (useData.action === "healRune") {
+      result = executeHealingRune(item, payload.source, useData, payload.target);
     } else if (useData.action === "createField") {
       result = executeCreateFieldRune(item, payload.source, useData, payload.target, payload.requestedAt);
     } else if (useData.action === "dispelField") {

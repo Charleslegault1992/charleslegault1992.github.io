@@ -776,6 +776,50 @@ test("a top world rune can be used directly from the ground", async () => {
   assert.equal(runtime.getWorldEntities().worldItems.has(rune.uid), true);
 });
 
+test("healing runes restore another player without consuming a charge at full health", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const healerSession = {};
+  const targetSession = {};
+  const healerConnection = runtime.connectClient(healerSession, { accountId: "runes", characterId: "healer" });
+  const targetConnection = runtime.connectClient(targetSession, { accountId: "runes", characterId: "target" });
+  healerSession.playerUid = healerConnection.playerUid;
+  targetSession.playerUid = targetConnection.playerUid;
+  const healer = runtime.getPlayer(healerConnection.playerUid);
+  const target = runtime.getPlayer(targetConnection.playerUid);
+  Object.assign(target, { x: healer.x, y: healer.y, z: healer.z, hp: 10 });
+  const backpack = createItemInstance("bag", 1);
+  const greatRune = createItemInstance("greatHealingRune", 1);
+  const smallRune = createItemInstance("smallHealingRune", 1);
+  backpack.content[0] = greatRune;
+  backpack.content[1] = smallRune;
+  healer.equipment.backpack = backpack;
+
+  const useRune = (rune, slotIndex) => runtime.dispatchAction(
+    healerSession,
+    createUseItemAction({
+      source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
+      itemUid: rune.uid,
+      target: { targetType: "player", playerUid: target.uid },
+      requestedAt: serverTime,
+    }),
+  );
+
+  const healResult = useRune(greatRune, 0);
+  assert.equal(healResult.success, true);
+  assert.equal(target.hp, target.maxHp);
+  assert.equal(healResult.changes.restoredAmount, target.maxHp - 10);
+  assert.equal(greatRune.charges, 4);
+  assert.equal(healResult.events[0].targetPlayerUid, target.uid);
+
+  serverTime += 2000;
+  const fullHealthResult = useRune(smallRune, 1);
+  assert.equal(fullHealthResult.success, false);
+  assert.equal(fullHealthResult.reason, "fullHealth");
+  assert.equal(smallRune.charges, 5);
+});
+
 test("field runes create and dispel an authoritative field from the ground", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;

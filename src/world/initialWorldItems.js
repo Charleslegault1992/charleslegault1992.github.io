@@ -19,6 +19,8 @@ const INITIAL_WORLD_ITEM_DEFINITIONS = Object.freeze([
       "energyRune",
       "poisonRune",
       "iceRune",
+      "smallHealingRune",
+      "greatHealingRune",
       "fireFieldRune",
       "energyFieldRune",
       "poisonFieldRune",
