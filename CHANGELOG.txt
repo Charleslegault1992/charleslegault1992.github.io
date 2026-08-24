@@ -1,3 +1,6 @@
+0.3412 - Sprites des runes
+    - Correction des sprites des runes dans la sprite sheet des items.
+
 0.3411 - Runes, rendu des noms et NPC en ligne
     - Correction des sprites elementaires, des charges et du cooldown visuel commun des runes.
     - Les noms des joueurs restent au-dessus du decor et deviennent rouges seulement avec une skull.
