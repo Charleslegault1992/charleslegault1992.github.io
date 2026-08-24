@@ -3886,11 +3886,19 @@ body.item-drag-active * {
   }
 
   .quest-window-close-button {
+    top: 50%;
+    right: 0;
     width: 40px;
     height: 40px;
     font-size: 18px;
     line-height: 40px;
+    transform: translateY(-50%);
     touch-action: manipulation;
+  }
+
+  .quest-window-header {
+    min-height: 40px;
+    padding-right: 40px;
   }
 
   .quest-list-row {

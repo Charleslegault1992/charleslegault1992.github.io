@@ -1,3 +1,8 @@
+0.338 - Menu mobile et sacs
+    - Changer de stance, allumer la torche ou activer le PVP garde maintenant le menu mobile ouvert.
+    - Correction de la position du bouton pour fermer la fenetre Quetes sur mobile.
+    - Ben vend maintenant des sacs dans une nouvelle categorie Achat.
+
 0.337 - Menu mobile et confirmations
     - Remplacement des grosses barres mobiles par un menu compact organise par panneaux, combat et systeme.
     - La fenetre Options passe maintenant devant les controles mobiles et reste utilisable apres un changement de layout.

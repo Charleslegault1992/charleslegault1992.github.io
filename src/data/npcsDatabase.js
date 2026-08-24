@@ -76,6 +76,10 @@ export const npcsDatabase = {
         legs: { labels: { en: "Legs", fr: "Pantalons" }, keywords: ["legs", "pants", "leggings", "pantalon", "pantalons"] },
         boots: { labels: { en: "Boots", fr: "Bottes" }, keywords: ["boot", "boots", "botte", "bottes"] },
         shields: { labels: { en: "Shields", fr: "Boucliers" }, keywords: ["shield", "shields", "bouclier", "boucliers"] },
+        containers: {
+          labels: { en: "Containers", fr: "Contenants" },
+          keywords: ["container", "containers", "contenant", "contenants"],
+        },
       },
       offers: {
         apple: { category: "supplies", buyPrice: 3, sellPrice: 1, keywords: ["apple", "pomme"] },
@@ -89,6 +93,7 @@ export const npcsDatabase = {
         wandererPants: { category: "legs", buyPrice: 25, sellPrice: 8, keywords: ["wanderer pants", "pantalon voyageur"] },
         wornBoots: { category: "boots", buyPrice: 20, sellPrice: 7, keywords: ["worn boots", "bottes usees"] },
         woodenShield: { category: "shields", buyPrice: 60, sellPrice: 20, keywords: ["wooden shield", "bouclier bois"] },
+        bag: { category: "containers", buyPrice: 10, sellPrice: 3, keywords: ["bag", "bags", "sac", "sacs"] },
       },
     },
     dialogue: {

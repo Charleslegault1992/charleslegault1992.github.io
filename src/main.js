@@ -4310,6 +4310,7 @@ const addSkillLevelUpFeedback = (skillKey, newLevel) => {
 
 const MOBILE_GAME_LAYOUT_QUERY = "(max-width: 900px), (max-width: 1024px) and (pointer: coarse)";
 const MOBILE_JOYSTICK_DIAGONAL_HOLD_MS = 500;
+const MOBILE_ACTIONS_KEEP_MENU_OPEN = new Set(["cycle-stance", "toggle-torch", "toggle-pvp"]);
 const mobileGameLayoutMedia = window.matchMedia(MOBILE_GAME_LAYOUT_QUERY);
 
 const mobileGameUiState = {
@@ -6114,7 +6115,8 @@ for (const button of mobileActionButtons) {
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (button.dataset.mobileAction === "toggle-menu") {
+    const mobileAction = button.dataset.mobileAction;
+    if (mobileAction === "toggle-menu") {
       const shouldOpenMenu = !mobileGameUiState.isActionMenuOpen;
       if (shouldOpenMenu && mobileGameUiState.openPanel !== null) {
         setOpenMobilePanel(null);
@@ -6122,26 +6124,28 @@ for (const button of mobileActionButtons) {
       setMobileActionMenuOpen(shouldOpenMenu);
       return;
     }
-    setMobileActionMenuOpen(false);
-    if (button.dataset.mobileAction === "toggle-backpack") {
+    if (!MOBILE_ACTIONS_KEEP_MENU_OPEN.has(mobileAction)) {
+      setMobileActionMenuOpen(false);
+    }
+    if (mobileAction === "toggle-backpack") {
       toggleMobileBackpack();
-    } else if (button.dataset.mobileAction === "toggle-follow") {
+    } else if (mobileAction === "toggle-follow") {
       togglePlayerFollow();
       syncMobileFollowButton();
-    } else if (button.dataset.mobileAction === "cycle-stance") {
+    } else if (mobileAction === "cycle-stance") {
       cycleMobileCombatMode();
-    } else if (button.dataset.mobileAction === "toggle-spells") {
+    } else if (mobileAction === "toggle-spells") {
       toggleSpellWindow();
-    } else if (button.dataset.mobileAction === "toggle-quests") {
+    } else if (mobileAction === "toggle-quests") {
       setOpenMobilePanel(null);
       toggleQuestWindow();
-    } else if (button.dataset.mobileAction === "toggle-torch") {
+    } else if (mobileAction === "toggle-torch") {
       toggleMobileTorch();
-    } else if (button.dataset.mobileAction === "toggle-pvp") {
+    } else if (mobileAction === "toggle-pvp") {
       togglePvpMode();
-    } else if (button.dataset.mobileAction === "toggle-options") {
+    } else if (mobileAction === "toggle-options") {
       toggleOptionsWindow();
-    } else if (button.dataset.mobileAction === "logout") {
+    } else if (mobileAction === "logout") {
       requestLogoutCurrentCharacter();
     }
   });
