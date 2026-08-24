@@ -1,3 +1,7 @@
+0.3403 - Sac et equipement mobile
+    - Le sac et le panneau equipement peuvent maintenant rester ouverts ensemble pour deplacer les items.
+    - Le menu mobile reste accessible et passe devant les sacs ouverts.
+
 0.3402 - Redimensionnement des sacs mobile
     - Un sac rapetissi peut maintenant etre agrandi de nouveau jusqua la hauteur disponible de lecran.
     - La limite de redimensionnement mobile ne depend plus de la hauteur actuelle du dock.

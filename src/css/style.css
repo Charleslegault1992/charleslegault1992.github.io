@@ -3121,7 +3121,7 @@ body.item-drag-active * {
   .mobile-game-controls {
     position: absolute;
     inset: 0;
-    z-index: 10000001;
+    z-index: 10000004;
     display: block;
     pointer-events: none;
   }
@@ -3178,9 +3178,7 @@ body.item-drag-active * {
 
   .mobile-game-controls-chat-open .mobile-primary-actions,
   .mobile-game-controls-chat-open .mobile-action-menu,
-  .mobile-game-controls-chat-open .mobile-item-use-indicator,
-  .mobile-game-controls-panel-open .mobile-action-menu,
-  .mobile-game-controls-container-open .mobile-action-menu {
+  .mobile-game-controls-chat-open .mobile-item-use-indicator {
     opacity: 0;
     pointer-events: none;
   }

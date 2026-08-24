@@ -4535,7 +4535,6 @@ const toggleMobileBackpack = () => {
     return;
   }
 
-  setOpenMobilePanel(null);
   openContainer(backpack, getLocalizedItemName(backpack.itemId), "equipment", null);
 };
 
@@ -6123,9 +6122,6 @@ for (const button of mobileActionButtons) {
     const mobileAction = button.dataset.mobileAction;
     if (mobileAction === "toggle-menu") {
       const shouldOpenMenu = !mobileGameUiState.isActionMenuOpen;
-      if (shouldOpenMenu && mobileGameUiState.openPanel !== null) {
-        setOpenMobilePanel(null);
-      }
       setMobileActionMenuOpen(shouldOpenMenu);
       return;
     }
@@ -8466,7 +8462,6 @@ containerWindowController = createContainerWindowController({
   cancelItemDrag,
   handleUseItemFromSource,
   isMobileGameLayout,
-  setOpenMobilePanel,
   syncMobileBackpackButton,
   syncItemUseSourceFeedback,
   refreshInventoryUi,

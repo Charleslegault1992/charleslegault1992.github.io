@@ -14,7 +14,6 @@ export const createContainerWindowController = ({
   cancelItemDrag,
   handleUseItemFromSource,
   isMobileGameLayout,
-  setOpenMobilePanel,
   syncMobileBackpackButton,
   syncItemUseSourceFeedback,
   refreshInventoryUi,
@@ -291,9 +290,6 @@ export const createContainerWindowController = ({
       windowHeight: null,
       maxWindowHeight: null,
     });
-    if (isMobileGameLayout()) {
-      setOpenMobilePanel(null);
-    }
     render();
     return true;
   };
