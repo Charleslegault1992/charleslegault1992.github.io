@@ -188,6 +188,26 @@ export const createContainerWindowController = ({
     window.addEventListener("blur", finishWindowMove, { once: true });
   };
 
+  const getContainerDockHeightLimit = () => {
+    if (!isMobileGameLayout()) {
+      return playerContainers.clientHeight;
+    }
+
+    const dockStyle = window.getComputedStyle(playerContainers);
+    const containingHeight = playerContainers.offsetParent?.clientHeight ?? window.visualViewport?.height ?? window.innerHeight;
+    const topInset = Number.parseFloat(dockStyle.top);
+    const bottomInset = Number.parseFloat(dockStyle.bottom);
+    const configuredMaxHeight = Number.parseFloat(dockStyle.maxHeight);
+    const availableHeight =
+      Number.isFinite(containingHeight) && Number.isFinite(topInset) && Number.isFinite(bottomInset)
+        ? containingHeight - topInset - bottomInset
+        : playerContainers.clientHeight;
+
+    return Number.isFinite(configuredMaxHeight)
+      ? Math.min(availableHeight, configuredMaxHeight)
+      : availableHeight;
+  };
+
   const startResize = (event, windowElement, container, resizeHandle) => {
     if (dragState.isDragging || event.button !== 0) {
       return;
@@ -196,13 +216,12 @@ export const createContainerWindowController = ({
     event.stopPropagation();
     const startPointerY = event.clientY;
     const startHeight = windowElement.getBoundingClientRect().height;
+    const dockHeightLimit = getContainerDockHeightLimit();
+    const contentMaxHeight = Number.isFinite(container.maxWindowHeight) ? container.maxWindowHeight : dockHeightLimit;
+    const maxHeight = Math.max(70, Math.min(contentMaxHeight, dockHeightLimit));
     resizeHandle.setPointerCapture(event.pointerId);
 
     const resizeWindow = (moveEvent) => {
-      const contentMaxHeight = Number.isFinite(container.maxWindowHeight)
-        ? container.maxWindowHeight
-        : playerContainers.clientHeight;
-      const maxHeight = Math.max(70, Math.min(contentMaxHeight, playerContainers.clientHeight));
       const nextHeight = clamp(startHeight + moveEvent.clientY - startPointerY, 70, maxHeight);
       windowElement.style.height = `${nextHeight}px`;
       container.windowHeight = nextHeight;
@@ -229,7 +248,7 @@ export const createContainerWindowController = ({
     const bodyStyle = window.getComputedStyle(bodyElement);
     const bodyVerticalPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
     const contentHeight = Math.ceil(windowChromeHeight + bodyVerticalPadding + slotGridHeight);
-    const maxWindowHeight = Math.max(70, Math.min(contentHeight, playerContainers.clientHeight));
+    const maxWindowHeight = Math.max(70, Math.min(contentHeight, getContainerDockHeightLimit()));
     const requestedHeight = Number.isFinite(container.windowHeight) ? container.windowHeight : maxWindowHeight;
     const resolvedHeight = clamp(requestedHeight, 70, maxWindowHeight);
     Object.assign(container, { maxWindowHeight, windowHeight: resolvedHeight });

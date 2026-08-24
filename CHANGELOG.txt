@@ -1,3 +1,7 @@
+0.3402 - Redimensionnement des sacs mobile
+    - Un sac rapetissi peut maintenant etre agrandi de nouveau jusqua la hauteur disponible de lecran.
+    - La limite de redimensionnement mobile ne depend plus de la hauteur actuelle du dock.
+
 0.3401 - Session mobile et mouvement
     - Chaque client garde maintenant une identite de session stable pendant ses reconnexions.
     - Un ancien client ne peut plus reprendre le personnage et bloquer la session mobile active.
