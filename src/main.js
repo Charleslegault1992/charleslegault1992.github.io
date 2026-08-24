@@ -3068,6 +3068,7 @@ const updatePlayerInventory = () => {
   renderSpellWindow();
   syncMobileBackpackButton();
   syncMobileFollowButton();
+  syncMobileWindowButtons();
   syncItemUseSourceFeedback();
 };
 
@@ -4448,6 +4449,19 @@ const syncMobileFollowButton = () => {
   followButton?.setAttribute("aria-pressed", String(isActive));
 };
 
+const syncMobileWindowButtons = () => {
+  const windowStatesByAction = {
+    "toggle-spells": spellUiState.isOpen,
+    "toggle-quests": questUiState.isOpen,
+    "toggle-options": gameOptionsUiState.isOpen,
+  };
+  for (const [action, isOpen] of Object.entries(windowStatesByAction)) {
+    const button = document.querySelector(`[data-mobile-action="${action}"]`);
+    button?.classList.toggle("mobile-panel-button-active", isOpen);
+    button?.setAttribute("aria-expanded", String(isOpen));
+  }
+};
+
 const syncMobileTorchButton = () => {
   const torchButton = document.querySelector('[data-mobile-action="toggle-torch"]');
   const torch = getEquipmentSlotItem("ammo");
@@ -4500,6 +4514,7 @@ const syncMobileGameLayout = () => {
   refreshPvpButtonState();
   syncMobileBackpackButton();
   syncMobileFollowButton();
+  syncMobileWindowButtons();
   syncMobileStanceButton();
   syncItemUseSourceFeedback();
   renderSpellWindow();
@@ -5097,7 +5112,13 @@ const updateMobileJoystickFromPointer = (clientX, clientY) =>
   mobileJoystickController.updateFromPointer(clientX, clientY);
 
 const cancelPlayerNavigationForManualMovement = () => {
-  const shouldCancelFollow = playerNavigationState.followEnabled && combatTargetState.monsterUid !== null;
+  const hasFollowTarget =
+    playerNavigationState.followTargetUid !== null ||
+    combatTargetState.monsterUid !== null ||
+    combatTargetState.playerUid !== null;
+  const shouldCancelFollow =
+    playerNavigationState.followEnabled &&
+    (hasFollowTarget || playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow);
   if (shouldCancelFollow) {
     playerNavigationState.followEnabled = false;
   }
@@ -6070,6 +6091,9 @@ for (const button of mobileActionButtons) {
       cycleMobileCombatMode();
     } else if (button.dataset.mobileAction === "toggle-spells") {
       toggleSpellWindow();
+    } else if (button.dataset.mobileAction === "toggle-quests") {
+      setOpenMobilePanel(null);
+      toggleQuestWindow();
     } else if (button.dataset.mobileAction === "toggle-torch") {
       toggleMobileTorch();
     } else if (button.dataset.mobileAction === "toggle-pvp") {
@@ -6175,7 +6199,8 @@ const startMinimapPan = (event) => minimapController.startPan(event);
 const updateMinimapPan = (event) => minimapController.updatePan(event);
 const finishMinimapPan = (event, shouldNavigate) => minimapController.finishPan(event, shouldNavigate);
 
-const startPlayerFollowNavigation = () => playerNavigationController.startFollow();
+const startPlayerFollowNavigation = (targetType = null, targetUid = null) =>
+  playerNavigationController.startFollow(targetType, targetUid);
 const updatePlayerFollowNavigation = (now, forceRefresh = false) =>
   playerNavigationController.updateFollow(now, forceRefresh);
 const isPlayerWithinActionRange = (target, range, distanceType = PLAYER_ACTION_DISTANCE_TYPE.square) =>
@@ -6451,6 +6476,15 @@ const selectRemotePlayer = (remotePlayer) => {
     return false;
   }
   if (!canInitiatePlayerPvpAttack(playerState, remotePlayer, Date.now())) {
+    if (playerNavigationState.followEnabled) {
+      clearRemotePlayerSelection();
+      clearMonsterSelection();
+      combatTargetState.monsterUid = null;
+      syncMobileTargetHud();
+      startPlayerFollowNavigation("player", remotePlayer.uid);
+      syncMobileFollowButton();
+      return true;
+    }
     clearRemotePlayerSelection();
     syncMobileTargetHud();
     showGameStatusMessage(getGameUiText("pvpRequiresBothPlayers"));
@@ -6463,8 +6497,30 @@ const selectRemotePlayer = (remotePlayer) => {
   if (!wasSelected) {
     combatTargetState.playerUid = remotePlayer.uid;
     updateRemotePlayerVisual(remotePlayer);
+    if (playerNavigationState.followEnabled) {
+      startPlayerFollowNavigation("player", remotePlayer.uid);
+    }
+  } else if (playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow) {
+    stopPlayerNavigation();
   }
   syncMobileTargetHud();
+  return true;
+};
+
+const loseSelectedPlayerTarget = () => {
+  if (combatTargetState.playerUid === null) {
+    return false;
+  }
+  clearRemotePlayerSelection();
+  syncMobileTargetHud();
+  const wasFollowing =
+    playerNavigationState.followEnabled || playerNavigationState.mode === PLAYER_NAVIGATION_MODE.follow;
+  playerNavigationState.followEnabled = false;
+  stopPlayerNavigation();
+  if (wasFollowing) {
+    updatePlayerInventory();
+  }
+  showGameStatusMessage(getGameUiText("targetLost"));
   return true;
 };
 
@@ -6783,7 +6839,7 @@ const selectMonster = (monster) => {
   selectMonsterElement(combatTargetState.monsterUid);
   syncMobileTargetHud();
   if (playerNavigationState.followEnabled) {
-    startPlayerFollowNavigation();
+    startPlayerFollowNavigation("monster", monster.uid);
   }
 };
 
@@ -8159,6 +8215,7 @@ playerNavigationController = createPlayerNavigationController({
   isTilePathTraversable,
   isWorldItemAvailableForInteraction,
   loseSelectedMonsterTarget,
+  loseSelectedPlayerTarget,
   sayGreetingToNpc,
   showGameStatusMessage,
   startItemDrag,

@@ -1,3 +1,9 @@
+0.336 - Controles mobiles et suivi
+    - Correction du joystick qui pouvait rester bloque apres un changement de direction en diagonale.
+    - Ajout du bouton Quetes et synchronisation visuelle des boutons de fenetres sur mobile.
+    - Les deux barres de controles ont maintenant la meme largeur et le panneau equipement est allege sur mobile.
+    - Le mode Suivre fonctionne avec un monstre ou un joueur et se desactive lors d'un mouvement manuel.
+
 0.335 - Traduction complete de l'interface et des marchands
     - Les equipements et les objets proposes par Ben utilisent maintenant leur nom francais.
     - Les achats, ventes, echanges et sorts gardent la langue du joueur sur le serveur.

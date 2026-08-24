@@ -10,18 +10,18 @@ export const createMobileJoystickController = ({ state, diagonalHoldMs, cancelPl
     state.joystickDiagonalCandidate = null;
     state.joystickDiagonalReady = false;
     state.joystickDiagonalTimeoutId = null;
-    state.joystickClientX = null;
-    state.joystickClientY = null;
-    state.joystickCenterX = null;
-    state.joystickCenterY = null;
-    state.joystickMaxDistance = null;
-    state.joystickDeadZone = null;
   };
 
   const reset = () => {
     state.joystickPointerId = null;
     state.joystickWasMoving = false;
     resetDiagonalHold();
+    state.joystickClientX = null;
+    state.joystickClientY = null;
+    state.joystickCenterX = null;
+    state.joystickCenterY = null;
+    state.joystickMaxDistance = null;
+    state.joystickDeadZone = null;
     resetMovementKeys();
     if (mobileJoystickKnob) {
       mobileJoystickKnob.style.transform = "translate3d(0px, 0px, 0px)";

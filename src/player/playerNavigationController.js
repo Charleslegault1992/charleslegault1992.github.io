@@ -44,6 +44,8 @@ export const playerNavigationState = {
   path: [],
   destinationTile: null,
   followEnabled: false,
+  followTargetType: null,
+  followTargetUid: null,
   pendingAction: null,
   actionExecuteAt: 0,
   nextPathRefreshAt: 0,
@@ -83,12 +85,46 @@ export const createPlayerNavigationController = ({
   isTilePathTraversable,
   isWorldItemAvailableForInteraction,
   loseSelectedMonsterTarget,
+  loseSelectedPlayerTarget,
   sayGreetingToNpc,
   showGameStatusMessage,
   startItemDrag,
   updatePlayerInventory,
   worldItemThrowRange,
 }) => {
+  const getFollowTarget = () => {
+    if (playerNavigationState.followTargetType === "monster") {
+      return findMonsterByUid(playerNavigationState.followTargetUid);
+    }
+    if (playerNavigationState.followTargetType === "player") {
+      return findPlayerByUid(playerNavigationState.followTargetUid);
+    }
+    if (combatTargetState.monsterUid !== null) {
+      return findMonsterByUid(combatTargetState.monsterUid);
+    }
+    if (combatTargetState.playerUid !== null) {
+      return findPlayerByUid(combatTargetState.playerUid);
+    }
+    return null;
+  };
+
+  const loseFollowTarget = () => {
+    const followTargetType = playerNavigationState.followTargetType;
+    const followTargetUid = playerNavigationState.followTargetUid;
+    if (followTargetType === "monster" && combatTargetState.monsterUid === followTargetUid) {
+      loseSelectedMonsterTarget();
+      return;
+    }
+    if (followTargetType === "player" && combatTargetState.playerUid === followTargetUid) {
+      loseSelectedPlayerTarget();
+      return;
+    }
+    playerNavigationState.followEnabled = false;
+    stopPlayerNavigation();
+    updatePlayerInventory();
+    showGameStatusMessage(getGameUiText("targetLost"));
+  };
+
   const stopPlayerNavigation = () => {
     playerNavigationState.mode = null;
     playerNavigationState.path = [];
@@ -99,6 +135,8 @@ export const createPlayerNavigationController = ({
     playerNavigationState.lastFollowTargetTileKey = null;
     playerNavigationState.lastActionTargetTileKey = null;
     playerNavigationState.lastFailureKey = null;
+    playerNavigationState.followTargetType = null;
+    playerNavigationState.followTargetUid = null;
   };
 
   const setPlayerNavigationPath = (path) => {
@@ -166,8 +204,18 @@ export const createPlayerNavigationController = ({
     return refreshPlayerClickNavigationPath();
   };
 
-  const startPlayerFollowNavigation = () => {
-    if (!playerNavigationState.followEnabled || combatTargetState.monsterUid === null) {
+  const startPlayerFollowNavigation = (targetType = null, targetUid = null) => {
+    if (["monster", "player"].includes(targetType) && targetUid !== null) {
+      playerNavigationState.followTargetType = targetType;
+      playerNavigationState.followTargetUid = targetUid;
+    } else if (combatTargetState.monsterUid !== null) {
+      playerNavigationState.followTargetType = "monster";
+      playerNavigationState.followTargetUid = combatTargetState.monsterUid;
+    } else if (combatTargetState.playerUid !== null) {
+      playerNavigationState.followTargetType = "player";
+      playerNavigationState.followTargetUid = combatTargetState.playerUid;
+    }
+    if (!playerNavigationState.followEnabled || !getFollowTarget()) {
       return false;
     }
 
@@ -188,16 +236,16 @@ export const createPlayerNavigationController = ({
       return;
     }
 
-    const monster = findMonsterByUid(combatTargetState.monsterUid);
-    if (!monster || monster.hp <= 0 || monster.z !== playerState.z) {
-      loseSelectedMonsterTarget();
+    const target = getFollowTarget();
+    if (!target || target.hp <= 0 || target.z !== playerState.z) {
+      loseFollowTarget();
       return;
     }
 
-    const monsterTile = getTilePosition(monster);
-    const targetTileKey = `${monster.z}:${monsterTile.col}:${monsterTile.row}`;
+    const targetTile = getTilePosition(target);
+    const targetTileKey = `${target.z}:${targetTile.col}:${targetTile.row}`;
 
-    if (isNearPlayer(monster, 1)) {
+    if (isNearPlayer(target, 1)) {
       playerNavigationState.path = [];
       playerNavigationState.lastFollowTargetTileKey = targetTileKey;
       playerNavigationState.lastFailureKey = null;
@@ -215,7 +263,7 @@ export const createPlayerNavigationController = ({
     }
 
     const playerTile = getTilePosition(playerState);
-    const targetTiles = getPathTraversableAdjacentTiles(monsterTile).filter((tile) => {
+    const targetTiles = getPathTraversableAdjacentTiles(targetTile).filter((tile) => {
       return !isTileOccupiedByCreature(tile.row, tile.col) || (tile.row === playerTile.row && tile.col === playerTile.col);
     });
     const path = findPathToAnyTarget(playerTile, targetTiles, true, PLAYER_AUTO_WALK_MAX_PATH_COST);
@@ -225,7 +273,7 @@ export const createPlayerNavigationController = ({
     playerNavigationState.nextPathRefreshAt = now + PLAYER_FOLLOW_PATH_REFRESH_COOLDOWN_MS;
 
     if (path.length === 0) {
-      showPlayerNavigationFailure(`follow:${monster.uid}:${targetTileKey}`);
+      showPlayerNavigationFailure(`follow:${target.uid}:${targetTileKey}`);
       playerNavigationState.followEnabled = false;
       stopPlayerNavigation();
       updatePlayerInventory();
