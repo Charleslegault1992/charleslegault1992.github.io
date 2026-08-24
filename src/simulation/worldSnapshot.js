@@ -192,6 +192,7 @@ export const serializeWorldChunk = (chunk) => {
     transitions: cloneOrNull(chunk.transitions) ?? [],
     spawns: cloneOrNull(chunk.spawns) ?? [],
     interactables: cloneOrNull(chunk.interactables) ?? [],
+    zones: cloneOrNull(chunk.zones) ?? [],
   };
 };
 
@@ -212,6 +213,7 @@ export const createWorldSnapshot = ({
   chunksAreSerialized = false,
   visibleChunkKeys = [],
   acknowledgedActionRequestId = null,
+  selfCombatLogoutExpiresAt = 0,
 }) => {
   if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isFinite(serverTime)) {
     return null;
@@ -220,6 +222,9 @@ export const createWorldSnapshot = ({
   if (!self) {
     return null;
   }
+  self.combatLogoutExpiresAt = Number.isFinite(selfCombatLogoutExpiresAt)
+    ? Math.max(0, selfCombatLogoutExpiresAt)
+    : 0;
   return {
     revision,
     serverTime,

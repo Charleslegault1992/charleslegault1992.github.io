@@ -105,6 +105,7 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
     transitions: [],
     spawns: [],
     npcs: [],
+    zones: [],
   };
 };
 

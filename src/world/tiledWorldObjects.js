@@ -48,6 +48,20 @@ export const findTransitionAtTile = (worldMap, col, row) => {
   return findTiledObjectAtTile(worldMap, "transitions", col, row);
 };
 
+export const findProtectionZoneAtTile = (worldMap, col, row) => {
+  const worldChunk = getWorldChunkForTilePosition(worldMap, col, row);
+  if (!Array.isArray(worldChunk?.zones)) {
+    return null;
+  }
+  return (
+    worldChunk.zones.find(
+      (zone) =>
+        isTileInsideTiledObject(col, row, zone) &&
+        (zone.properties?.zoneType === "protection" || zone.properties?.protectionZone === true),
+    ) ?? null
+  );
+};
+
 export const isPlayerNearTiledObject = (player, tiledObject, range = 1) => {
   if (
     !player ||

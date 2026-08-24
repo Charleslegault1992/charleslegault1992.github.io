@@ -200,6 +200,15 @@ export const createAuthoritativeWorldRuntime = ({
     return true;
   };
 
+  const serializePlayerRuntimePrivateState = (player) => {
+    const serializedPlayer = serializePlayerPrivateState(player);
+    if (!serializedPlayer) {
+      return null;
+    }
+    serializedPlayer.combatLogoutExpiresAt = combatLogoutExpiresAtByPlayerUid.get(player.uid) ?? 0;
+    return serializedPlayer;
+  };
+
   const isPlayerInPvpCombat = (playerUid) => {
     for (const [aggressionKey, expiresAt] of pvpAggressionExpiresAtByPair) {
       if (expiresAt <= currentServerTime) {
@@ -1224,6 +1233,7 @@ export const createAuthoritativeWorldRuntime = ({
       chunksAreSerialized: true,
       visibleChunkKeys: view.visibleChunkKeys,
       acknowledgedActionRequestId: session.lastProcessedActionRequestId ?? null,
+      selfCombatLogoutExpiresAt: combatLogoutExpiresAtByPlayerUid.get(view.selfPlayer.uid) ?? 0,
     });
   };
 
@@ -1309,7 +1319,7 @@ export const createAuthoritativeWorldRuntime = ({
       serverTime: currentServerTime,
       acknowledgedActionRequestId: session.lastProcessedActionRequestId ?? null,
       upserts: {
-        self: selfChanged ? serializePlayerPrivateState(view.selfPlayer) : undefined,
+        self: selfChanged ? serializePlayerRuntimePrivateState(view.selfPlayer) : undefined,
         players: getVisibleEntityUpserts(
           view.visiblePlayers,
           previousPlayerUids,

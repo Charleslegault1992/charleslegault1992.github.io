@@ -34,6 +34,7 @@ import {
 } from "./domRefs.js";
 
 export const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
+export const OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY = "no-name-yet:open-character-selector-after-reload";
 
 export const createCharacterSelectorController = ({
   accountSession = null,
@@ -811,11 +812,15 @@ export const createCharacterSelectorController = ({
     }
 
     let shouldEnterGame = false;
+    let shouldOpenCharacterSelector = false;
     try {
       shouldEnterGame = sessionStorage.getItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY) === "true";
+      shouldOpenCharacterSelector = sessionStorage.getItem(OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY) === "true";
       sessionStorage.removeItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY);
+      sessionStorage.removeItem(OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY);
     } catch {
       shouldEnterGame = false;
+      shouldOpenCharacterSelector = false;
     }
     gameWelcome.hidden = false;
     applyGameLanguageUi();
@@ -841,6 +846,9 @@ export const createCharacterSelectorController = ({
       languageButton.addEventListener("click", () => {
         setGameLanguage(languageButton.dataset.gameLanguage);
       });
+    }
+    if (shouldOpenCharacterSelector && !shouldEnterGame) {
+      openCharacterSelector();
     }
     return shouldEnterGame;
   };

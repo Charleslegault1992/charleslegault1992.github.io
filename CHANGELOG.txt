@@ -1,3 +1,8 @@
+0.3405 - Session mobile et statuts
+    - Le HUD mobile reste cache sur les ecrans accueil, connexion et personnages.
+    - Quitter le jeu mobile ferme maintenant la session; seul un personnage en combat reste deux minutes.
+    - Ajout des icones skull, poison, feu, combat et protection dans le slot de statuts.
+
 0.3404 - Fenetres mobiles compactes
     - Chaque fenetre mobile garde maintenant son bouton de fermeture directement dans son entete.
     - Les entetes des sacs et des corps prennent moins de place sans empecher leur deplacement.

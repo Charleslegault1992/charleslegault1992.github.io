@@ -1098,6 +1098,9 @@ test("combat logout keeps the avatar for two minutes and allows reclaiming it", 
   runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
   runtime.dispatchAction(attackerSession, createAttackPlayerAction(target.uid, serverTime));
 
+  const combatSnapshot = runtime.createSnapshotForClient(attackerSession);
+  assert.equal(combatSnapshot.self.combatLogoutExpiresAt, serverTime + 120000);
+
   assert.equal(runtime.disconnectClient(attackerSession), true);
   assert.equal(runtime.getPlayer(attacker.uid), attacker);
 
@@ -1114,4 +1117,18 @@ test("combat logout keeps the avatar for two minutes and allows reclaiming it", 
   serverTime += 120001;
   runtime.update(serverTime);
   assert.equal(runtime.getPlayer(attacker.uid), null);
+});
+
+test("disconnecting outside combat removes the player immediately", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "regular-logout",
+    characterId: "regular-player",
+  }).playerUid;
+
+  assert.ok(runtime.getPlayer(session.playerUid));
+  assert.equal(runtime.disconnectClient(session), true);
+  assert.equal(runtime.getPlayer(session.playerUid), null);
 });

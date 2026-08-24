@@ -122,6 +122,10 @@ import { canInitiatePlayerPvpAttack } from "./combat/playerPvpState.js";
 import { applyPlayerDeathState } from "./player/playerDeath.js";
 import { getPlayerMoveCooldown, getPlayerMovementTiming } from "./player/playerMovementTiming.js";
 import {
+  getActivePlayerStatusIndicators,
+  PLAYER_STATUS_INDICATOR,
+} from "./player/playerStatusIndicators.js";
+import {
   getPlayerTileStackRenderOffset,
   getPlayerTileStackRenderOffsets,
   getTopPlayerAtTile,
@@ -293,6 +297,7 @@ import { createContainerWindowController } from "./ui/containerWindowController.
 import {
   createCharacterSelectorController,
   ENTER_GAME_AFTER_RELOAD_SESSION_KEY,
+  OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY,
 } from "./ui/characterSelectorController.js";
 import { createGameOptionsController } from "./ui/gameOptionsController.js";
 import { createGameLoadingController } from "./ui/gameLoadingController.js";
@@ -346,6 +351,7 @@ import {
 import { canStepFromTileToTile } from "./world/worldMovement.js";
 import {
   findInteractableAtTile,
+  findProtectionZoneAtTile,
   findTransitionAtTile,
   isPlayerNearTiledObject as isPlayerNearTiledObjectState,
 } from "./world/tiledWorldObjects.js";
@@ -448,6 +454,12 @@ let GAME_SCALE = 1;
 
 /* ---------- BASE - COLLECTIONS MONDE ---------- */
 const itemCooldownOverlayElements = new Set();
+const playerStatusIndicatorUiState = {
+  slot: null,
+  signature: null,
+  nextRefreshAt: 0,
+};
+let shouldReloadAfterMobileSessionHide = false;
 let gameSimulation = null;
 let gameTransport = null;
 let gameActionEffectRouter = null;
@@ -2624,6 +2636,63 @@ const renderEquipmentSlots = () => {
   });
 };
 
+const getPlayerStatusIndicatorLabel = (statusIndicator) => {
+  const labelKeyByIndicator = {
+    [PLAYER_STATUS_INDICATOR.whiteSkull]: "statusWhiteSkull",
+    [PLAYER_STATUS_INDICATOR.redSkull]: "statusRedSkull",
+    [PLAYER_STATUS_INDICATOR.poison]: "statusPoisoned",
+    [PLAYER_STATUS_INDICATOR.fire]: "statusBurning",
+    [PLAYER_STATUS_INDICATOR.combat]: "statusCombatLocked",
+    [PLAYER_STATUS_INDICATOR.protection]: "statusProtectionZone",
+  };
+  return getGameUiText(labelKeyByIndicator[statusIndicator]);
+};
+
+const isPlayerInProtectionZone = () => {
+  const worldMap = pixiWorldRenderState.worldMapsByZ?.get(playerState.z) ?? null;
+  if (!worldMap || !Number.isInteger(playerState.x) || !Number.isInteger(playerState.y)) {
+    return false;
+  }
+  return Boolean(findProtectionZoneAtTile(worldMap, playerState.x / TILE_SIZE, playerState.y / TILE_SIZE));
+};
+
+const refreshPlayerStatusIndicators = (now = Date.now(), forceRefresh = false) => {
+  if (!forceRefresh && now < playerStatusIndicatorUiState.nextRefreshAt) {
+    return;
+  }
+  playerStatusIndicatorUiState.nextRefreshAt = now + 200;
+
+  let statusSlot = playerStatusIndicatorUiState.slot;
+  if (!statusSlot?.isConnected) {
+    statusSlot = playerInventory?.querySelector('[data-equipment-small-slot="status"]') ?? null;
+    playerStatusIndicatorUiState.slot = statusSlot;
+    playerStatusIndicatorUiState.signature = null;
+  }
+  if (!statusSlot) {
+    return;
+  }
+
+  const indicators = getActivePlayerStatusIndicators(playerState, now, {
+    isInProtectionZone: isPlayerInProtectionZone(),
+  });
+  const signature = indicators.join(":");
+  if (!forceRefresh && signature === playerStatusIndicatorUiState.signature) {
+    return;
+  }
+
+  playerStatusIndicatorUiState.signature = signature;
+  statusSlot.replaceChildren();
+  for (const indicator of indicators) {
+    const indicatorElement = document.createElement("span");
+    const label = getPlayerStatusIndicatorLabel(indicator);
+    indicatorElement.classList.add("player-status-indicator", `player-status-indicator-${indicator}`);
+    indicatorElement.setAttribute("role", "img");
+    indicatorElement.setAttribute("aria-label", label);
+    indicatorElement.title = label;
+    statusSlot.appendChild(indicatorElement);
+  }
+};
+
 const refreshLocalizedWorldLabels = () => {
   for (const [monsterUid, refs] of monsterElementsByUid.entries()) {
     const monster = findMonsterByUid(monsterUid);
@@ -3075,7 +3144,11 @@ const updatePlayerInventory = () => {
             </div>`;
 
   playerInventory.innerHTML = html;
+  playerStatusIndicatorUiState.slot = playerInventory.querySelector('[data-equipment-small-slot="status"]');
+  playerStatusIndicatorUiState.signature = null;
+  playerStatusIndicatorUiState.nextRefreshAt = 0;
   renderEquipmentSlots();
+  refreshPlayerStatusIndicators(Date.now(), true);
   bindCombatModeButtons();
   bindPlayerFollowButton();
   bindQuestUiButton();
@@ -4551,7 +4624,8 @@ const toggleMobileBackpack = () => {
 
 const syncMobileGameLayout = () => {
   const mobileLayout = isMobileGameLayout();
-  mobileGameControls?.setAttribute("aria-hidden", String(!mobileLayout));
+  const mobileGameUiIsActive = mobileLayout && document.body.classList.contains("game-session-active");
+  mobileGameControls?.setAttribute("aria-hidden", String(!mobileGameUiIsActive));
   if (!mobileLayout) {
     setOpenMobilePanel(null);
     setMobileActionMenuOpen(false);
@@ -4571,6 +4645,11 @@ const syncMobileGameLayout = () => {
   }
   renderSpellWindow();
   updateGameScale();
+};
+
+const setGameSessionUiActive = (isActive) => {
+  document.body.classList.toggle("game-session-active", isActive === true);
+  syncMobileGameLayout();
 };
 
 /* ---------- UI - MESSAGE DE STATUT ---------- */
@@ -5454,10 +5533,35 @@ document.addEventListener("keyup", (e) => {
 
 /* ---------- INPUTS - SAUVEGARDE AUTOMATIQUE ---------- */
 
+const prepareMobileSessionExit = () => {
+  if (!isMobileGameLayout() || !gameRuntimeState.isStarted || gameRuntimeState.isSwitchingCharacter) {
+    return false;
+  }
+
+  shouldReloadAfterMobileSessionHide = true;
+  resetMobileJoystick();
+  resetMovementKeys();
+  stopPlayerNavigation();
+  setGameSessionUiActive(false);
+  try {
+    sessionStorage.removeItem(ENTER_GAME_AFTER_RELOAD_SESSION_KEY);
+    sessionStorage.setItem(OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY, "true");
+  } catch {
+    // The socket still closes even when private browsing blocks sessionStorage.
+  }
+  gameTransport?.disconnect?.();
+  return true;
+};
+
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     resetMobileJoystick();
     autosaveCurrentCharacter();
+    prepareMobileSessionExit();
+    return;
+  }
+  if (shouldReloadAfterMobileSessionHide) {
+    window.location.reload();
   }
 });
 
@@ -5465,6 +5569,10 @@ window.addEventListener("blur", resetMobileJoystick);
 
 window.addEventListener("pagehide", () => {
   autosaveCurrentCharacter();
+  if (gameRuntimeState.isStarted) {
+    gameTransport?.disconnect?.();
+    setGameSessionUiActive(false);
+  }
 });
 
 /* ---------- INPUTS - RESIZE FENETRE ---------- */
@@ -8193,7 +8301,10 @@ gameSystemsOrchestrator = createGameSystemsOrchestrator({
       }
     },
     () => updateWorldRender(),
-    ({ now }) => updateItemCooldownOverlays(now),
+    ({ now }) => {
+      updateItemCooldownOverlays(now);
+      refreshPlayerStatusIndicators(now);
+    },
   ],
 });
 
@@ -9339,6 +9450,7 @@ clientBootstrap = createClientBootstrap({
 });
 
 const startGame = async () => {
+  setGameSessionUiActive(false);
   gameWelcome.hidden = false;
   if (gameLoadingRetryButton) {
     gameLoadingRetryButton.textContent = getGameUiText("retry");
@@ -9355,9 +9467,11 @@ const startGame = async () => {
     characterSelectorController.close();
     gameWelcome.hidden = true;
     gameLoadingController.hide();
+    setGameSessionUiActive(true);
     return true;
   } catch (error) {
     console.error("[Startup] Game initialization failed:", error);
+    setGameSessionUiActive(false);
     gameLoadingController.fail();
     return false;
   }
