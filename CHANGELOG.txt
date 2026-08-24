@@ -1,3 +1,7 @@
+0.339 - Panneaux mobiles
+    - Les panneaux mobiles restent maintenant ouverts pendant les interactions avec le monde.
+    - La fenetre Quetes utilise maintenant le gros bouton de fermeture mobile en haut a droite.
+
 0.338 - Menu mobile et sacs
     - Changer de stance, allumer la torche ou activer le PVP garde maintenant le menu mobile ouvert.
     - Correction de la position du bouton pour fermer la fenetre Quetes sur mobile.

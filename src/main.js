@@ -4374,13 +4374,23 @@ const setMobileActionMenuOpen = (isOpen) => {
   mobileActionMenuToggle?.setAttribute("aria-expanded", String(nextIsOpen));
 };
 
+const syncMobilePanelChrome = () => {
+  const hasOpenPanel = mobileGameUiState.openPanel !== null;
+  const hasOpenQuestWindow = questUiState.isOpen === true;
+  const hasOpenMobileSurface = isMobileGameLayout() && (hasOpenPanel || hasOpenQuestWindow);
+  mobileGameControls?.classList.toggle("mobile-game-controls-panel-open", hasOpenMobileSurface);
+  mobileGameControls?.classList.toggle(
+    "mobile-game-controls-chat-open",
+    hasOpenPanel && mobileGameUiState.openPanel === "chat",
+  );
+  mobilePanelCloseButton?.toggleAttribute("hidden", !hasOpenMobileSurface);
+};
+
 const setOpenMobilePanel = (panelName = null) => {
   setMobileActionMenuOpen(false);
   const nextPanelName = mobileGameUiState.openPanel === panelName ? null : panelName;
   mobileGameUiState.openPanel = nextPanelName;
-  mobileGameControls?.classList.toggle("mobile-game-controls-panel-open", nextPanelName !== null);
-  mobileGameControls?.classList.toggle("mobile-game-controls-chat-open", nextPanelName === "chat");
-  mobilePanelCloseButton?.toggleAttribute("hidden", nextPanelName === null);
+  syncMobilePanelChrome();
 
   for (const name of ["map", "stats", "inventory", "chat"]) {
     getMobilePanelElement(name)?.classList.toggle("mobile-panel-open", name === nextPanelName);
@@ -4487,6 +4497,7 @@ const syncMobileWindowButtons = () => {
     button?.classList.toggle("mobile-panel-button-active", isOpen);
     button?.setAttribute("aria-expanded", String(isOpen));
   }
+  syncMobilePanelChrome();
 };
 
 const syncMobileTorchButton = () => {
@@ -5929,18 +5940,6 @@ const getMobileWorldContainerSourceAtTarget = (target) => {
 document.addEventListener(
   "pointerdown",
   (event) => {
-    if (event.pointerType === "touch" && isMobileGameLayout() && mobileGameUiState.openPanel !== null) {
-      const openPanelElement = getMobilePanelElement(mobileGameUiState.openPanel);
-      const clickedPanelButton =
-        event.target instanceof Element && event.target.closest(".mobile-primary-actions, .mobile-action-menu");
-      const clickedContainerWindow = event.target instanceof Element && event.target.closest("#player-containers");
-      if (!openPanelElement?.contains(event.target) && !clickedPanelButton && !clickedContainerWindow) {
-        event.preventDefault();
-        setOpenMobilePanel(null);
-        return;
-      }
-    }
-
     if (
       event.pointerType !== "touch" ||
       !isMobileGameLayout() ||
@@ -6178,6 +6177,10 @@ mobileItemUseIndicator?.addEventListener("click", (event) => {
 mobilePanelCloseButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  if (questUiState.isOpen) {
+    questWindowController.close();
+    return;
+  }
   setOpenMobilePanel(null);
 });
 

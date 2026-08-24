@@ -3156,6 +3156,15 @@ body.item-drag-active * {
     display: none;
   }
 
+  .quest-window-close-button {
+    display: none;
+  }
+
+  .quest-window-header {
+    min-height: 18px;
+    padding-right: 0;
+  }
+
   .mobile-game-controls-panel-open .mobile-vitals-hud,
   .mobile-game-controls-panel-open .mobile-target-hud,
   .mobile-game-controls-container-open .mobile-target-hud {
@@ -3883,22 +3892,6 @@ body.item-drag-active * {
     background-image: none;
     background-color: rgba(10, 10, 9, 0.9);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.82);
-  }
-
-  .quest-window-close-button {
-    top: 50%;
-    right: 0;
-    width: 40px;
-    height: 40px;
-    font-size: 18px;
-    line-height: 40px;
-    transform: translateY(-50%);
-    touch-action: manipulation;
-  }
-
-  .quest-window-header {
-    min-height: 40px;
-    padding-right: 40px;
   }
 
   .quest-list-row {
