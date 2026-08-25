@@ -9439,8 +9439,8 @@ const hasReplicatedEntityChanges = (event, entityType) => {
   );
 };
 
-const synchronizeRemoteSelfUi = (forceRefresh = false) => {
-  synchronizeUseCooldowns(playerState.cooldowns);
+const synchronizeRemoteSelfUi = (forceRefresh = false, serverTime = null) => {
+  synchronizeUseCooldowns(playerState.cooldowns, serverTime);
   const inventorySignature = JSON.stringify({
     equipment: playerState.equipment,
     carriedWeight: playerState.carriedWeight,
@@ -9537,7 +9537,7 @@ const synchronizeRemoteWorldRender = (event) => {
     syncVisibleRemotePlayerRenders();
   }
   if (didSelfChange) {
-    synchronizeRemoteSelfUi(isSnapshot);
+    synchronizeRemoteSelfUi(isSnapshot, event?.payload?.serverTime);
     updatePixiVisibleChunksAroundPlayer();
   }
   const isItemInteractionInProgress =

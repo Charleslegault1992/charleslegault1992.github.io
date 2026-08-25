@@ -67,6 +67,19 @@ export const getUseCooldownRemainingRatio = (cooldownGroup, now) => {
   return defaultItemCooldownState.getRemainingRatio(cooldownGroup, now);
 };
 
-export const synchronizeUseCooldowns = (cooldownEndTimes) => {
-  defaultItemCooldownState.synchronize(cooldownEndTimes);
+export const synchronizeUseCooldowns = (cooldownEndTimes, serverTime = null, clientTime = Date.now()) => {
+  if (!Number.isFinite(serverTime) || !Number.isFinite(clientTime)) {
+    defaultItemCooldownState.synchronize(cooldownEndTimes);
+    return;
+  }
+
+  const localCooldownEndTimes = {};
+  for (const cooldownGroup of Object.keys(USE_COOLDOWN_MS)) {
+    const serverCooldownEndTime = cooldownEndTimes?.[cooldownGroup];
+    const remainingDuration = Number.isFinite(serverCooldownEndTime)
+      ? Math.max(serverCooldownEndTime - serverTime, 0)
+      : 0;
+    localCooldownEndTimes[cooldownGroup] = clientTime + remainingDuration;
+  }
+  defaultItemCooldownState.synchronize(localCooldownEndTimes);
 };

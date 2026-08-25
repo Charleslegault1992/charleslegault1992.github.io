@@ -1,3 +1,7 @@
+0.3413 - Cooldown des runes en ligne
+    - Correction des runes qui restaient epuisees quand l'heure du telephone etait decalee du serveur.
+    - Le cooldown serveur est maintenant converti correctement sur l'horloge locale du joueur.
+
 0.3412 - Sprites des runes
     - Correction des sprites des runes dans la sprite sheet des items.
 
