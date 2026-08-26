@@ -4,6 +4,7 @@ import {
   createWorldDelta,
   createWorldSnapshot,
   serializeGroundEffectState,
+  serializeDoorState,
   serializeMonsterState,
   serializeNpcState,
   serializePlayerPrivateState,
@@ -44,7 +45,7 @@ import { getTileMovementCost, hasLineOfSightBetweenTiles } from "../src/world/pa
 import {
   getChunkPositionFromWorldPosition,
   getWorldChunkForTilePosition,
-  isTiledCollisionAtTile,
+  isWorldCollisionAtTile,
 } from "../src/world/worldCoordinates.js";
 import {
   findInteractableAtTile,
@@ -77,6 +78,7 @@ import {
   hasActivePlayerSkull,
   recordUnjustifiedPlayerKill,
 } from "../src/combat/playerPvpState.js";
+import { getDoorTiles } from "../src/world/doorModel.js";
 
 const AUTOSAVE_INTERVAL_MS = 30000;
 const AUTOSAVE_RETRY_DELAY_MS = 5000;
@@ -332,7 +334,7 @@ export const createAuthoritativeWorldRuntime = ({
     const validSpawnPositions = PLAYER_SPAWN_TILE_OFFSETS.flatMap((offset) => {
       const col = spawn.col + offset.col;
       const row = spawn.row + offset.row;
-      if (!getWorldChunkForTilePosition(worldMap, col, row) || isTiledCollisionAtTile(worldMap, col, row)) {
+      if (!getWorldChunkForTilePosition(worldMap, col, row) || isWorldCollisionAtTile(worldMap, col, row)) {
         return [];
       }
       return [{ x: col * TILE_SIZE, y: row * TILE_SIZE }];
@@ -368,7 +370,7 @@ export const createAuthoritativeWorldRuntime = ({
       !Number.isInteger(toTile.row) ||
       getTileMovementCost(fromTile, toTile) === null ||
       !getWorldChunkForTilePosition(worldMap, toTile.col, toTile.row) ||
-      isTiledCollisionAtTile(worldMap, toTile.col, toTile.row)
+      isWorldCollisionAtTile(worldMap, toTile.col, toTile.row)
     ) {
       return false;
     }
@@ -386,6 +388,47 @@ export const createAuthoritativeWorldRuntime = ({
       !worldEntities.monsters.getAt(payload.toX, payload.toY, movingPlayer.z) &&
       !worldEntities.npcs.getAt(payload.toX, payload.toY, movingPlayer.z)
     );
+  };
+
+  const canCloseDoor = (door) => {
+    for (const tile of getDoorTiles(door)) {
+      const x = tile.col * TILE_SIZE;
+      const y = tile.row * TILE_SIZE;
+      if (
+        [...playersByUid.values()].some((player) => player.z === tile.z && player.x === x && player.y === y) ||
+        worldEntities.monsters.getAt(x, y, tile.z) ||
+        worldEntities.npcs.getAt(x, y, tile.z) ||
+        worldEntities.worldItems.getAt(x, y, tile.z)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const executeDoorInteraction = (player, interactable) => {
+    const door = worldEntities.doors.get(interactable?.properties?.doorId);
+    if (!door || door.locked || !isPlayerNearTiledObject(player, interactable, 1)) {
+      return { success: false, reason: door?.locked ? "door-locked" : "unsupported-or-out-of-range" };
+    }
+    if (door.isOpen && !canCloseDoor(door)) {
+      return { success: false, reason: "door-blocked" };
+    }
+    door.isOpen = !door.isOpen;
+    return {
+      success: true,
+      changes: { doorUid: door.uid, isOpen: door.isOpen },
+      events: [
+        {
+          type: "door-state-changed",
+          doorUid: door.uid,
+          isOpen: door.isOpen,
+          x: door.x,
+          y: door.y,
+          z: door.z,
+        },
+      ],
+    };
   };
 
   const canPlayerAttackTarget = (player, target) => {
@@ -953,6 +996,9 @@ export const createAuthoritativeWorldRuntime = ({
             random: combatRandom,
           }),
         executeWorldInteraction: (interactable, payload) => {
+          if (payload.interactionType === "door") {
+            return executeDoorInteraction(player, interactable);
+          }
           if (payload.interactionType !== "rewardChest" || !isPlayerNearTiledObject(player, interactable, 1)) {
             return { success: false, reason: "unsupported-or-out-of-range" };
           }
@@ -1028,7 +1074,7 @@ export const createAuthoritativeWorldRuntime = ({
       Number.isInteger(savedCol) &&
       Number.isInteger(savedRow) &&
       getWorldChunkForTilePosition(savedWorldMap, savedCol, savedRow) &&
-      !isTiledCollisionAtTile(savedWorldMap, savedCol, savedRow) &&
+      !isWorldCollisionAtTile(savedWorldMap, savedCol, savedRow) &&
       ![...playersByUid.values()].some(
         (onlinePlayer) => onlinePlayer.z === player.z && onlinePlayer.x === player.x && onlinePlayer.y === player.y,
       );
@@ -1255,6 +1301,13 @@ export const createAuthoritativeWorldRuntime = ({
       if (Number.isInteger(removedGroundEffectUid)) {
         removals.groundEffects = [removedGroundEffectUid];
       }
+      const changedDoorUid = result.changes?.doorUid;
+      if (typeof changedDoorUid === "string") {
+        const changedDoor = worldEntities.doors.get(changedDoorUid);
+        if (changedDoor) {
+          upserts.doors = [serializeDoorState(changedDoor)];
+        }
+      }
       journal.record({
         serverTime: currentServerTime,
         upserts,
@@ -1307,6 +1360,7 @@ export const createAuthoritativeWorldRuntime = ({
       visibleNpcs: worldEntities.npcs.getInChunkKeys(visibleChunkKeys),
       visibleWorldItems: worldEntities.worldItems.getInChunkKeys(visibleChunkKeys),
       visibleGroundEffects: worldEntities.groundEffects.getInChunkKeys(visibleChunkKeys),
+      visibleDoors: worldEntities.doors.getInChunkKeys(visibleChunkKeys),
     };
   };
 
@@ -1321,6 +1375,7 @@ export const createAuthoritativeWorldRuntime = ({
     session.knownVisibleNpcUids = new Set(view.visibleNpcs.map((npc) => npc.uid));
     session.knownVisibleWorldItemUids = new Set(view.visibleWorldItems.map((item) => item.uid));
     session.knownVisibleGroundEffectUids = new Set(view.visibleGroundEffects.map((effect) => effect.uid));
+    session.knownVisibleDoorUids = new Set(view.visibleDoors.map((door) => door.uid));
     return createWorldSnapshot({
       revision: journal.getRevision(),
       serverTime: currentServerTime,
@@ -1330,6 +1385,7 @@ export const createAuthoritativeWorldRuntime = ({
       npcs: view.visibleNpcs,
       worldItems: view.visibleWorldItems,
       groundEffects: view.visibleGroundEffects,
+      doors: view.visibleDoors,
       chunks: view.visibleChunkKeys.map((key) => serializedWorldChunksByKey.get(key)),
       chunksAreSerialized: true,
       visibleChunkKeys: view.visibleChunkKeys,
@@ -1353,12 +1409,14 @@ export const createAuthoritativeWorldRuntime = ({
     const previousNpcUids = session.knownVisibleNpcUids ?? new Set();
     const previousWorldItemUids = session.knownVisibleWorldItemUids ?? new Set();
     const previousGroundEffectUids = session.knownVisibleGroundEffectUids ?? new Set();
+    const previousDoorUids = session.knownVisibleDoorUids ?? new Set();
     const currentChunkKeys = new Set(view.visibleChunkKeys);
     const currentPlayerUids = new Set(view.visiblePlayers.map((player) => player.uid));
     const currentMonsterUids = new Set(view.visibleMonsters.map((monster) => monster.uid));
     const currentNpcUids = new Set(view.visibleNpcs.map((npc) => npc.uid));
     const currentWorldItemUids = new Set(view.visibleWorldItems.map((item) => item.uid));
     const currentGroundEffectUids = new Set(view.visibleGroundEffects.map((effect) => effect.uid));
+    const currentDoorUids = new Set(view.visibleDoors.map((door) => door.uid));
     const addedChunkKeys = view.visibleChunkKeys.filter((key) => !previousChunkKeys.has(key));
     const removedChunkKeys = [...previousChunkKeys].filter((key) => !currentChunkKeys.has(key));
     const removedPlayerUids = [...previousPlayerUids].filter((playerUid) => !currentPlayerUids.has(playerUid));
@@ -1368,6 +1426,7 @@ export const createAuthoritativeWorldRuntime = ({
       ["npcs", new Set()],
       ["worldItems", new Set()],
       ["groundEffects", new Set()],
+      ["doors", new Set()],
     ]);
     const sourceEvents = [];
     for (const sourceDelta of sourceDeltas) {
@@ -1441,6 +1500,7 @@ export const createAuthoritativeWorldRuntime = ({
           "groundEffects",
           serializeGroundEffectState,
         ),
+        doors: getVisibleEntityUpserts(view.visibleDoors, previousDoorUids, "doors", serializeDoorState),
         chunks: addedChunkKeys.map((key) => serializedWorldChunksByKey.get(key)),
       },
       removals: {
@@ -1449,6 +1509,7 @@ export const createAuthoritativeWorldRuntime = ({
         npcs: [...previousNpcUids].filter((uid) => !currentNpcUids.has(uid)),
         worldItems: [...previousWorldItemUids].filter((uid) => !currentWorldItemUids.has(uid)),
         groundEffects: [...previousGroundEffectUids].filter((uid) => !currentGroundEffectUids.has(uid)),
+        doors: [...previousDoorUids].filter((uid) => !currentDoorUids.has(uid)),
         chunks: removedChunkKeys,
       },
       events: sourceEvents.filter(isEventVisible),
@@ -1459,6 +1520,7 @@ export const createAuthoritativeWorldRuntime = ({
     session.knownVisibleNpcUids = currentNpcUids;
     session.knownVisibleWorldItemUids = currentWorldItemUids;
     session.knownVisibleGroundEffectUids = currentGroundEffectUids;
+    session.knownVisibleDoorUids = currentDoorUids;
     return delta ? [delta] : null;
   };
 

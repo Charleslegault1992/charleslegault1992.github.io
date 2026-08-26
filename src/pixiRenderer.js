@@ -24,6 +24,7 @@ import {
   getElementCombatEffects,
 } from "./data/combatEffectsDatabase.js";
 import { groundEffectsDatabase } from "./data/groundEffectsDatabase.js";
+import { getDoorData } from "./data/doorsDatabase.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
@@ -31,6 +32,7 @@ import { groundEffectsDatabase } from "./data/groundEffectsDatabase.js";
 /* ==================================================== */
 const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MAP_TOP_LAYER_NAME = "top";
+const MAP_ROOF_LAYER_NAME = "roofs";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
@@ -80,6 +82,7 @@ const LIGHT_SUN_STOPS = [
   [0, 255, 246, 197, 0.055],
   [1, 255, 236, 167, 0.012],
 ];
+const ROOF_FADE_DURATION_MS = 180;
 //#endregion  -----  CONFIG  -----
 
 /* ==================================================== */
@@ -108,6 +111,8 @@ let groundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
+let doorContainer = null;
+let roofContainer = null;
 let feedbackEffectContainer = null;
 let entityNameplateContainer = null;
 let mapLayerContainersByName = null;
@@ -157,6 +162,16 @@ let lightingGameHeight = 0;
 let lightingIsOutdoor = null;
 let lightingActiveTorchCount = 0;
 let requestedPixiRenderer = null;
+let doorVisualsByUid = null;
+let roofContainersById = null;
+let hiddenRoofIds = null;
+let activeRoofFadeIds = null;
+let roofFadeTargetById = null;
+let roofAlphaById = null;
+let lastRoofWorldMap = null;
+let lastRoofPlayerCol = null;
+let lastRoofPlayerRow = null;
+let lastRoofPlayerZ = null;
 //#endregion  -----  PIXI - ETAT  -----
 
 /* ==================================================== */
@@ -560,7 +575,7 @@ const getTilesetsUsedByChunks = (worldMap, chunkKeys) => {
   }
   for (const chunkKey of chunkKeys) {
     const chunk = worldMap.chunksByKey.get(chunkKey);
-    for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME]) {
+    for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME, MAP_ROOF_LAYER_NAME]) {
       const gids = chunk?.layers?.[layerName];
       if (!Array.isArray(gids)) {
         continue;
@@ -610,6 +625,28 @@ const getTilesetTexture = (tileset) => {
     return null;
   }
   return tilesetTextureByImageFileName.get(tileset.image) ?? null;
+};
+
+const ensureTilesetTextureLoaded = async (tileset) => {
+  if (!tileset?.image) {
+    return null;
+  }
+  const currentTexture = getTilesetTexture(tileset);
+  if (currentTexture) {
+    return currentTexture;
+  }
+  let loadPromise = tilesetTextureLoadPromiseByImageFileName.get(tileset.image);
+  if (!loadPromise) {
+    const imageUrl = getTilesetImageUrl(tileset);
+    if (!imageUrl) {
+      return null;
+    }
+    loadPromise = Assets.load(imageUrl);
+    tilesetTextureLoadPromiseByImageFileName.set(tileset.image, loadPromise);
+  }
+  const texture = await loadPromise;
+  tilesetTextureByImageFileName.set(tileset.image, texture);
+  return texture;
 };
 //#endregion  -----  ASSETS - TILESETS  -----
 
@@ -661,6 +698,216 @@ const createTileSprite = (tilesets, gid, x, y) => {
   return sprite;
 };
 //#endregion  -----  RENDU - TEXTURES ET SPRITES  -----
+
+/* ==================================================== */
+//#region     -----  RENDU - PORTES  -----
+/* ==================================================== */
+const fillDoorStateContainer = (stateContainer, tilesets, tileset, stateData) => {
+  for (const tile of stateData.tiles) {
+    const gid = tileset.firstgid + tile.localTileId;
+    const sprite = createTileSprite(
+      tilesets,
+      gid,
+      (tile.col - stateData.anchorCol) * TILE_SIZE,
+      (tile.row - stateData.anchorRow) * TILE_SIZE,
+    );
+    if (sprite) {
+      stateContainer.addChild(sprite);
+    }
+  }
+};
+
+const upsertPixiDoorVisual = async (door, worldMap) => {
+  if (!doorContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
+    return false;
+  }
+  let visual = doorVisualsByUid.get(door.uid);
+  if (!visual) {
+    const root = new Container();
+    const closed = new Container();
+    const open = new Container();
+    root.label = `door:${door.uid}`;
+    root.eventMode = "none";
+    root.addChild(closed, open);
+    doorContainer.addChild(root);
+    visual = { root, closed, open, isReady: false };
+    doorVisualsByUid.set(door.uid, visual);
+  }
+
+  visual.root.x = door.x;
+  visual.root.y = door.y;
+  visual.root.visible = door.z === worldMap.z;
+  visual.closed.visible = door.isOpen !== true;
+  visual.open.visible = door.isOpen === true;
+  if (visual.isReady) {
+    return true;
+  }
+
+  const doorData = getDoorData(door.doorType);
+  const tileset = worldMap.tilesets.find((candidate) => candidate?.image === doorData?.tilesetImage) ?? null;
+  if (!doorData || !tileset || !(await ensureTilesetTextureLoaded(tileset))) {
+    return false;
+  }
+  if (doorVisualsByUid.get(door.uid) !== visual) {
+    return false;
+  }
+
+  fillDoorStateContainer(visual.closed, worldMap.tilesets, tileset, doorData.closed);
+  fillDoorStateContainer(visual.open, worldMap.tilesets, tileset, doorData.open);
+  visual.isReady = true;
+  return true;
+};
+
+export const syncPixiDoorVisuals = (doors, worldMap) => {
+  if (!(doorVisualsByUid instanceof Map) || !worldMap) {
+    return false;
+  }
+  const visibleDoorUids = new Set();
+  for (const door of doors ?? []) {
+    if (door?.z !== worldMap.z) {
+      continue;
+    }
+    visibleDoorUids.add(door.uid);
+    void upsertPixiDoorVisual(door, worldMap);
+  }
+  for (const [doorUid, visual] of doorVisualsByUid) {
+    if (!visibleDoorUids.has(doorUid)) {
+      visual.root.destroy({ children: true });
+      doorVisualsByUid.delete(doorUid);
+    }
+  }
+  return true;
+};
+//#endregion  -----  RENDU - PORTES  -----
+
+/* ==================================================== */
+//#region     -----  RENDU - TOITS  -----
+/* ==================================================== */
+const getRoofIdAtWorldTile = (worldMap, col, row) => {
+  for (const area of worldMap?.roofAreas ?? []) {
+    const widthTiles = Math.max(1, Math.ceil(area.width / TILE_SIZE));
+    const heightTiles = Math.max(1, Math.ceil(area.height / TILE_SIZE));
+    if (
+      col >= area.col &&
+      col < area.col + widthTiles &&
+      row >= area.row &&
+      row < area.row + heightTiles
+    ) {
+      return area.properties?.roofId ?? null;
+    }
+  }
+  return null;
+};
+
+const registerRoofContainer = (roofId, container) => {
+  if (!roofId) {
+    return;
+  }
+  let containers = roofContainersById.get(roofId);
+  if (!containers) {
+    containers = new Set();
+    roofContainersById.set(roofId, containers);
+  }
+  containers.add(container);
+  container.alpha = roofAlphaById.get(roofId) ?? (hiddenRoofIds.has(roofId) ? 0 : 1);
+};
+
+const unregisterChunkRoofContainers = (chunkRenderRefs) => {
+  for (const [roofId, container] of chunkRenderRefs?.roofContainersById ?? []) {
+    const containers = roofContainersById.get(roofId);
+    containers?.delete(container);
+    if (containers?.size === 0) {
+      roofContainersById.delete(roofId);
+    }
+  }
+};
+
+const setRoofHidden = (roofId, hidden) => {
+  if (!roofId) {
+    return;
+  }
+  if (hidden) {
+    hiddenRoofIds.add(roofId);
+  } else {
+    hiddenRoofIds.delete(roofId);
+  }
+  roofFadeTargetById.set(roofId, hidden ? 0 : 1);
+  activeRoofFadeIds.add(roofId);
+};
+
+const updateRoofFades = (ticker) => {
+  if (activeRoofFadeIds.size === 0) {
+    return;
+  }
+  const fadeStep = ticker.deltaMS / ROOF_FADE_DURATION_MS;
+  for (const roofId of activeRoofFadeIds) {
+    const targetAlpha = roofFadeTargetById.get(roofId) ?? 1;
+    const currentAlpha = roofAlphaById.get(roofId) ?? (targetAlpha === 0 ? 1 : 0);
+    const nextAlpha =
+      targetAlpha < currentAlpha
+        ? Math.max(targetAlpha, currentAlpha - fadeStep)
+        : Math.min(targetAlpha, currentAlpha + fadeStep);
+    roofAlphaById.set(roofId, nextAlpha);
+    for (const container of roofContainersById.get(roofId) ?? []) {
+      container.alpha = nextAlpha;
+    }
+    if (nextAlpha === targetAlpha) {
+      activeRoofFadeIds.delete(roofId);
+    }
+  }
+};
+
+export const updatePixiRoofVisibility = (worldMap, playerX, playerY, playerZ) => {
+  if (!worldMap || !Number.isFinite(playerX) || !Number.isFinite(playerY) || !Number.isInteger(playerZ)) {
+    return false;
+  }
+  const playerCol = Math.floor(playerX / TILE_SIZE);
+  const playerRow = Math.floor(playerY / TILE_SIZE);
+  if (
+    lastRoofWorldMap === worldMap &&
+    lastRoofPlayerCol === playerCol &&
+    lastRoofPlayerRow === playerRow &&
+    lastRoofPlayerZ === playerZ
+  ) {
+    return true;
+  }
+
+  const nextHiddenRoofIds = new Set();
+  if (playerZ === worldMap.z) {
+    for (const zone of worldMap.roofRevealZones ?? []) {
+      const widthTiles = Math.max(1, Math.ceil(zone.width / TILE_SIZE));
+      const heightTiles = Math.max(1, Math.ceil(zone.height / TILE_SIZE));
+      if (
+        playerCol >= zone.col &&
+        playerCol < zone.col + widthTiles &&
+        playerRow >= zone.row &&
+        playerRow < zone.row + heightTiles
+      ) {
+        const roofId = zone.properties?.roofId;
+        if (roofId) {
+          nextHiddenRoofIds.add(roofId);
+        }
+      }
+    }
+  }
+
+  for (const roofId of hiddenRoofIds) {
+    if (!nextHiddenRoofIds.has(roofId)) {
+      setRoofHidden(roofId, false);
+    }
+  }
+  for (const roofId of nextHiddenRoofIds) {
+    if (!hiddenRoofIds.has(roofId)) {
+      setRoofHidden(roofId, true);
+    }
+  }
+  lastRoofWorldMap = worldMap;
+  lastRoofPlayerCol = playerCol;
+  lastRoofPlayerRow = playerRow;
+  lastRoofPlayerZ = playerZ;
+  return true;
+};
+//#endregion  -----  RENDU - TOITS  -----
 
 /* ==================================================== */
 //#region     -----  RENDU - MINI-CARTE  -----
@@ -1991,6 +2238,39 @@ const renderChunkTileLayer = (chunkContainer, worldMap, chunk, layerName) => {
   }
 };
 
+const renderChunkRoofLayer = (chunkContainer, worldMap, chunk) => {
+  const roofContainersForChunk = new Map();
+  const layerGids = chunk?.layers?.[MAP_ROOF_LAYER_NAME];
+  if (!Array.isArray(layerGids)) {
+    return roofContainersForChunk;
+  }
+  for (const [index, gid] of layerGids.entries()) {
+    if (!Number.isFinite(gid) || gid <= 0) {
+      continue;
+    }
+    const localCol = index % CHUNK_SIZE_TILES;
+    const localRow = Math.floor(index / CHUNK_SIZE_TILES);
+    const worldCol = chunk.chunkX * CHUNK_SIZE_TILES + localCol;
+    const worldRow = chunk.chunkY * CHUNK_SIZE_TILES + localRow;
+    const roofId = getRoofIdAtWorldTile(worldMap, worldCol, worldRow);
+    let targetContainer = chunkContainer;
+    if (roofId) {
+      targetContainer = roofContainersForChunk.get(roofId);
+      if (!targetContainer) {
+        targetContainer = new Container();
+        targetContainer.label = `${chunk.z}:${chunk.chunkX}:${chunk.chunkY}:roof:${roofId}`;
+        chunkContainer.addChild(targetContainer);
+        roofContainersForChunk.set(roofId, targetContainer);
+      }
+    }
+    const sprite = createTileSprite(worldMap.tilesets, gid, worldCol * TILE_SIZE, worldRow * TILE_SIZE);
+    if (sprite) {
+      targetContainer.addChild(sprite);
+    }
+  }
+  return roofContainersForChunk;
+};
+
 const renderWorldChunk = (worldMap, chunk) => {
   if (!worldMap || !chunk) {
     return null;
@@ -1998,16 +2278,22 @@ const renderWorldChunk = (worldMap, chunk) => {
 
   const chunkKey = `${worldMap.z}:${chunk.chunkX}:${chunk.chunkY}`;
   const layerContainersByName = new Map();
+  let roofContainersForChunk = new Map();
 
-  for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME]) {
+  for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME, MAP_ROOF_LAYER_NAME]) {
     const layerContainer = new Container();
     layerContainer.label = `${chunkKey}:${layerName}`;
-    renderChunkTileLayer(layerContainer, worldMap, chunk, layerName);
+    if (layerName === MAP_ROOF_LAYER_NAME) {
+      roofContainersForChunk = renderChunkRoofLayer(layerContainer, worldMap, chunk);
+    } else {
+      renderChunkTileLayer(layerContainer, worldMap, chunk, layerName);
+    }
     layerContainersByName.set(layerName, layerContainer);
   }
 
   return {
     layerContainersByName,
+    roofContainersById: roofContainersForChunk,
   };
 };
 //#endregion  -----  RENDU - CHUNKS  -----
@@ -2044,6 +2330,7 @@ const removeHiddenChunkContainers = (visibleChunkKeys) => {
   }
   for (const [chunkKey, chunkRenderRefs] of renderedChunkContainersByKey.entries()) {
     if (!visibleChunkKeys.has(chunkKey)) {
+      unregisterChunkRoofContainers(chunkRenderRefs);
       for (const layerContainer of chunkRenderRefs.layerContainersByName.values()) {
         layerContainer.removeFromParent();
       }
@@ -2058,6 +2345,7 @@ const clearRenderedChunkContainers = () => {
   }
 
   for (const chunkRenderRefs of renderedChunkContainersByKey.values()) {
+    unregisterChunkRoofContainers(chunkRenderRefs);
     for (const layerContainer of chunkRenderRefs.layerContainersByName.values()) {
       layerContainer.removeFromParent();
     }
@@ -2072,7 +2360,8 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
     !(renderedChunkContainersByKey instanceof Map) ||
     !(visibleChunkKeys instanceof Set) ||
     !(mapLayerContainersByName instanceof Map) ||
-    !topContainer
+    !topContainer ||
+    !roofContainer
   ) {
     return;
   }
@@ -2098,6 +2387,14 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
     const topChunkContainer = chunkRenderRefs.layerContainersByName.get(MAP_TOP_LAYER_NAME);
     if (topChunkContainer) {
       topContainer.addChild(topChunkContainer);
+    }
+
+    const roofChunkContainer = chunkRenderRefs.layerContainersByName.get(MAP_ROOF_LAYER_NAME);
+    if (roofChunkContainer) {
+      roofContainer.addChild(roofChunkContainer);
+      for (const [roofId, container] of chunkRenderRefs.roofContainersById) {
+        registerRoofContainer(roofId, container);
+      }
     }
 
     renderedChunkContainersByKey.set(chunkKey, chunkRenderRefs);
@@ -2151,6 +2448,8 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
+    doorContainer = new Container();
+    roofContainer = new Container();
     feedbackEffectContainer = new Container();
     entityNameplateContainer = new Container();
     mapLayerContainersByName = new Map();
@@ -2164,6 +2463,8 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
+    worldContainer.addChild(doorContainer);
+    worldContainer.addChild(roofContainer);
     worldContainer.addChild(feedbackEffectContainer);
     console.log("[Pixi] Stage hierarchy created");
 
@@ -2178,6 +2479,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     }
 
     tilesetImageUrlByFileName = createTilesetImageUrlByFileName();
+    tilesetTextureByImageFileName = new Map();
     tilesetTextureLoadPromiseByImageFileName = new Map();
     tileTextureByCacheKey = new Map();
     renderedChunkContainersByKey = new Map();
@@ -2188,6 +2490,16 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     remotePlayerVisualsByUid = new Map();
     monsterVisualsByUid = new Map();
     npcVisualsByUid = new Map();
+    doorVisualsByUid = new Map();
+    roofContainersById = new Map();
+    hiddenRoofIds = new Set();
+    activeRoofFadeIds = new Set();
+    roofFadeTargetById = new Map();
+    roofAlphaById = new Map();
+    lastRoofWorldMap = null;
+    lastRoofPlayerCol = null;
+    lastRoofPlayerRow = null;
+    lastRoofPlayerZ = null;
     worldItemVisualsByUid = new Map();
     groundEffectVisualsByUid = new Map();
     groundEffectAnimationFrame = 0;
@@ -2204,6 +2516,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     pixiApp.ticker.add(updatePixiItemUseTargetAnimation);
     pixiApp.ticker.add(updatePixiGroundEffectAnimations);
     pixiApp.ticker.add(updatePixiCombatEffects);
+    pixiApp.ticker.add(updateRoofFades);
     pixiApp.stop();
     console.log("[Pixi] Initialization complete");
     return true;

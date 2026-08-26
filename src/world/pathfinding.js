@@ -1,6 +1,6 @@
 import { MinHeap } from "../core/MinHeap.js";
 import { getManhattanDistance } from "../core/mathUtils.js";
-import { isTiledCollisionAtTile } from "./worldCoordinates.js";
+import { isWorldCollisionAtTile } from "./worldCoordinates.js";
 
 export const getTileMovementCost = (fromTile, toTile) => {
   if (
@@ -91,7 +91,7 @@ export const hasLineOfSightBetweenTiles = (worldMap, fromTile, toTile) => {
       error += distanceCol;
       currentRow += stepRow;
     }
-    if (isTiledCollisionAtTile(worldMap, currentCol, currentRow)) {
+    if (isWorldCollisionAtTile(worldMap, currentCol, currentRow)) {
       return false;
     }
   }

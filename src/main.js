@@ -20,12 +20,14 @@ import {
   setPixiMonsterSelected,
   setPixiItemUseTargets,
   setPixiWorldItemSelected,
+  syncPixiDoorVisuals,
   updatePixiCamera,
   updatePixiLighting,
   updatePixiMonsterTransform,
   updatePixiNpcTransform,
   updatePixiRemotePlayerVisual,
   updatePixiWorldItemTransform,
+  updatePixiRoofVisibility,
   upsertPixiMonsterVisual,
   upsertPixiNpcVisual,
   upsertPixiRemotePlayerAppearance,
@@ -150,6 +152,8 @@ import {
   npcsByUid,
   openedContainers,
   playersByUid,
+  doorsByUid,
+  doorUidByTileKey,
   worldItemElementsByUid,
   worldItemsByUid,
 } from "./state/worldState.js";
@@ -349,7 +353,7 @@ import {
   getTilePosition,
   getWorldChunkForTilePosition,
   getWorldPosition,
-  isTiledCollisionAtTile,
+  isWorldCollisionAtTile,
 } from "./world/worldCoordinates.js";
 import { canStepFromTileToTile } from "./world/worldMovement.js";
 import {
@@ -358,6 +362,7 @@ import {
   findTransitionAtTile,
   isPlayerNearTiledObject as isPlayerNearTiledObjectState,
 } from "./world/tiledWorldObjects.js";
+import { getDoorTiles, initializeDoorsFromWorldMaps } from "./world/doorModel.js";
 import { applyPlayerWorldTransitionState, setPlayerWorldPositionState } from "./world/worldTransitions.js";
 import {
   createPathfinder,
@@ -676,7 +681,7 @@ const canMoveTo = (fromX, fromY, testX, testY) => {
   if (!currentWorldMap) {
     return false;
   }
-  if (isTiledCollisionAtTile(currentWorldMap, nextCol, nextRow)) {
+  if (isWorldCollisionAtTile(currentWorldMap, nextCol, nextRow)) {
     return false;
   }
   if (!canStepFromTileToTile(fromX, fromY, testX, testY, playerState.z)) {
@@ -886,8 +891,27 @@ const handleRewardChestInteraction = (interactable) => {
   return true;
 };
 
+const handleDoorInteraction = (interactable) => {
+  const action = createWorldInteractionAction({
+    interactableId: interactable?.properties?.doorId,
+    interactionType: "door",
+    z: playerState.z,
+    col: interactable?.col,
+    row: interactable?.row,
+    requestedAt: Date.now(),
+  });
+  const result = gameTransport.send(action);
+  handleGameActionResult(result, (resolvedResult) => {
+    if (resolvedResult?.success && !gameRuntimeState.isRemoteSession) {
+      syncPixiDoorVisuals(doorsByUid.values(), getCurrentWorldMap());
+    }
+  });
+  return true;
+};
+
 const interactableContextMenuHandlers = {
   rewardChest: handleRewardChestInteraction,
+  door: handleDoorInteraction,
 };
 
 const getOrCreateMonsterSpawnState = (spawnId) => monsterRespawnSystem.getOrCreateSpawnState(spawnId);
@@ -1486,7 +1510,7 @@ const setWorldItemPosition = (destination, item) => {
     return false;
   }
 
-  if (isTiledCollisionAtTile(currentWorldMap, col, row)) {
+  if (isWorldCollisionAtTile(currentWorldMap, col, row)) {
     return false;
   }
 
@@ -3611,7 +3635,7 @@ const createFluidPuddle = (groundEffectId, x, y, z, decayStage = 0) => {
     !Number.isInteger(col) ||
     !Number.isInteger(row) ||
     !getWorldChunkForTilePosition(worldMap, col, row) ||
-    isTiledCollisionAtTile(worldMap, col, row)
+    isWorldCollisionAtTile(worldMap, col, row)
   ) {
     return null;
   }
@@ -6487,7 +6511,7 @@ const isTilePathTraversable = (row, col, fromTile = null) => {
     return false;
   }
 
-  if (isTiledCollisionAtTile(currentWorldMap, col, row)) {
+  if (isWorldCollisionAtTile(currentWorldMap, col, row)) {
     return false;
   }
 
@@ -7683,6 +7707,7 @@ const updateRenderPositions = (now) => {
 const updateRenderCamera = () => {
   updateCamera();
   updatePixiCamera(camera.x, camera.y);
+  updatePixiRoofVisibility(getCurrentWorldMap(), playerState.x, playerState.y, playerState.z);
   if (mousePosition.screenX !== null && mousePosition.screenY !== null) {
     updateMousePositionInfo(mousePosition.screenX, mousePosition.screenY);
   }
@@ -7735,6 +7760,7 @@ const updatePixiVisibleChunksAroundPlayer = async () => {
     playerChunkPosition.chunkY,
     pixiWorldRenderState.visibleRadiusChunks,
   );
+  syncPixiDoorVisuals(doorsByUid.values(), actualMap);
 
   syncVisibleMonsterRendersAroundPlayer();
   syncVisibleNpcRendersAroundPlayer();
@@ -8801,6 +8827,28 @@ const executeSimulationWorldInteraction = (interactable, payload) => {
   if (payload.interactionType === "rewardChest") {
     return executeRewardChestInteraction(interactable, payload.requestedAt);
   }
+  if (payload.interactionType === "door") {
+    const door = doorsByUid.get(interactable?.properties?.doorId);
+    if (!door || door.locked || !isPlayerNearTiledObjectState(playerState, interactable, 1)) {
+      return { success: false, reason: door?.locked ? "door-locked" : "unsupported-or-out-of-range" };
+    }
+    if (door.isOpen) {
+      for (const tile of getDoorTiles(door)) {
+        const tileX = tile.col * TILE_SIZE;
+        const tileY = tile.row * TILE_SIZE;
+        if (
+          (playerState.x === tileX && playerState.y === tileY && playerState.z === tile.z) ||
+          findMonsterAtPosition(tileX, tileY) ||
+          findNpcAtPosition(tileX, tileY) ||
+          (getWorldTileStack(tileX, tileY, tile.z)?.itemUids?.length ?? 0) > 0
+        ) {
+          return { success: false, reason: "door-blocked" };
+        }
+      }
+    }
+    door.isOpen = !door.isOpen;
+    return { success: true, changes: { doorUid: door.uid, isOpen: door.isOpen } };
+  }
   return { success: false, reason: "unsupported-interaction" };
 };
 
@@ -9487,6 +9535,7 @@ const synchronizeRemoteWorldRender = (event) => {
   const didMonstersChange = isSnapshot || hasReplicatedEntityChanges(event, "monsters");
   const didNpcsChange = isSnapshot || hasReplicatedEntityChanges(event, "npcs");
   const didRemotePlayersChange = isSnapshot || hasReplicatedEntityChanges(event, "players");
+  const didDoorsChange = isSnapshot || hasReplicatedEntityChanges(event, "doors");
   const previousZ = pixiWorldRenderState.currentZ;
   pixiWorldRenderState.currentZ = playerState.z;
   if (!gameRuntimeState.isStarted) {
@@ -9536,6 +9585,9 @@ const synchronizeRemoteWorldRender = (event) => {
   if (didRemotePlayersChange || didChangeFloor) {
     syncVisibleRemotePlayerRenders();
   }
+  if (didDoorsChange || didChangeFloor) {
+    syncPixiDoorVisuals(doorsByUid.values(), getCurrentWorldMap());
+  }
   if (didSelfChange) {
     synchronizeRemoteSelfUi(isSnapshot, event?.payload?.serverTime);
     updatePixiVisibleChunksAroundPlayer();
@@ -9580,6 +9632,7 @@ const initializeRemoteGameSession = async () => {
       npcs: npcsByUid,
       worldItems: worldItemsByUid,
       groundEffects: groundEffectsByUid,
+      doors: doorsByUid,
     },
     onStateApplied: ({ event }) => synchronizeRemoteWorldRender(event),
     onEvents: (events) => gameActionEffectRouter({ events }),
@@ -9663,6 +9716,7 @@ const preloadGameShell = () => {
   }
   gameShellPreloadPromise = (async () => {
     const worldMapsByZ = loadWorldMaps();
+    initializeDoorsFromWorldMaps(worldMapsByZ, doorsByUid, doorUidByTileKey);
     const didInitializeRenderer = await initializePixiRenderer({
       htmlParentElement: game,
       gameWidth: GAME_WIDTH,

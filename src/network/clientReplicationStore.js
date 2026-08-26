@@ -4,6 +4,7 @@ const createEntityMaps = () => ({
   npcs: new Map(),
   worldItems: new Map(),
   groundEffects: new Map(),
+  doors: new Map(),
 });
 
 const replaceMapFromEntities = (targetMap, entities) => {

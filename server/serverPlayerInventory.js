@@ -15,7 +15,7 @@ import {
   getRewardItemsTotalWeight,
 } from "../src/inventory/inventoryTransactions.js";
 import { hasLineOfSightBetweenTiles } from "../src/world/pathfinding.js";
-import { getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../src/world/worldCoordinates.js";
+import { getWorldChunkForTilePosition, isWorldCollisionAtTile } from "../src/world/worldCoordinates.js";
 
 const WORLD_ITEM_THROW_RANGE = 9;
 
@@ -114,7 +114,7 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
       !Number.isInteger(col) ||
       !Number.isInteger(row) ||
       !getWorldChunkForTilePosition(worldMap, col, row) ||
-      isTiledCollisionAtTile(worldMap, col, row)
+      isWorldCollisionAtTile(worldMap, col, row)
     ) {
       return false;
     }

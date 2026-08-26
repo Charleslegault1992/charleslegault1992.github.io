@@ -14,7 +14,7 @@ import { resetPlayerRegenerationTimers } from "./playerRegeneration.js";
 import { updatePlayerCarriedWeight } from "../inventory/inventoryWeight.js";
 import { gameRuntimeState, pixiWorldRenderState } from "../state/clientRuntimeState.js";
 import { normalizePlayerSpellbook, playerState } from "../state/playerState.js";
-import { getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../world/worldCoordinates.js";
+import { getWorldChunkForTilePosition, isWorldCollisionAtTile } from "../world/worldCoordinates.js";
 
 export const createCharacterSessionController = ({
   syncActiveTorchFuel,
@@ -148,7 +148,7 @@ export const createCharacterSessionController = ({
       !Number.isInteger(col) ||
       !Number.isInteger(row) ||
       !getWorldChunkForTilePosition(worldMap, col, row) ||
-      isTiledCollisionAtTile(worldMap, col, row)
+      isWorldCollisionAtTile(worldMap, col, row)
     ) {
       return false;
     }

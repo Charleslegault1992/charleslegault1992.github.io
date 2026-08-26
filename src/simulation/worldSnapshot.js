@@ -183,6 +183,26 @@ export const serializeGroundEffectState = (groundEffect) => {
   };
 };
 
+export const serializeDoorState = (door) => {
+  if (!door || typeof door.uid !== "string" || typeof door.doorType !== "string") {
+    return null;
+  }
+  return {
+    uid: door.uid,
+    doorId: door.doorId,
+    doorType: door.doorType,
+    x: door.x,
+    y: door.y,
+    z: door.z,
+    col: door.col,
+    row: door.row,
+    width: door.width,
+    height: door.height,
+    isOpen: door.isOpen === true,
+    locked: door.locked === true,
+  };
+};
+
 export const serializeWorldChunk = (chunk) => {
   if (!chunk || !Number.isInteger(chunk.z) || !Number.isInteger(chunk.chunkX) || !Number.isInteger(chunk.chunkY)) {
     return null;
@@ -196,6 +216,9 @@ export const serializeWorldChunk = (chunk) => {
     transitions: cloneOrNull(chunk.transitions) ?? [],
     spawns: cloneOrNull(chunk.spawns) ?? [],
     interactables: cloneOrNull(chunk.interactables) ?? [],
+    roofAreas: cloneOrNull(chunk.roofAreas) ?? [],
+    roofRevealZones: cloneOrNull(chunk.roofRevealZones) ?? [],
+    doors: cloneOrNull(chunk.doors) ?? [],
     zones: cloneOrNull(chunk.zones) ?? [],
   };
 };
@@ -213,6 +236,7 @@ export const createWorldSnapshot = ({
   npcs = [],
   worldItems = [],
   groundEffects = [],
+  doors = [],
   chunks = [],
   chunksAreSerialized = false,
   visibleChunkKeys = [],
@@ -240,6 +264,7 @@ export const createWorldSnapshot = ({
       npcs: serializeCollection(npcs, serializeNpcState),
       worldItems: serializeCollection(worldItems, serializeWorldItem),
       groundEffects: serializeCollection(groundEffects, serializeGroundEffectState),
+      doors: serializeCollection(doors, serializeDoorState),
     },
     chunks: valuesFrom(chunks)
       .map((chunk) => (chunksAreSerialized ? chunk : serializeWorldChunk(chunk)))

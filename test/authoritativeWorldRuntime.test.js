@@ -17,7 +17,11 @@ import { TILE_SIZE } from "../src/core/gameConstants.js";
 import { createAuthoritativeWorldRuntime } from "../server/authoritativeWorldRuntime.js";
 import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
 import { createSqliteCharacterRepository } from "../server/persistence/sqliteCharacterRepository.js";
-import { getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../src/world/worldCoordinates.js";
+import {
+  getWorldChunkForTilePosition,
+  isTiledCollisionAtTile,
+  isWorldCollisionAtTile,
+} from "../src/world/worldCoordinates.js";
 import { createMoveItemAction, createSplitItemStackAction } from "../src/inventory/inventoryActions.js";
 import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { createUseItemAction } from "../src/items/itemUseActions.js";
@@ -1192,6 +1196,39 @@ test("the authoritative runtime executes a Tiled floor transition", async () => 
     { x: player.x, y: player.y, z: player.z },
   );
   assert.ok(secondPlayer.tileStackOrder > player.tileStackOrder);
+});
+
+test("Tiled doors toggle authoritative collision and replicate their state", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "test", characterId: "door" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const door = runtime.getWorldEntities().doors.get("house_01_main_door");
+  const worldMap = worldMapsByZ.get(door.z);
+  const interactable = worldMap.interactablesById.get(door.doorId);
+  player.x = (door.col - 1) * TILE_SIZE;
+  player.y = door.row * TILE_SIZE;
+  player.z = door.z;
+
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), true);
+  const result = runtime.dispatchAction(
+    session,
+    createWorldInteractionAction({
+      interactableId: door.doorId,
+      interactionType: "door",
+      z: door.z,
+      col: interactable.col,
+      row: interactable.row,
+      requestedAt: 0,
+    }),
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(door.isOpen, true);
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), false);
+  assert.equal(result.events[0].type, "door-state-changed");
 });
 
 test("snapshots contain only nearby serialized world entities", async () => {

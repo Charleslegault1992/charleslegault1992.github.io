@@ -8,7 +8,7 @@ import {
   remoteEntityInterpolationStore,
 } from "./remoteEntityInterpolationStore.js";
 
-const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects"]);
+const REPLICATED_ENTITY_TYPES = Object.freeze(["players", "monsters", "npcs", "worldItems", "groundEffects", "doors"]);
 const VISUAL_ONLY_ENTITY_FIELDS = new Set(["renderX", "renderY"]);
 const LOCAL_PLAYER_SERVER_IGNORED_FIELDS = new Set([
   "renderX",

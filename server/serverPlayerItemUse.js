@@ -6,7 +6,7 @@ import { startPlayerRegenerationTimers } from "../src/player/playerRegeneration.
 import { playerClassesDatabase } from "../src/data/playerClassesDatabase.js";
 import { allocateGroundEffectUid } from "../src/state/uidAllocator.js";
 import { hasLineOfSightBetweenTiles } from "../src/world/pathfinding.js";
-import { getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../src/world/worldCoordinates.js";
+import { getWorldChunkForTilePosition, isWorldCollisionAtTile } from "../src/world/worldCoordinates.js";
 
 const isNear = (source, target, range) => {
   if (!source || !target || source.z !== target.z) {
@@ -131,7 +131,7 @@ export const createServerPlayerItemUse = ({
         !Number.isInteger(col) ||
         !Number.isInteger(row) ||
         !getWorldChunkForTilePosition(worldMap, col, row) ||
-        isTiledCollisionAtTile(worldMap, col, row)
+        isWorldCollisionAtTile(worldMap, col, row)
       ) {
         return { success: false, reason: "target-out-of-range" };
       }
@@ -222,7 +222,7 @@ export const createServerPlayerItemUse = ({
       !Number.isInteger(col) ||
       !Number.isInteger(row) ||
       !getWorldChunkForTilePosition(worldMap, col, row) ||
-      isTiledCollisionAtTile(worldMap, col, row) ||
+      isWorldCollisionAtTile(worldMap, col, row) ||
       !hasLineOfSightBetweenTiles(
         worldMap,
         { col: player.x / TILE_SIZE, row: player.y / TILE_SIZE },

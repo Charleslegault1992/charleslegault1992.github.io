@@ -30,6 +30,8 @@ export const createEmptyWorldMap = (z) => {
     z,
     chunksByKey: new Map(),
     interactablesById: new Map(),
+    roofAreas: [],
+    roofRevealZones: [],
   };
 };
 
@@ -99,9 +101,13 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
       walls: [],
       objects: [],
       top: [],
+      roofs: [],
       collision: [],
     },
     interactables: [],
+    roofAreas: [],
+    roofRevealZones: [],
+    doors: [],
     transitions: [],
     spawns: [],
     npcs: [],
@@ -219,9 +225,24 @@ const importTiledObjectLayerObjects = (worldMap, tiledLayer) => {
       height: tiledObject.height,
       properties: getTiledObjectProperties(tiledObject),
     };
+
+    if (layerName === "doors") {
+      const doorId = cleanTiledObject.properties.doorId;
+      cleanTiledObject.properties.interactableId = doorId;
+      cleanTiledObject.properties.interactableType = "door";
+    }
+
     worldChunk[layerName].push(cleanTiledObject);
 
-    if (layerName === "interactables") {
+    if (layerName === "doors") {
+      worldChunk.interactables.push(cleanTiledObject);
+    }
+
+    if (layerName === "roofAreas" || layerName === "roofRevealZones") {
+      worldMap[layerName].push(cleanTiledObject);
+    }
+
+    if (layerName === "interactables" || layerName === "doors") {
       const interactableId = cleanTiledObject.properties.interactableId;
       if (typeof interactableId === "string" && interactableId !== "" && !worldMap.interactablesById.has(interactableId)) {
         worldMap.interactablesById.set(interactableId, cleanTiledObject);

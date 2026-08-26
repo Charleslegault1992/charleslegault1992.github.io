@@ -35,6 +35,7 @@ test("the remote state bridge mutates runtime state without replacing stable ent
     npcs: new Map(),
     worldItems: new Map(),
     groundEffects: new Map(),
+    doors: new Map(),
   };
   let appliedRevision = null;
   createRemoteGameStateBridge({
@@ -78,6 +79,7 @@ test("the remote state bridge removes entities that leave the replicated interes
     npcs: new Map(),
     worldItems: new Map(),
     groundEffects: new Map(),
+    doors: new Map(),
   };
   createRemoteGameStateBridge({ transport: harness.transport, playerState: {}, entityMaps });
   const result = replicationStore.applySnapshot({
@@ -104,6 +106,7 @@ test("the remote state bridge preserves equipment and container references while
     npcs: new Map(),
     worldItems: new Map(),
     groundEffects: new Map(),
+    doors: new Map(),
   };
   createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
 
@@ -140,6 +143,7 @@ test("an acknowledged movement keeps the local prediction animation timing", () 
     npcs: new Map(),
     worldItems: new Map(),
     groundEffects: new Map(),
+    doors: new Map(),
   };
   createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
 
@@ -214,6 +218,7 @@ test("a local movement prediction does not clear remote interpolation buffers", 
     npcs: new Map(),
     worldItems: new Map(),
     groundEffects: new Map(),
+    doors: new Map(),
   };
   createRemoteGameStateBridge({ transport: harness.transport, playerState, entityMaps });
 

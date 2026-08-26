@@ -69,6 +69,8 @@ export const clearPixiWorldItemVisuals = (...args) => callPixiRenderer("clearPix
 export const upsertPixiGroundEffectVisual = (...args) => callPixiRenderer("upsertPixiGroundEffectVisual", args, false);
 export const removePixiGroundEffectVisual = (...args) => callPixiRenderer("removePixiGroundEffectVisual", args, false);
 export const clearPixiGroundEffectVisuals = (...args) => callPixiRenderer("clearPixiGroundEffectVisuals", args);
+export const syncPixiDoorVisuals = (...args) => callPixiRenderer("syncPixiDoorVisuals", args, false);
+export const updatePixiRoofVisibility = (...args) => callPixiRenderer("updatePixiRoofVisibility", args, false);
 export const setPixiItemUseTargets = (...args) => callPixiRenderer("setPixiItemUseTargets", args, false);
 export const clearPixiItemUseTargets = (...args) => callPixiRenderer("clearPixiItemUseTargets", args);
 export const playPixiItemProjectile = (...args) => callPixiRenderer("playPixiItemProjectile", args, false);

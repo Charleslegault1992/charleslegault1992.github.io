@@ -3,7 +3,7 @@ import { getRandomInt } from "../src/core/mathUtils.js";
 import { getItemData, getItemSurfaceHeight } from "../src/items/itemModel.js";
 import { getNpcData } from "../src/npcs/npcModel.js";
 import { getCardinalDirectionFromTileDelta } from "../src/world/pathfinding.js";
-import { getChunkPositionFromWorldPosition, getWorldChunkForTilePosition, isTiledCollisionAtTile } from "../src/world/worldCoordinates.js";
+import { getChunkPositionFromWorldPosition, getWorldChunkForTilePosition, isWorldCollisionAtTile } from "../src/world/worldCoordinates.js";
 
 const NPC_ACTIVE_CHUNK_RADIUS = 1;
 const CARDINAL_TILE_OFFSETS = Object.freeze([
@@ -59,7 +59,7 @@ export const createServerNpcMovement = ({
   const isDestinationWalkable = (npc, worldMap, col, row) => {
     if (
       !getWorldChunkForTilePosition(worldMap, col, row) ||
-      isTiledCollisionAtTile(worldMap, col, row)
+      isWorldCollisionAtTile(worldMap, col, row)
     ) {
       return false;
     }

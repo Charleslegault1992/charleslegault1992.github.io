@@ -7,6 +7,7 @@ import { TILE_SIZE } from "../src/core/gameConstants.js";
 import { groundEffectsDatabase } from "../src/data/groundEffectsDatabase.js";
 import { allocateGroundEffectUid } from "../src/state/uidAllocator.js";
 import { createSpatialEntityStore } from "./spatialEntityStore.js";
+import { createDoorFromWorldObject, indexDoorTiles } from "../src/world/doorModel.js";
 
 export const createServerWorldEntities = (
   worldMapsByZ,
@@ -17,6 +18,8 @@ export const createServerWorldEntities = (
   }
   const monsters = createSpatialEntityStore();
   const npcs = createSpatialEntityStore();
+  const doors = createSpatialEntityStore();
+  const doorUidByTileKey = new Map();
   const worldItems = createSpatialEntityStore({ stackOrderField: "tileStackOrder" });
   const groundEffects = createSpatialEntityStore();
   const decayingItems = [];
@@ -36,6 +39,12 @@ export const createServerWorldEntities = (
         const npc = createNpcFromWorldObject(worldNpcObject);
         if (npc) {
           npcs.add(npc);
+        }
+      }
+      for (const worldDoorObject of chunk.doors ?? []) {
+        const door = createDoorFromWorldObject(worldDoorObject);
+        if (door) {
+          doors.add(door);
         }
       }
       for (const interactable of chunk.interactables ?? []) {
@@ -63,6 +72,12 @@ export const createServerWorldEntities = (
         }
       }
     }
+  }
+
+  indexDoorTiles(doors.getMap().values(), doorUidByTileKey);
+  for (const worldMap of worldMapsByZ.values()) {
+    worldMap.doorsByUid = doors.getMap();
+    worldMap.doorUidByTileKey = doorUidByTileKey;
   }
 
   const respawnSystem = createMonsterRespawnSystem({
@@ -99,6 +114,8 @@ export const createServerWorldEntities = (
   return Object.freeze({
     monsters,
     npcs,
+    doors,
+    doorUidByTileKey,
     worldItems,
     groundEffects,
     decayingItems,

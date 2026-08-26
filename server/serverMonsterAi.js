@@ -15,7 +15,7 @@ import {
   getTilePosition,
   getWorldChunkForTilePosition,
   getWorldPosition,
-  isTiledCollisionAtTile,
+  isWorldCollisionAtTile,
 } from "../src/world/worldCoordinates.js";
 
 export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, npcs, worldItems }) => {
@@ -45,7 +45,7 @@ export const createServerMonsterAi = ({ worldMapsByZ, playersByUid, monsters, np
         !Number.isInteger(row) ||
         !Number.isInteger(col) ||
         !getWorldChunkForTilePosition(worldMap, col, row) ||
-        isTiledCollisionAtTile(worldMap, col, row)
+        isWorldCollisionAtTile(worldMap, col, row)
       ) {
         return false;
       }

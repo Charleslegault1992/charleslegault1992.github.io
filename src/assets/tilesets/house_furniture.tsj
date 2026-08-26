@@ -1,0 +1,14 @@
+{ "columns":22,
+ "image":"housefurniture.png",
+ "imageheight":1409,
+ "imagewidth":1409,
+ "margin":0,
+ "name":"house_furniture",
+ "spacing":0,
+ "tilecount":484,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}

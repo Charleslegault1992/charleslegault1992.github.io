@@ -5,6 +5,9 @@ export const monsterUidsByChunkKey = new Map();
 
 export const playersByUid = new Map();
 
+export const doorsByUid = new Map();
+export const doorUidByTileKey = new Map();
+
 export const npcElementsByUid = new Map();
 export const npcsByUid = new Map();
 export const npcUidByTileKey = new Map();

@@ -7,7 +7,7 @@ import {
   monsterSpawnStateById,
 } from "../state/worldState.js";
 import { respawnTimingState } from "../state/clientRuntimeState.js";
-import { isTiledCollisionAtTile } from "../world/worldCoordinates.js";
+import { isWorldCollisionAtTile } from "../world/worldCoordinates.js";
 
 const compareRespawnEvents = (firstEvent, secondEvent) => {
   if (firstEvent.dueAt !== secondEvent.dueAt) {
@@ -72,7 +72,7 @@ export const createMonsterRespawnSystem = ({
     if (!(worldMap?.chunksByKey instanceof Map) || !Number.isInteger(col) || !Number.isInteger(row)) {
       return false;
     }
-    if (isTiledCollisionAtTile(worldMap, col, row)) {
+    if (isWorldCollisionAtTile(worldMap, col, row)) {
       return false;
     }
     const x = col * TILE_SIZE;

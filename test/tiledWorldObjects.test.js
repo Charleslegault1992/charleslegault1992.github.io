@@ -9,6 +9,7 @@ import {
 } from "../src/world/tiledWorldObjects.js";
 import { applyPlayerWorldTransitionState } from "../src/world/worldTransitions.js";
 import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
+import { initializeDoorsFromWorldMaps } from "../src/world/doorModel.js";
 
 test("Tiled world objects are found by their logical tile", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
@@ -57,4 +58,17 @@ test("protection zones are resolved from authored Tiled zone objects", () => {
 
   assert.equal(findProtectionZoneAtTile(worldMap, 2, 3)?.properties.zoneType, "protection");
   assert.equal(findProtectionZoneAtTile(worldMap, 4, 3), null);
+});
+
+test("house roof zones and doors are imported from Tiled", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const worldMap = worldMapsByZ.get(0);
+  const doorsByUid = initializeDoorsFromWorldMaps(worldMapsByZ);
+  const door = doorsByUid.get("house_01_main_door");
+
+  assert.equal(worldMap.roofAreas.some((area) => area.properties?.roofId === "house_01"), true);
+  assert.equal(worldMap.roofRevealZones.filter((zone) => zone.properties?.roofId === "house_01").length, 2);
+  assert.equal(door.doorType, "woodenDoor");
+  assert.equal(door.isOpen, false);
+  assert.equal(worldMap.interactablesById.get(door.doorId)?.properties?.interactableType, "door");
 });
