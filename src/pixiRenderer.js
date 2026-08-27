@@ -703,6 +703,28 @@ const createTileSprite = (tilesets, gid, x, y) => {
 //#region     -----  RENDU - PORTES  -----
 /* ==================================================== */
 const fillDoorStateContainer = (stateContainer, tilesets, tileset, stateData) => {
+  if (stateData?.frame) {
+    const { x, y, width, height } = stateData.frame;
+    const cacheKey = `${tileset.source}:door-frame:${x}:${y}:${width}:${height}`;
+    let texture = tileTextureByCacheKey.get(cacheKey);
+    if (!texture) {
+      const tilesetTexture = getTilesetTexture(tileset);
+      if (!tilesetTexture) {
+        return;
+      }
+      texture = new Texture({
+        source: tilesetTexture.source,
+        frame: new Rectangle(x, y, width, height),
+      });
+      tileTextureByCacheKey.set(cacheKey, texture);
+    }
+    const sprite = new Sprite(texture);
+    sprite.x = stateData.offsetX ?? 0;
+    sprite.y = stateData.offsetY ?? 0;
+    stateContainer.addChild(sprite);
+    return;
+  }
+
   for (const tile of stateData.tiles) {
     const gid = tileset.firstgid + tile.localTileId;
     const sprite = createTileSprite(

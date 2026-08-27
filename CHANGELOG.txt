@@ -1,3 +1,7 @@
+0.3415 - Porte et revelation du toit
+    - La porte utilise maintenant ses nouveaux sprites directement dans house1.png.
+    - La grande zone interieure garde le toit cache pendant que le joueur est dans la maison.
+
 0.3414 - Maisons, toits et portes
     - Ajout des nouveaux layers Tiled pour les toits, les zones de revelation et les portes.
     - Les toits disparaissent doucement quand le joueur approche des zones prevues.

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { TILE_SIZE } from "../src/core/gameConstants.js";
+import { getDoorData } from "../src/data/doorsDatabase.js";
 import {
   findProtectionZoneAtTile,
   findTransitionAtTile,
@@ -65,10 +66,23 @@ test("house roof zones and doors are imported from Tiled", async () => {
   const worldMap = worldMapsByZ.get(0);
   const doorsByUid = initializeDoorsFromWorldMaps(worldMapsByZ);
   const door = doorsByUid.get("house_01_main_door");
+  const doorData = getDoorData(door?.doorType);
+  const roofArea = worldMap.roofAreas.find((area) => area.properties?.roofId === "house_01");
+  const fullRoofRevealZone = worldMap.roofRevealZones.find(
+    (zone) =>
+      zone.properties?.roofId === "house_01" &&
+      zone.x === roofArea?.x &&
+      zone.y === roofArea?.y &&
+      zone.width === roofArea?.width &&
+      zone.height === roofArea?.height,
+  );
 
-  assert.equal(worldMap.roofAreas.some((area) => area.properties?.roofId === "house_01"), true);
-  assert.equal(worldMap.roofRevealZones.filter((zone) => zone.properties?.roofId === "house_01").length, 2);
+  assert.ok(roofArea);
+  assert.ok(fullRoofRevealZone);
   assert.equal(door.doorType, "woodenDoor");
   assert.equal(door.isOpen, false);
+  assert.equal(doorData.tilesetImage, "house1.png");
+  assert.deepEqual(doorData.closed.frame, { x: 1664, y: 0, width: 192, height: 192 });
+  assert.deepEqual(doorData.open.frame, { x: 1664, y: 256, width: 128, height: 192 });
   assert.equal(worldMap.interactablesById.get(door.doorId)?.properties?.interactableType, "door");
 });
