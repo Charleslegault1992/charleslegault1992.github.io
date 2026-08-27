@@ -1,5 +1,5 @@
 import { TILE_SIZE } from "../core/gameConstants.js";
-import { getDoorVariantData } from "../data/doorsDatabase.js";
+import { DOOR_WALL_SIDE, getDoorVariantData } from "../data/doorsDatabase.js";
 
 export const getDoorTileKey = (z, col, row) => `${z}:${col}:${row}`;
 
@@ -22,6 +22,21 @@ export const getDoorTiles = (door) => {
     tiles.push({ z: door.z, col: door.col + colOffset, row: collisionRow });
   }
   return tiles;
+};
+
+export const getDoorInteriorPushTile = (door, doorTile) => {
+  if (!Number.isInteger(doorTile?.z) || !Number.isInteger(doorTile?.col) || !Number.isInteger(doorTile?.row)) {
+    return null;
+  }
+  const rowOffset = door?.wallSide === DOOR_WALL_SIDE.upper ? -1 : door?.wallSide === DOOR_WALL_SIDE.lower ? 1 : 0;
+  if (rowOffset === 0) {
+    return null;
+  }
+  return {
+    z: doorTile.z,
+    col: doorTile.col,
+    row: doorTile.row + rowOffset,
+  };
 };
 
 export const createDoorFromWorldObject = (worldObject) => {

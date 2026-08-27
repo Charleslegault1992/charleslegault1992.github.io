@@ -1232,6 +1232,45 @@ test("Tiled doors toggle authoritative collision and replicate their state", asy
   assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), false);
   assert.equal(isWorldCollisionAtTile(worldMap, door.col, collisionRow), false);
   assert.equal(result.events[0].type, "door-state-changed");
+
+  const occupantSession = {};
+  const occupantConnection = runtime.connectClient(occupantSession, {
+    accountId: "test",
+    characterId: "door-occupant",
+  });
+  occupantSession.playerUid = occupantConnection.playerUid;
+  const occupant = runtime.getPlayer(occupantConnection.playerUid);
+  occupant.x = door.col * TILE_SIZE;
+  occupant.y = collisionRow * TILE_SIZE;
+  occupant.z = door.z;
+  occupant.oldX = occupant.x;
+  occupant.oldY = occupant.y;
+  const snapshotBeforeClose = runtime.createSnapshotForClient(session);
+  const closeResult = runtime.dispatchAction(
+    session,
+    createWorldInteractionAction({
+      interactableId: door.doorId,
+      interactionType: "door",
+      z: door.z,
+      col: interactable.col,
+      row: interactable.row,
+      requestedAt: 0,
+    }),
+  );
+
+  assert.equal(closeResult.success, true);
+  assert.equal(door.isOpen, false);
+  assert.equal(occupant.x, door.col * TILE_SIZE);
+  assert.equal(occupant.oldY, collisionRow * TILE_SIZE);
+  assert.equal(occupant.y, (collisionRow + 1) * TILE_SIZE);
+  assert.equal(occupant.direction, "down");
+  assert.deepEqual(closeResult.changes.changedPlayerUids, [occupant.uid]);
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, collisionRow), true);
+  const deltas = runtime.getDeltasForClient(session, snapshotBeforeClose.revision);
+  assert.equal(
+    deltas.some((delta) => delta.upserts.players.some((changedPlayer) => changedPlayer.uid === occupant.uid)),
+    true,
+  );
 });
 
 test("snapshots contain only nearby serialized world entities", async () => {

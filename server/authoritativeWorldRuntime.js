@@ -78,7 +78,7 @@ import {
   hasActivePlayerSkull,
   recordUnjustifiedPlayerKill,
 } from "../src/combat/playerPvpState.js";
-import { getDoorTiles } from "../src/world/doorModel.js";
+import { getDoorInteriorPushTile, getDoorTiles } from "../src/world/doorModel.js";
 
 const AUTOSAVE_INTERVAL_MS = 30000;
 const AUTOSAVE_RETRY_DELAY_MS = 5000;
@@ -390,20 +390,62 @@ export const createAuthoritativeWorldRuntime = ({
     );
   };
 
-  const canCloseDoor = (door) => {
+  const createDoorClosingPushPlan = (door) => {
+    const worldMap = worldMapsByZ.get(door.z);
+    if (!worldMap) {
+      return null;
+    }
+    const pushes = [];
+    const plannedDestinationKeys = new Set();
     for (const tile of getDoorTiles(door)) {
       const x = tile.col * TILE_SIZE;
       const y = tile.row * TILE_SIZE;
       if (
-        [...playersByUid.values()].some((player) => player.z === tile.z && player.x === x && player.y === y) ||
         worldEntities.monsters.getAt(x, y, tile.z) ||
         worldEntities.npcs.getAt(x, y, tile.z) ||
         worldEntities.worldItems.getAt(x, y, tile.z)
       ) {
-        return false;
+        return null;
+      }
+      for (const occupyingPlayer of playersByUid.values()) {
+        if (occupyingPlayer.z !== tile.z || occupyingPlayer.x !== x || occupyingPlayer.y !== y) {
+          continue;
+        }
+        const targetTile = getDoorInteriorPushTile(door, tile);
+        if (!targetTile) {
+          return null;
+        }
+        const payload = {
+          fromX: occupyingPlayer.x,
+          fromY: occupyingPlayer.y,
+          toX: targetTile.col * TILE_SIZE,
+          toY: targetTile.row * TILE_SIZE,
+        };
+        const destinationKey = `${targetTile.z}:${payload.toX}:${payload.toY}`;
+        if (plannedDestinationKeys.has(destinationKey) || !isPlayerDestinationAvailable(occupyingPlayer, payload)) {
+          return null;
+        }
+        plannedDestinationKeys.add(destinationKey);
+        pushes.push({
+          player: occupyingPlayer,
+          payload,
+          direction: targetTile.row < tile.row ? "up" : "down",
+        });
       }
     }
-    return true;
+    return pushes;
+  };
+
+  const applyDoorClosingPush = ({ player, payload, direction }) => {
+    const movementTiming = getPlayerMovementTiming(player, payload);
+    player.oldX = payload.fromX;
+    player.oldY = payload.fromY;
+    player.x = payload.toX;
+    player.y = payload.toY;
+    player.direction = direction;
+    player.moveStartTime = currentServerTime;
+    player.moveDuration = movementTiming?.duration ?? 0;
+    recordPlayerTileEntry(player);
   };
 
   const executeDoorInteraction = (player, interactable) => {
@@ -411,13 +453,24 @@ export const createAuthoritativeWorldRuntime = ({
     if (!door || door.locked || !isPlayerNearTiledObject(player, interactable, 1)) {
       return { success: false, reason: door?.locked ? "door-locked" : "unsupported-or-out-of-range" };
     }
-    if (door.isOpen && !canCloseDoor(door)) {
-      return { success: false, reason: "door-blocked" };
+    let closingPushes = [];
+    if (door.isOpen) {
+      closingPushes = createDoorClosingPushPlan(door);
+      if (!closingPushes) {
+        return { success: false, reason: "door-blocked" };
+      }
+      for (const push of closingPushes) {
+        applyDoorClosingPush(push);
+      }
     }
     door.isOpen = !door.isOpen;
     return {
       success: true,
-      changes: { doorUid: door.uid, isOpen: door.isOpen },
+      changes: {
+        doorUid: door.uid,
+        isOpen: door.isOpen,
+        changedPlayerUids: closingPushes.map((push) => push.player.uid),
+      },
       events: [
         {
           type: "door-state-changed",
@@ -1235,8 +1288,14 @@ export const createAuthoritativeWorldRuntime = ({
       markPlayerPersistenceDirty(player.uid);
       const upserts = { players: [serializePlayerPublicState(player)] };
       const removals = {};
-      const changedPlayerUid = result.changes?.targetPlayerUid;
-      if (typeof changedPlayerUid === "string" && changedPlayerUid !== player.uid) {
+      const changedPlayerUids = new Set([
+        result.changes?.targetPlayerUid,
+        ...(Array.isArray(result.changes?.changedPlayerUids) ? result.changes.changedPlayerUids : []),
+      ]);
+      for (const changedPlayerUid of changedPlayerUids) {
+        if (typeof changedPlayerUid !== "string" || changedPlayerUid === player.uid) {
+          continue;
+        }
         const changedPlayer = playersByUid.get(changedPlayerUid);
         if (changedPlayer) {
           markPlayerPersistenceDirty(changedPlayerUid);

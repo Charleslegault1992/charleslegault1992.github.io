@@ -10,7 +10,7 @@ import {
 } from "../src/world/tiledWorldObjects.js";
 import { applyPlayerWorldTransitionState } from "../src/world/worldTransitions.js";
 import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
-import { initializeDoorsFromWorldMaps } from "../src/world/doorModel.js";
+import { getDoorInteriorPushTile, getDoorTiles, initializeDoorsFromWorldMaps } from "../src/world/doorModel.js";
 
 test("Tiled world objects are found by their logical tile", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
@@ -85,6 +85,8 @@ test("house roof zones and doors are imported from Tiled", async () => {
   assert.equal(lowerDoorData.open.offsetX, -128);
   assert.equal(lowerDoorData.open.offsetY, 0);
   assert.deepEqual(upperDoorData.open.frame, { x: 1856, y: 512, width: 192, height: 192 });
+  assert.equal(getDoorInteriorPushTile(lowerDoor, getDoorTiles(lowerDoor)[0]).row, getDoorTiles(lowerDoor)[0].row + 1);
+  assert.equal(getDoorInteriorPushTile(upperDoor, getDoorTiles(upperDoor)[0]).row, getDoorTiles(upperDoor)[0].row - 1);
   assert.equal(worldMap.interactablesById.get(lowerDoor.doorId)?.properties?.interactableType, "door");
 
   const chunksWithTopDeco = [...worldMap.chunksByKey.values()].filter((chunk) =>
