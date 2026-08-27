@@ -17,10 +17,9 @@ export const getDoorTiles = (door) => {
   const widthTiles = Math.max(1, Math.ceil(door.width / TILE_SIZE));
   const heightTiles = Math.max(1, Math.ceil(door.height / TILE_SIZE));
   const tiles = [];
-  for (let rowOffset = 0; rowOffset < heightTiles; rowOffset++) {
-    for (let colOffset = 0; colOffset < widthTiles; colOffset++) {
-      tiles.push({ z: door.z, col: door.col + colOffset, row: door.row + rowOffset });
-    }
+  const collisionRow = door.row + heightTiles - 1;
+  for (let colOffset = 0; colOffset < widthTiles; colOffset++) {
+    tiles.push({ z: door.z, col: door.col + colOffset, row: collisionRow });
   }
   return tiles;
 };

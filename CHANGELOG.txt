@@ -1,3 +1,8 @@
+0.3418 - Alignement et collision des portes
+    - La porte lower ouverte est maintenant alignee a gauche du trou de la maison.
+    - Les joueurs, monstres et NPC apparaissent devant les portes.
+    - Une porte verticale bloque seulement sa case logique inferieure de 64x64.
+
 0.3417 - Portes orientees et decoration des maisons
     - Ajout des variantes upper et lower pour ajuster automatiquement les portes selon le mur.
     - Ajout du layer topDeco au-dessus du joueur et du layer top.

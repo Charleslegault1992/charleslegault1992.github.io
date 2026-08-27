@@ -82,6 +82,8 @@ test("house roof zones and doors are imported from Tiled", async () => {
   assert.equal(doorData.tilesetImage, "house1.png");
   assert.deepEqual(lowerDoorData.closed.frame, { x: 1856, y: 128, width: 192, height: 192 });
   assert.deepEqual(lowerDoorData.open.frame, { x: 1856, y: 320, width: 192, height: 192 });
+  assert.equal(lowerDoorData.open.offsetX, -128);
+  assert.equal(lowerDoorData.open.offsetY, 0);
   assert.deepEqual(upperDoorData.open.frame, { x: 1856, y: 512, width: 192, height: 192 });
   assert.equal(worldMap.interactablesById.get(lowerDoor.doorId)?.properties?.interactableType, "door");
 

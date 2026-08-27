@@ -1212,7 +1212,9 @@ test("Tiled doors toggle authoritative collision and replicate their state", asy
   player.y = door.row * TILE_SIZE;
   player.z = door.z;
 
-  assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), true);
+  const collisionRow = door.row + Math.ceil(door.height / TILE_SIZE) - 1;
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), false);
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, collisionRow), true);
   const result = runtime.dispatchAction(
     session,
     createWorldInteractionAction({
@@ -1228,6 +1230,7 @@ test("Tiled doors toggle authoritative collision and replicate their state", asy
   assert.equal(result.success, true);
   assert.equal(door.isOpen, true);
   assert.equal(isWorldCollisionAtTile(worldMap, door.col, door.row), false);
+  assert.equal(isWorldCollisionAtTile(worldMap, door.col, collisionRow), false);
   assert.equal(result.events[0].type, "door-state-changed");
 });
 

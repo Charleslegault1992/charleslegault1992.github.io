@@ -2485,11 +2485,11 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
 
     pixiApp.stage.addChild(worldContainer);
     worldContainer.addChild(mapBelowContainer);
+    worldContainer.addChild(doorContainer);
     worldContainer.addChild(itemUseTargetContainer);
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
-    worldContainer.addChild(doorContainer);
     worldContainer.addChild(roofContainer);
     worldContainer.addChild(feedbackEffectContainer);
     console.log("[Pixi] Stage hierarchy created");

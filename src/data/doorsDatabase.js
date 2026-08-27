@@ -17,8 +17,8 @@ export const doorsDatabase = Object.freeze({
         closed: woodenDoorClosed,
         open: Object.freeze({
           frame: Object.freeze({ x: 1856, y: 320, width: 192, height: 192 }),
-          offsetX: 0,
-          offsetY: -64,
+          offsetX: -128,
+          offsetY: 0,
         }),
       }),
       upper: Object.freeze({
