@@ -17,6 +17,7 @@ import {
 import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
+import { WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
 import {
   combatEffectsDatabase,
   EFFECT_ATLAS_CELL_SIZE,
@@ -2521,6 +2522,17 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
 
     entityContainer.sortableChildren = true;
     entityNameplateContainer.sortableChildren = true;
+    worldContainer.sortableChildren = true;
+
+    mapBelowContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.mapBelow;
+    doorLowerContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.doorLower;
+    itemUseTargetContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.itemUseTarget;
+    entityContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.entity;
+    projectileContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.projectile;
+    topContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.top;
+    doorUpperContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.doorUpper;
+    roofContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.roof;
+    feedbackEffectContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.feedbackEffect;
 
     pixiApp.stage.addChild(worldContainer);
     worldContainer.addChild(mapBelowContainer);

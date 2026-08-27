@@ -1,3 +1,7 @@
+0.3429 - Ordre fixe des layers Pixi
+    - Les branches du monde gardent maintenant une profondeur explicite et stable.
+    - Le layer top, les portes hautes et les toits restent toujours devant les creatures.
+
 0.3428 - Profondeur pendant les diagonales
     - Le joueur utilise immediatement la profondeur de sa destination pendant une diagonale vers le haut.
     - Les decorations du layer top restent devant le joueur pendant toute la transition.

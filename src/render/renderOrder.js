@@ -2,6 +2,18 @@ import { WORLD_RENDER_LAYER_SIZE } from "../core/gameConstants.js";
 
 const WORLD_RENDER_Z_INDEX_BASE = 1000000;
 
+export const WORLD_ROOT_RENDER_Z_INDEX = Object.freeze({
+  mapBelow: 0,
+  doorLower: 10,
+  itemUseTarget: 20,
+  entity: 30,
+  projectile: 40,
+  top: 50,
+  doorUpper: 60,
+  roof: 70,
+  feedbackEffect: 80,
+});
+
 export const getWorldRenderZIndex = (worldY, localLayer = 0) => {
   return WORLD_RENDER_Z_INDEX_BASE + worldY * WORLD_RENDER_LAYER_SIZE + localLayer;
 };
@@ -16,10 +28,6 @@ export const getEntityRenderSortY = (entity) => {
     Number.isFinite(entity.renderY) &&
     entity.oldY > entity.y &&
     entity.renderY > entity.y;
-  const isVerticalMovement =
-    !Number.isFinite(entity.oldX) ||
-    !Number.isFinite(entity.x) ||
-    entity.oldX === entity.x;
 
-  return isStillMovingUp && isVerticalMovement ? entity.oldY : entity.y;
+  return isStillMovingUp ? entity.oldY : entity.y;
 };
