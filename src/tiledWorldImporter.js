@@ -101,6 +101,7 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
       walls: [],
       objects: [],
       top: [],
+      topDeco: [],
       roofs: [],
       collision: [],
     },

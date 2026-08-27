@@ -1,5 +1,5 @@
 import { TILE_SIZE } from "../core/gameConstants.js";
-import { getDoorData } from "../data/doorsDatabase.js";
+import { getDoorVariantData } from "../data/doorsDatabase.js";
 
 export const getDoorTileKey = (z, col, row) => `${z}:${col}:${row}`;
 
@@ -29,10 +29,11 @@ export const createDoorFromWorldObject = (worldObject) => {
   const properties = worldObject?.properties;
   const doorId = properties?.doorId;
   const doorType = properties?.doorType;
+  const wallSide = properties?.wallSide;
   if (
     typeof doorId !== "string" ||
     doorId === "" ||
-    !getDoorData(doorType) ||
+    !getDoorVariantData(doorType, wallSide) ||
     !Number.isInteger(worldObject?.z) ||
     !Number.isInteger(worldObject?.col) ||
     !Number.isInteger(worldObject?.row)
@@ -44,6 +45,7 @@ export const createDoorFromWorldObject = (worldObject) => {
     uid: doorId,
     doorId,
     doorType,
+    wallSide,
     x: worldObject.x,
     y: worldObject.y,
     z: worldObject.z,

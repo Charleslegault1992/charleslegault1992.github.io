@@ -1,3 +1,9 @@
+0.3417 - Portes orientees et decoration des maisons
+    - Ajout des variantes upper et lower pour ajuster automatiquement les portes selon le mur.
+    - Ajout du layer topDeco au-dessus du joueur et du layer top.
+    - Ben habite maintenant la grande maison et Kev la petite maison.
+    - Synchronisation de la nouvelle grille complete de house1.png.
+
 0.3416 - Correction de la grille de la maison
     - Synchronisation de house1.png avec sa vraie grille de 29 colonnes dans Tiled et Pixi.
     - La porte ouverte conserve maintenant son cadre complet de 3 par 3 cases et son alignement dans la maison.

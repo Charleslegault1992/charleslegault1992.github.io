@@ -24,14 +24,14 @@ import {
   getElementCombatEffects,
 } from "./data/combatEffectsDatabase.js";
 import { groundEffectsDatabase } from "./data/groundEffectsDatabase.js";
-import { getDoorData } from "./data/doorsDatabase.js";
+import { getDoorData, getDoorVariantData } from "./data/doorsDatabase.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
 //#region     -----  CONFIG  -----
 /* ==================================================== */
 const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
-const MAP_TOP_LAYER_NAME = "top";
+const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
@@ -575,7 +575,7 @@ const getTilesetsUsedByChunks = (worldMap, chunkKeys) => {
   }
   for (const chunkKey of chunkKeys) {
     const chunk = worldMap.chunksByKey.get(chunkKey);
-    for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME, MAP_ROOF_LAYER_NAME]) {
+    for (const layerName of [...MAP_BELOW_LAYER_NAMES, ...MAP_TOP_LAYER_NAMES, MAP_ROOF_LAYER_NAME]) {
       const gids = chunk?.layers?.[layerName];
       if (!Array.isArray(gids)) {
         continue;
@@ -766,16 +766,17 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   }
 
   const doorData = getDoorData(door.doorType);
+  const doorVariantData = getDoorVariantData(door.doorType, door.wallSide);
   const tileset = worldMap.tilesets.find((candidate) => candidate?.image === doorData?.tilesetImage) ?? null;
-  if (!doorData || !tileset || !(await ensureTilesetTextureLoaded(tileset))) {
+  if (!doorData || !doorVariantData || !tileset || !(await ensureTilesetTextureLoaded(tileset))) {
     return false;
   }
   if (doorVisualsByUid.get(door.uid) !== visual) {
     return false;
   }
 
-  fillDoorStateContainer(visual.closed, worldMap.tilesets, tileset, doorData.closed);
-  fillDoorStateContainer(visual.open, worldMap.tilesets, tileset, doorData.open);
+  fillDoorStateContainer(visual.closed, worldMap.tilesets, tileset, doorVariantData.closed);
+  fillDoorStateContainer(visual.open, worldMap.tilesets, tileset, doorVariantData.open);
   visual.isReady = true;
   return true;
 };
@@ -2302,7 +2303,7 @@ const renderWorldChunk = (worldMap, chunk) => {
   const layerContainersByName = new Map();
   let roofContainersForChunk = new Map();
 
-  for (const layerName of [...MAP_BELOW_LAYER_NAMES, MAP_TOP_LAYER_NAME, MAP_ROOF_LAYER_NAME]) {
+  for (const layerName of [...MAP_BELOW_LAYER_NAMES, ...MAP_TOP_LAYER_NAMES, MAP_ROOF_LAYER_NAME]) {
     const layerContainer = new Container();
     layerContainer.label = `${chunkKey}:${layerName}`;
     if (layerName === MAP_ROOF_LAYER_NAME) {
@@ -2406,9 +2407,12 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
       }
     }
 
-    const topChunkContainer = chunkRenderRefs.layerContainersByName.get(MAP_TOP_LAYER_NAME);
-    if (topChunkContainer) {
-      topContainer.addChild(topChunkContainer);
+    for (const layerName of MAP_TOP_LAYER_NAMES) {
+      const layerContainer = chunkRenderRefs.layerContainersByName.get(layerName);
+      const worldLayerContainer = mapLayerContainersByName.get(layerName);
+      if (layerContainer && worldLayerContainer) {
+        worldLayerContainer.addChild(layerContainer);
+      }
     }
 
     const roofChunkContainer = chunkRenderRefs.layerContainersByName.get(MAP_ROOF_LAYER_NAME);
@@ -2498,6 +2502,13 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
       if (layerName === "groundDetails") {
         mapBelowContainer.addChild(groundEffectContainer);
       }
+    }
+
+    for (const layerName of MAP_TOP_LAYER_NAMES) {
+      const layerContainer = new Container();
+      layerContainer.label = layerName;
+      topContainer.addChild(layerContainer);
+      mapLayerContainersByName.set(layerName, layerContainer);
     }
 
     tilesetImageUrlByFileName = createTilesetImageUrlByFileName();

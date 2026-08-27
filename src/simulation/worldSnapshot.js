@@ -191,6 +191,7 @@ export const serializeDoorState = (door) => {
     uid: door.uid,
     doorId: door.doorId,
     doorType: door.doorType,
+    wallSide: door.wallSide,
     x: door.x,
     y: door.y,
     z: door.z,
