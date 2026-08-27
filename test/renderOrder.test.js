@@ -7,6 +7,6 @@ test("vertical upward movement keeps the previous render row until arrival", () 
   assert.equal(getEntityRenderSortY({ x: 64, oldX: 64, y: 64, oldY: 128, renderY: 96 }), 128);
 });
 
-test("diagonal upward movement also keeps the previous render row until arrival", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 128);
+test("diagonal upward movement uses the destination render row", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 64);
 });

@@ -1,3 +1,7 @@
+0.3428 - Profondeur pendant les diagonales
+    - Le joueur utilise immediatement la profondeur de sa destination pendant une diagonale vers le haut.
+    - Les decorations du layer top restent devant le joueur pendant toute la transition.
+
 0.3427 - Correction profondeur des portes
     - Le bas logique de 64 pixels des portes reste derriere les creatures.
     - Le tri diagonal conserve la profondeur stable deja utilisee par le jeu.
