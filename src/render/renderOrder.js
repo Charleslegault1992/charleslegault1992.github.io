@@ -22,12 +22,5 @@ export const getEntityRenderSortY = (entity) => {
   if (!Number.isFinite(entity?.y)) {
     return 0;
   }
-
-  const isStillMovingUp =
-    Number.isFinite(entity.oldY) &&
-    Number.isFinite(entity.renderY) &&
-    entity.oldY > entity.y &&
-    entity.renderY > entity.y;
-
-  return isStillMovingUp ? entity.oldY : entity.y;
+  return Number.isFinite(entity.renderY) ? entity.renderY : entity.y;
 };

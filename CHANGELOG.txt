@@ -1,3 +1,8 @@
+0.3430 - Profondeur des decors pendant les mouvements
+    - Les murs et objets visibles sont maintenant tries par ligne avec les creatures.
+    - La profondeur suit la position interpolee pour rester correcte pendant les diagonales.
+    - Le sol reste dessous et les layers top, topDeco et roofs restent devant.
+
 0.3429 - Ordre fixe des layers Pixi
     - Les branches du monde gardent maintenant une profondeur explicite et stable.
     - Le layer top, les portes hautes et les toits restent toujours devant les creatures.

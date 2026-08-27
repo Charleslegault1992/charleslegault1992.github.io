@@ -17,7 +17,7 @@ import {
 import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
-import { WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
+import { getWorldRenderZIndex, WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
 import {
   combatEffectsDatabase,
   EFFECT_ATLAS_CELL_SIZE,
@@ -31,7 +31,8 @@ import { getDoorData, getDoorVariantData } from "./data/doorsDatabase.js";
 /* ==================================================== */
 //#region     -----  CONFIG  -----
 /* ==================================================== */
-const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
+const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails"];
+const MAP_DEPTH_LAYER_NAMES = ["walls", "objects"];
 const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
@@ -577,7 +578,12 @@ const getTilesetsUsedByChunks = (worldMap, chunkKeys) => {
   }
   for (const chunkKey of chunkKeys) {
     const chunk = worldMap.chunksByKey.get(chunkKey);
-    for (const layerName of [...MAP_BELOW_LAYER_NAMES, ...MAP_TOP_LAYER_NAMES, MAP_ROOF_LAYER_NAME]) {
+    for (const layerName of [
+      ...MAP_BELOW_LAYER_NAMES,
+      ...MAP_DEPTH_LAYER_NAMES,
+      ...MAP_TOP_LAYER_NAMES,
+      MAP_ROOF_LAYER_NAME,
+    ]) {
       const gids = chunk?.layers?.[layerName];
       if (!Array.isArray(gids)) {
         continue;
@@ -2300,6 +2306,47 @@ const renderChunkTileLayer = (chunkContainer, worldMap, chunk, layerName) => {
   }
 };
 
+const renderChunkDepthLayers = (worldMap, chunk) => {
+  const depthRowContainers = [];
+
+  for (let localRow = 0; localRow < CHUNK_SIZE_TILES; localRow++) {
+    let rowContainer = null;
+    const worldRow = chunk.chunkY * CHUNK_SIZE_TILES + localRow;
+
+    for (const layerName of MAP_DEPTH_LAYER_NAMES) {
+      const layerGids = chunk.layers?.[layerName];
+      if (!Array.isArray(layerGids)) {
+        continue;
+      }
+
+      for (let localCol = 0; localCol < CHUNK_SIZE_TILES; localCol++) {
+        const gid = layerGids[localRow * CHUNK_SIZE_TILES + localCol];
+        if (!Number.isFinite(gid) || gid <= 0) {
+          continue;
+        }
+
+        if (!rowContainer) {
+          rowContainer = new Container();
+          rowContainer.label = `${chunk.z}:${chunk.chunkX}:${chunk.chunkY}:depth-row:${worldRow}`;
+          rowContainer.zIndex = getWorldRenderZIndex(worldRow * TILE_SIZE);
+        }
+
+        const worldCol = chunk.chunkX * CHUNK_SIZE_TILES + localCol;
+        const sprite = createTileSprite(worldMap.tilesets, gid, worldCol * TILE_SIZE, worldRow * TILE_SIZE);
+        if (sprite) {
+          rowContainer.addChild(sprite);
+        }
+      }
+    }
+
+    if (rowContainer) {
+      depthRowContainers.push(rowContainer);
+    }
+  }
+
+  return depthRowContainers;
+};
+
 const renderChunkRoofLayer = (chunkContainer, worldMap, chunk) => {
   const roofContainersForChunk = new Map();
   const layerGids = chunk?.layers?.[MAP_ROOF_LAYER_NAME];
@@ -2340,6 +2387,7 @@ const renderWorldChunk = (worldMap, chunk) => {
 
   const chunkKey = `${worldMap.z}:${chunk.chunkX}:${chunk.chunkY}`;
   const layerContainersByName = new Map();
+  const depthRowContainers = renderChunkDepthLayers(worldMap, chunk);
   let roofContainersForChunk = new Map();
 
   for (const layerName of [...MAP_BELOW_LAYER_NAMES, ...MAP_TOP_LAYER_NAMES, MAP_ROOF_LAYER_NAME]) {
@@ -2355,6 +2403,7 @@ const renderWorldChunk = (worldMap, chunk) => {
 
   return {
     layerContainersByName,
+    depthRowContainers,
     roofContainersById: roofContainersForChunk,
   };
 };
@@ -2396,6 +2445,9 @@ const removeHiddenChunkContainers = (visibleChunkKeys) => {
       for (const layerContainer of chunkRenderRefs.layerContainersByName.values()) {
         layerContainer.removeFromParent();
       }
+      for (const rowContainer of chunkRenderRefs.depthRowContainers) {
+        rowContainer.removeFromParent();
+      }
       renderedChunkContainersByKey.delete(chunkKey);
     }
   }
@@ -2411,6 +2463,9 @@ const clearRenderedChunkContainers = () => {
     for (const layerContainer of chunkRenderRefs.layerContainersByName.values()) {
       layerContainer.removeFromParent();
     }
+    for (const rowContainer of chunkRenderRefs.depthRowContainers) {
+      rowContainer.removeFromParent();
+    }
   }
 
   renderedChunkContainersByKey.clear();
@@ -2422,6 +2477,7 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
     !(renderedChunkContainersByKey instanceof Map) ||
     !(visibleChunkKeys instanceof Set) ||
     !(mapLayerContainersByName instanceof Map) ||
+    !entityContainer ||
     !topContainer ||
     !roofContainer
   ) {
@@ -2444,6 +2500,10 @@ const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
       if (layerContainer && worldLayerContainer) {
         worldLayerContainer.addChild(layerContainer);
       }
+    }
+
+    for (const rowContainer of chunkRenderRefs.depthRowContainers) {
+      entityContainer.addChild(rowContainer);
     }
 
     for (const layerName of MAP_TOP_LAYER_NAMES) {
