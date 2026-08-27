@@ -484,11 +484,11 @@
          "id":2,
          "name":"groundDetails",
          "opacity":1,
-         "startx":-32,
+         "startx":-16,
          "starty":-16,
          "type":"tilelayer",
          "visible":true,
-         "width":64,
+         "width":48,
          "x":0,
          "y":0
         }, 

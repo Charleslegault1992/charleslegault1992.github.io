@@ -7,7 +7,7 @@ export const doorsDatabase = Object.freeze({
       offsetY: 0,
     }),
     open: Object.freeze({
-      frame: Object.freeze({ x: 1664, y: 256, width: 128, height: 192 }),
+      frame: Object.freeze({ x: 1664, y: 256, width: 192, height: 192 }),
       offsetX: 0,
       offsetY: -64,
     }),

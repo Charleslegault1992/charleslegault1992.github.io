@@ -1,3 +1,7 @@
+0.3416 - Correction de la grille de la maison
+    - Synchronisation de house1.png avec sa vraie grille de 29 colonnes dans Tiled et Pixi.
+    - La porte ouverte conserve maintenant son cadre complet de 3 par 3 cases et son alignement dans la maison.
+
 0.3415 - Porte et revelation du toit
     - La porte utilise maintenant ses nouveaux sprites directement dans house1.png.
     - La grande zone interieure garde le toit cache pendant que le joueur est dans la maison.
