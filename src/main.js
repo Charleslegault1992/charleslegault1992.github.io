@@ -7579,7 +7579,16 @@ const getRemoteEntityAnimationFrameCount = (entity, entityType) => {
 };
 
 const updateRemoteNetworkWalkFrame = (entity, entityType) => {
-  if (!entity || !Number.isFinite(entity.networkMoveProgress)) {
+  if (!entity) {
+    return false;
+  }
+
+  if (!Number.isFinite(entity.networkMoveProgress)) {
+    if ((entityType === "monsters" || entityType === "npcs") && entity.walkFrame !== 1) {
+      entity.walkFrame = 1;
+      return true;
+    }
+
     return false;
   }
 

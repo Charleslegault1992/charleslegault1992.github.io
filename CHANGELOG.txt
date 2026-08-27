@@ -1,3 +1,6 @@
+0.3424 - Animation idle des creatures
+    - Les NPC et monstres reviennent a leur frame idle apres un deplacement en ligne.
+
 0.3423 - Poussee des portes
     - Fermer une porte pousse les joueurs, monstres et NPC d'une case vers l'interieur de la maison.
     - Les items restent sur la case et n'empechent pas la porte de se fermer.
