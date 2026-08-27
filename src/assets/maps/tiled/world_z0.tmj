@@ -1780,7 +1780,7 @@
          "name":"roofAreas",
          "objects":[
                 {
-                 "height":512,
+                 "height":576,
                  "id":17,
                  "name":"",
                  "opacity":1,
@@ -1845,7 +1845,7 @@
                  "y":-384
                 }, 
                 {
-                 "height":448,
+                 "height":512,
                  "id":25,
                  "name":"",
                  "opacity":1,
@@ -1960,7 +1960,7 @@
                  "value":false
                 }],
          "type":"objectgroup",
-         "visible":false,
+         "visible":true,
          "x":0,
          "y":0
         }, 
