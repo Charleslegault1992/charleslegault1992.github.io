@@ -21,7 +21,7 @@ import {
 } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
-import { getDoorRenderZIndexes, getWorldRenderZIndex, WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
+import { getDoorLowerRenderZIndex, getWorldRenderZIndex, WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
 import {
   combatEffectsDatabase,
   EFFECT_ATLAS_CELL_SIZE,
@@ -117,6 +117,7 @@ let groundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
+let doorUpperContainer = null;
 let roofContainer = null;
 let feedbackEffectContainer = null;
 let entityNameplateContainer = null;
@@ -733,9 +734,9 @@ const fillDoorFrameSlice = (stateContainer, tileset, stateData, sliceY, sliceHei
   stateContainer.addChild(sprite);
 };
 
-const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData) => {
+const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData, upperSliceHeight) => {
   if (stateData?.frame) {
-    const upperHeight = Math.max(0, stateData.frame.height - TILE_SIZE);
+    const upperHeight = Math.min(upperSliceHeight, stateData.frame.height);
     const lowerHeight = stateData.frame.height - upperHeight;
     fillDoorFrameSlice(upperContainer, tileset, stateData, 0, upperHeight);
     if (lowerHeight > 0) {
@@ -759,7 +760,7 @@ const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tiles
 };
 
 const upsertPixiDoorVisual = async (door, worldMap) => {
-  if (!entityContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
+  if (!entityContainer || !doorUpperContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
     return false;
   }
   let visual = doorVisualsByUid.get(door.uid);
@@ -777,7 +778,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     lowerRoot.addChild(lowerClosed, lowerOpen);
     upperRoot.addChild(upperClosed, upperOpen);
     entityContainer.addChild(lowerRoot);
-    entityContainer.addChild(upperRoot);
+    doorUpperContainer.addChild(upperRoot);
     visual = { lowerRoot, lowerClosed, lowerOpen, upperRoot, upperClosed, upperOpen, isReady: false };
     doorVisualsByUid.set(door.uid, visual);
   }
@@ -786,9 +787,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   visual.lowerRoot.y = door.y;
   visual.upperRoot.x = door.x;
   visual.upperRoot.y = door.y;
-  const doorZIndexes = getDoorRenderZIndexes(door.y, door.height);
-  visual.lowerRoot.zIndex = doorZIndexes.lower;
-  visual.upperRoot.zIndex = doorZIndexes.upper;
+  visual.lowerRoot.zIndex = getDoorLowerRenderZIndex(door.y, door.height);
   visual.lowerRoot.visible = door.z === worldMap.z;
   visual.upperRoot.visible = door.z === worldMap.z;
   visual.lowerClosed.visible = door.isOpen !== true;
@@ -808,12 +807,14 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   if (doorVisualsByUid.get(door.uid) !== visual) {
     return false;
   }
+  const upperSliceHeight = Math.max(0, door.height - TILE_SIZE);
   fillDoorStateContainers(
     visual.upperClosed,
     visual.lowerClosed,
     worldMap.tilesets,
     tileset,
     doorVariantData.closed,
+    upperSliceHeight,
   );
   fillDoorStateContainers(
     visual.upperOpen,
@@ -821,6 +822,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     worldMap.tilesets,
     tileset,
     doorVariantData.open,
+    upperSliceHeight,
   );
   visual.isReady = true;
   return true;
@@ -2574,6 +2576,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
+    doorUpperContainer = new Container();
     roofContainer = new Container();
     feedbackEffectContainer = new Container();
     entityNameplateContainer = new Container();
@@ -2588,6 +2591,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     entityContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.entity;
     projectileContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.projectile;
     topContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.top;
+    doorUpperContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.doorUpper;
     roofContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.roof;
     feedbackEffectContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.feedbackEffect;
 
@@ -2597,6 +2601,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
+    worldContainer.addChild(doorUpperContainer);
     worldContainer.addChild(roofContainer);
     worldContainer.addChild(feedbackEffectContainer);
     console.log("[Pixi] Stage hierarchy created");

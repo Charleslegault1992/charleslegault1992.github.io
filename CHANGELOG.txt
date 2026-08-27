@@ -1,3 +1,7 @@
+0.3433 - Profondeur stable des portes et diagonales
+    - Le decoupage des portes correspond maintenant a leur alignement reel de 192 pixels.
+    - La profondeur diagonale conserve la rangee nord jusquau bon moment du mouvement.
+
 0.3432 - Tri logique des portes
     - Les deux parties des portes utilisent maintenant la meme profondeur par case que les creatures.
     - Sur la case de porte, le bas reste derriere la creature et le haut reste devant.

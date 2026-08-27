@@ -8,6 +8,7 @@ export const WORLD_ROOT_RENDER_Z_INDEX = Object.freeze({
   entity: 30,
   projectile: 40,
   top: 50,
+  doorUpper: 60,
   roof: 70,
   feedbackEffect: 80,
 });
@@ -16,17 +17,17 @@ export const getWorldRenderZIndex = (worldY, localLayer = 0) => {
   return WORLD_RENDER_Z_INDEX_BASE + worldY * WORLD_RENDER_LAYER_SIZE + localLayer;
 };
 
-export const getDoorRenderZIndexes = (doorY, doorHeight) => {
+export const getDoorLowerRenderZIndex = (doorY, doorHeight) => {
   const doorSortY = doorY + Math.max(0, doorHeight - TILE_SIZE);
-  return {
-    lower: getWorldRenderZIndex(doorSortY, WORLD_RENDER_LAYER_CREATURE - 1),
-    upper: getWorldRenderZIndex(doorSortY, WORLD_RENDER_LAYER_CREATURE + 1),
-  };
+  return getWorldRenderZIndex(doorSortY, WORLD_RENDER_LAYER_CREATURE - 1);
 };
 
 export const getEntityRenderSortY = (entity) => {
   if (!Number.isFinite(entity?.y)) {
     return 0;
+  }
+  if (Number.isFinite(entity.oldY) && Number.isFinite(entity.renderY) && entity.renderY !== entity.y) {
+    return Math.min(entity.oldY, entity.y);
   }
   return entity.y;
 };
