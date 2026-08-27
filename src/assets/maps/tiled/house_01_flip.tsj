@@ -1,0 +1,14 @@
+{ "columns":11,
+ "image":"..\/..\/tilesets\/house1flip.png",
+ "imageheight":2048,
+ "imagewidth":704,
+ "margin":0,
+ "name":"house_01_flip",
+ "spacing":0,
+ "tilecount":352,
+ "tiledversion":"1.12.2",
+ "tileheight":64,
+ "tilewidth":64,
+ "type":"tileset",
+ "version":"1.10"
+}

@@ -594,11 +594,11 @@
          "id":2,
          "name":"groundDetails",
          "opacity":1,
-         "startx":-48,
+         "startx":-32,
          "starty":-16,
          "type":"tilelayer",
          "visible":true,
-         "width":80,
+         "width":64,
          "x":0,
          "y":0
         }, 
@@ -1991,14 +1991,14 @@
                          "value":false
                         }, 
                         {
-                         "name":"wallSide",
-                         "type":"string",
-                         "value":"lower"
-                        }, 
-                        {
                          "name":"startsOpen",
                          "type":"bool",
                          "value":false
+                        }, 
+                        {
+                         "name":"wallSide",
+                         "type":"string",
+                         "value":"lower"
                         }],
                  "rotation":0,
                  "type":"",
@@ -2029,14 +2029,14 @@
                          "value":false
                         }, 
                         {
-                         "name":"wallSide",
-                         "type":"string",
-                         "value":"upper"
-                        }, 
-                        {
                          "name":"startsOpen",
                          "type":"bool",
                          "value":false
+                        }, 
+                        {
+                         "name":"wallSide",
+                         "type":"string",
+                         "value":"upper"
                         }],
                  "rotation":0,
                  "type":"",
