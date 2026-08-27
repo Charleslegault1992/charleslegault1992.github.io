@@ -1,3 +1,8 @@
+0.3431 - Portes et profondeur des diagonales
+    - Le haut de 128 pixels des portes reste devant les creatures et le bas de 64 pixels reste derriere.
+    - Les portes ne sont plus coupees par les murs et objets tries avec les creatures.
+    - La profondeur des creatures reste sur leur case logique pendant tout le pas diagonal.
+
 0.3430 - Profondeur des decors pendant les mouvements
     - Les murs et objets visibles sont maintenant tries par ligne avec les creatures.
     - La profondeur suit la position interpolee pour rester correcte pendant les diagonales.

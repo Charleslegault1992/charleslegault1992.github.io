@@ -113,7 +113,6 @@ let groundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
-let doorLowerContainer = null;
 let doorUpperContainer = null;
 let roofContainer = null;
 let feedbackEffectContainer = null;
@@ -731,9 +730,9 @@ const fillDoorFrameSlice = (stateContainer, tileset, stateData, sliceY, sliceHei
   stateContainer.addChild(sprite);
 };
 
-const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData, upperSliceHeight) => {
+const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData) => {
   if (stateData?.frame) {
-    const upperHeight = Math.min(upperSliceHeight, stateData.frame.height);
+    const upperHeight = Math.max(0, stateData.frame.height - TILE_SIZE);
     const lowerHeight = stateData.frame.height - upperHeight;
     fillDoorFrameSlice(upperContainer, tileset, stateData, 0, upperHeight);
     if (lowerHeight > 0) {
@@ -757,7 +756,7 @@ const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tiles
 };
 
 const upsertPixiDoorVisual = async (door, worldMap) => {
-  if (!doorLowerContainer || !doorUpperContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
+  if (!entityContainer || !doorUpperContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
     return false;
   }
   let visual = doorVisualsByUid.get(door.uid);
@@ -774,7 +773,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     upperRoot.eventMode = "none";
     lowerRoot.addChild(lowerClosed, lowerOpen);
     upperRoot.addChild(upperClosed, upperOpen);
-    doorLowerContainer.addChild(lowerRoot);
+    entityContainer.addChild(lowerRoot);
     doorUpperContainer.addChild(upperRoot);
     visual = { lowerRoot, lowerClosed, lowerOpen, upperRoot, upperClosed, upperOpen, isReady: false };
     doorVisualsByUid.set(door.uid, visual);
@@ -782,6 +781,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
 
   visual.lowerRoot.x = door.x;
   visual.lowerRoot.y = door.y;
+  visual.lowerRoot.zIndex = getWorldRenderZIndex(door.y + door.height);
   visual.upperRoot.x = door.x;
   visual.upperRoot.y = door.y;
   visual.lowerRoot.visible = door.z === worldMap.z;
@@ -803,15 +803,12 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   if (doorVisualsByUid.get(door.uid) !== visual) {
     return false;
   }
-  const upperSliceHeight = Math.max(0, door.height - TILE_SIZE);
-
   fillDoorStateContainers(
     visual.upperClosed,
     visual.lowerClosed,
     worldMap.tilesets,
     tileset,
     doorVariantData.closed,
-    upperSliceHeight,
   );
   fillDoorStateContainers(
     visual.upperOpen,
@@ -819,7 +816,6 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     worldMap.tilesets,
     tileset,
     doorVariantData.open,
-    upperSliceHeight,
   );
   visual.isReady = true;
   return true;
@@ -2573,7 +2569,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
-    doorLowerContainer = new Container();
     doorUpperContainer = new Container();
     roofContainer = new Container();
     feedbackEffectContainer = new Container();
@@ -2585,7 +2580,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldContainer.sortableChildren = true;
 
     mapBelowContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.mapBelow;
-    doorLowerContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.doorLower;
     itemUseTargetContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.itemUseTarget;
     entityContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.entity;
     projectileContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.projectile;
@@ -2596,7 +2590,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
 
     pixiApp.stage.addChild(worldContainer);
     worldContainer.addChild(mapBelowContainer);
-    worldContainer.addChild(doorLowerContainer);
     worldContainer.addChild(itemUseTargetContainer);
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);

@@ -22,5 +22,5 @@ export const getEntityRenderSortY = (entity) => {
   if (!Number.isFinite(entity?.y)) {
     return 0;
   }
-  return Number.isFinite(entity.renderY) ? entity.renderY : entity.y;
+  return entity.y;
 };

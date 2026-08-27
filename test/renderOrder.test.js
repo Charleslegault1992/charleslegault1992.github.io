@@ -3,12 +3,12 @@ import test from "node:test";
 
 import { getEntityRenderSortY, WORLD_ROOT_RENDER_Z_INDEX } from "../src/render/renderOrder.js";
 
-test("vertical movement sorts from the current interpolated foot position", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 64, y: 64, oldY: 128, renderY: 96 }), 96);
+test("vertical movement uses the logical destination row for the complete step", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 64, y: 64, oldY: 128, renderY: 96 }), 64);
 });
 
-test("diagonal movement sorts from the current interpolated foot position", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 96);
+test("diagonal movement uses the logical destination row for the complete step", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 64);
 });
 
 test("stationary entities fall back to their logical row", () => {
