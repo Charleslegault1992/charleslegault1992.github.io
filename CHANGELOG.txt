@@ -1,3 +1,8 @@
+0.3426 - Portes et profondeur diagonale
+    - La porte ouverte du mur du haut utilise son nouveau cote dans la sprite sheet.
+    - Seuls les 64 pixels du bas des portes passent derriere les creatures.
+    - Le tri vertical reste correct pendant les deplacements diagonaux.
+
 0.3425 - Reconnexion Google
     - Le bouton Google reconnait directement un compte deja autorise lorsque FedCM le permet.
 

@@ -724,8 +724,9 @@ const fillDoorFrameSlice = (stateContainer, tileset, stateData, sliceY, sliceHei
   stateContainer.addChild(sprite);
 };
 
-const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData, upperSliceHeight) => {
+const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData) => {
   if (stateData?.frame) {
+    const upperSliceHeight = Math.max(0, stateData.frame.height - TILE_SIZE);
     const upperHeight = Math.min(upperSliceHeight, stateData.frame.height);
     const lowerHeight = stateData.frame.height - upperHeight;
     fillDoorFrameSlice(upperContainer, tileset, stateData, 0, upperHeight);
@@ -796,15 +797,12 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   if (doorVisualsByUid.get(door.uid) !== visual) {
     return false;
   }
-  const upperSliceHeight = Math.max(0, door.height - TILE_SIZE);
-
   fillDoorStateContainers(
     visual.upperClosed,
     visual.lowerClosed,
     worldMap.tilesets,
     tileset,
     doorVariantData.closed,
-    upperSliceHeight,
   );
   fillDoorStateContainers(
     visual.upperOpen,
@@ -812,7 +810,6 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     worldMap.tilesets,
     tileset,
     doorVariantData.open,
-    upperSliceHeight,
   );
   visual.isReady = true;
   return true;
