@@ -34,7 +34,6 @@ const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
-const DOOR_UPPER_SLICE_HEIGHT = TILE_SIZE * 2;
 const MINIMAP_CACHE_CELL_SIZE = 8;
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, -1],
@@ -725,9 +724,9 @@ const fillDoorFrameSlice = (stateContainer, tileset, stateData, sliceY, sliceHei
   stateContainer.addChild(sprite);
 };
 
-const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData) => {
+const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData, upperSliceHeight) => {
   if (stateData?.frame) {
-    const upperHeight = Math.min(DOOR_UPPER_SLICE_HEIGHT, stateData.frame.height);
+    const upperHeight = Math.min(upperSliceHeight, stateData.frame.height);
     const lowerHeight = stateData.frame.height - upperHeight;
     fillDoorFrameSlice(upperContainer, tileset, stateData, 0, upperHeight);
     if (lowerHeight > 0) {
@@ -797,6 +796,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
   if (doorVisualsByUid.get(door.uid) !== visual) {
     return false;
   }
+  const upperSliceHeight = Math.max(0, door.height - TILE_SIZE);
 
   fillDoorStateContainers(
     visual.upperClosed,
@@ -804,6 +804,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     worldMap.tilesets,
     tileset,
     doorVariantData.closed,
+    upperSliceHeight,
   );
   fillDoorStateContainers(
     visual.upperOpen,
@@ -811,6 +812,7 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     worldMap.tilesets,
     tileset,
     doorVariantData.open,
+    upperSliceHeight,
   );
   visual.isReady = true;
   return true;

@@ -1,3 +1,7 @@
+0.3420 - Profondeur logique des portes
+    - La partie basse des portes passe derriere les joueurs selon leur vraie case Tiled.
+    - Seule la partie haute reste devant les joueurs et les decorations du layer top.
+
 0.3419 - Profondeur des portes
     - Le haut des portes passe au-dessus du joueur et des decorations du layer top.
     - Le bas des portes reste derriere le joueur pour un passage naturel.
