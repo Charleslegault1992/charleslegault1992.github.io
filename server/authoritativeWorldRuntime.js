@@ -35,6 +35,7 @@ import { getRandomInt } from "../src/core/mathUtils.js";
 import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { getItemData } from "../src/items/itemModel.js";
 import { getMonsterData } from "../src/monsters/monsterModel.js";
+import { getNpcData } from "../src/npcs/npcModel.js";
 import { applyMonsterExperienceReward, generateMonsterLoot } from "../src/monsters/monsterRewards.js";
 import {
   applyPlayerAttackSkillProgression,
@@ -396,56 +397,101 @@ export const createAuthoritativeWorldRuntime = ({
       return null;
     }
     const pushes = [];
-    const plannedDestinationKeys = new Set();
     for (const tile of getDoorTiles(door)) {
       const x = tile.col * TILE_SIZE;
       const y = tile.row * TILE_SIZE;
-      if (
-        worldEntities.monsters.getAt(x, y, tile.z) ||
-        worldEntities.npcs.getAt(x, y, tile.z) ||
-        worldEntities.worldItems.getAt(x, y, tile.z)
-      ) {
+      const targetTile = getDoorInteriorPushTile(door, tile);
+      if (!targetTile) {
         return null;
       }
       for (const occupyingPlayer of playersByUid.values()) {
         if (occupyingPlayer.z !== tile.z || occupyingPlayer.x !== x || occupyingPlayer.y !== y) {
           continue;
         }
-        const targetTile = getDoorInteriorPushTile(door, tile);
-        if (!targetTile) {
-          return null;
-        }
-        const payload = {
-          fromX: occupyingPlayer.x,
-          fromY: occupyingPlayer.y,
-          toX: targetTile.col * TILE_SIZE,
-          toY: targetTile.row * TILE_SIZE,
-        };
-        const destinationKey = `${targetTile.z}:${payload.toX}:${payload.toY}`;
-        if (plannedDestinationKeys.has(destinationKey) || !isPlayerDestinationAvailable(occupyingPlayer, payload)) {
-          return null;
-        }
-        plannedDestinationKeys.add(destinationKey);
         pushes.push({
-          player: occupyingPlayer,
-          payload,
+          entityType: "player",
+          entity: occupyingPlayer,
+          targetTile,
           direction: targetTile.row < tile.row ? "up" : "down",
         });
+      }
+      for (const monster of worldEntities.monsters.getAllAt(x, y, tile.z)) {
+        pushes.push({
+          entityType: "monster",
+          entity: monster,
+          targetTile,
+          direction: targetTile.row < tile.row ? "up" : "down",
+        });
+      }
+      for (const npc of worldEntities.npcs.getAllAt(x, y, tile.z)) {
+        pushes.push({
+          entityType: "npc",
+          entity: npc,
+          targetTile,
+          direction: targetTile.row < tile.row ? "up" : "down",
+        });
+      }
+    }
+
+    const movingEntityKeys = new Set(pushes.map((push) => `${push.entityType}:${push.entity.uid}`));
+    for (const push of pushes) {
+      const targetX = push.targetTile.col * TILE_SIZE;
+      const targetY = push.targetTile.row * TILE_SIZE;
+      if (
+        !getWorldChunkForTilePosition(worldMap, push.targetTile.col, push.targetTile.row) ||
+        isWorldCollisionAtTile(worldMap, push.targetTile.col, push.targetTile.row)
+      ) {
+        return null;
+      }
+      const blockingPlayer = [...playersByUid.values()].find(
+        (candidate) =>
+          candidate.z === push.targetTile.z &&
+          candidate.x === targetX &&
+          candidate.y === targetY &&
+          !movingEntityKeys.has(`player:${candidate.uid}`),
+      );
+      const blockingMonster = worldEntities.monsters
+        .getAllAt(targetX, targetY, push.targetTile.z)
+        .find((candidate) => !movingEntityKeys.has(`monster:${candidate.uid}`));
+      const blockingNpc = worldEntities.npcs
+        .getAllAt(targetX, targetY, push.targetTile.z)
+        .find((candidate) => !movingEntityKeys.has(`npc:${candidate.uid}`));
+      if (blockingPlayer || blockingMonster || blockingNpc) {
+        return null;
       }
     }
     return pushes;
   };
 
-  const applyDoorClosingPush = ({ player, payload, direction }) => {
-    const movementTiming = getPlayerMovementTiming(player, payload);
-    player.oldX = payload.fromX;
-    player.oldY = payload.fromY;
-    player.x = payload.toX;
-    player.y = payload.toY;
-    player.direction = direction;
-    player.moveStartTime = currentServerTime;
-    player.moveDuration = movementTiming?.duration ?? 0;
-    recordPlayerTileEntry(player);
+  const applyDoorClosingPush = ({ entityType, entity, targetTile, direction }) => {
+    const fromX = entity.x;
+    const fromY = entity.y;
+    const toX = targetTile.col * TILE_SIZE;
+    const toY = targetTile.row * TILE_SIZE;
+    entity.oldX = fromX;
+    entity.oldY = fromY;
+    entity.direction = direction;
+    entity.moveStartTime = currentServerTime;
+
+    if (entityType === "player") {
+      entity.x = toX;
+      entity.y = toY;
+      entity.moveDuration = getPlayerMovementTiming(entity, { fromX, fromY, toX, toY })?.duration ?? 0;
+      recordPlayerTileEntry(entity);
+      return;
+    }
+
+    const store = entityType === "monster" ? worldEntities.monsters : worldEntities.npcs;
+    store.updatePosition(entity.uid, toX, toY, entity.z);
+    entity.moveDuration =
+      entityType === "monster"
+        ? (getMonsterData(entity.monsterId)?.moveCooldown ?? 0)
+        : (getNpcData(entity.npcId)?.movement?.moveCooldownMs ?? 0);
+    if (entityType === "monster") {
+      entity.path = [];
+      entity.nextPathRefreshTime = 0;
+      fieldEffectSystem?.applyFieldAtEntity(entity, entityType, currentServerTime);
+    }
   };
 
   const executeDoorInteraction = (player, interactable) => {
@@ -469,7 +515,13 @@ export const createAuthoritativeWorldRuntime = ({
       changes: {
         doorUid: door.uid,
         isOpen: door.isOpen,
-        changedPlayerUids: closingPushes.map((push) => push.player.uid),
+        changedPlayerUids: closingPushes
+          .filter((push) => push.entityType === "player")
+          .map((push) => push.entity.uid),
+        changedMonsterUids: closingPushes
+          .filter((push) => push.entityType === "monster")
+          .map((push) => push.entity.uid),
+        changedNpcUids: closingPushes.filter((push) => push.entityType === "npc").map((push) => push.entity.uid),
       },
       events: [
         {
@@ -1302,13 +1354,29 @@ export const createAuthoritativeWorldRuntime = ({
           upserts.players.push(serializePlayerPublicState(changedPlayer));
         }
       }
-      const changedMonsterUid = result.changes?.monsterUid;
-      if (Number.isInteger(changedMonsterUid)) {
+      const changedMonsterUids = new Set([
+        result.changes?.monsterUid,
+        ...(Array.isArray(result.changes?.changedMonsterUids) ? result.changes.changedMonsterUids : []),
+      ]);
+      for (const changedMonsterUid of changedMonsterUids) {
+        if (!Number.isInteger(changedMonsterUid)) {
+          continue;
+        }
         const changedMonster = worldEntities.monsters.get(changedMonsterUid);
         if (changedMonster) {
-          upserts.monsters = [serializeMonsterState(changedMonster)];
+          upserts.monsters = [...(upserts.monsters ?? []), serializeMonsterState(changedMonster)];
         } else {
-          removals.monsters = [changedMonsterUid];
+          removals.monsters = [...(removals.monsters ?? []), changedMonsterUid];
+        }
+      }
+      const changedNpcUids = Array.isArray(result.changes?.changedNpcUids) ? result.changes.changedNpcUids : [];
+      for (const changedNpcUid of changedNpcUids) {
+        if (typeof changedNpcUid !== "string") {
+          continue;
+        }
+        const changedNpc = worldEntities.npcs.get(changedNpcUid);
+        if (changedNpc) {
+          upserts.npcs = [...(upserts.npcs ?? []), serializeNpcState(changedNpc)];
         }
       }
       const changedItemUid = result.changes?.itemUid;

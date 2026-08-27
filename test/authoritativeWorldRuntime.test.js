@@ -1245,6 +1245,16 @@ test("Tiled doors toggle authoritative collision and replicate their state", asy
   occupant.z = door.z;
   occupant.oldX = occupant.x;
   occupant.oldY = occupant.y;
+  const monster = [...runtime.getWorldEntities().monsters.values()][0];
+  const npc = [...runtime.getWorldEntities().npcs.values()][0];
+  runtime.getWorldEntities().monsters.updatePosition(monster.uid, occupant.x, occupant.y, door.z);
+  runtime.getWorldEntities().npcs.updatePosition(npc.uid, occupant.x, occupant.y, door.z);
+  monster.oldX = occupant.x;
+  monster.oldY = occupant.y;
+  npc.oldX = occupant.x;
+  npc.oldY = occupant.y;
+  const groundItem = createGroundItem("apple", 1, occupant.x, occupant.y, door.z);
+  runtime.getWorldEntities().worldItems.add(groundItem);
   const snapshotBeforeClose = runtime.createSnapshotForClient(session);
   const closeResult = runtime.dispatchAction(
     session,
@@ -1265,10 +1275,23 @@ test("Tiled doors toggle authoritative collision and replicate their state", asy
   assert.equal(occupant.y, (collisionRow + 1) * TILE_SIZE);
   assert.equal(occupant.direction, "down");
   assert.deepEqual(closeResult.changes.changedPlayerUids, [occupant.uid]);
+  assert.deepEqual(closeResult.changes.changedMonsterUids, [monster.uid]);
+  assert.deepEqual(closeResult.changes.changedNpcUids, [npc.uid]);
+  assert.equal(monster.y, (collisionRow + 1) * TILE_SIZE);
+  assert.equal(npc.y, (collisionRow + 1) * TILE_SIZE);
+  assert.equal(groundItem.y, collisionRow * TILE_SIZE);
   assert.equal(isWorldCollisionAtTile(worldMap, door.col, collisionRow), true);
   const deltas = runtime.getDeltasForClient(session, snapshotBeforeClose.revision);
   assert.equal(
     deltas.some((delta) => delta.upserts.players.some((changedPlayer) => changedPlayer.uid === occupant.uid)),
+    true,
+  );
+  assert.equal(
+    deltas.some((delta) => delta.upserts.monsters.some((changedMonster) => changedMonster.uid === monster.uid)),
+    true,
+  );
+  assert.equal(
+    deltas.some((delta) => delta.upserts.npcs.some((changedNpc) => changedNpc.uid === npc.uid)),
     true,
   );
 });
