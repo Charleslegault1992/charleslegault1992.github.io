@@ -42,6 +42,8 @@ export const renderGoogleIdentityButton = async ({ clientId, buttonElement, loca
   const googleIdentity = await loadGoogleIdentityScript();
   googleIdentity.initialize({
     client_id: clientId,
+    use_fedcm_for_button: true,
+    button_auto_select: true,
     callback: (response) => {
       if (typeof response?.credential === "string" && response.credential !== "") {
         onCredential(response.credential);

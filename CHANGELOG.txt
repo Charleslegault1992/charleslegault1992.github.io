@@ -1,3 +1,6 @@
+0.3425 - Reconnexion Google
+    - Le bouton Google reconnait directement un compte deja autorise lorsque FedCM le permet.
+
 0.3424 - Animation idle des creatures
     - Les NPC et monstres reviennent a leur frame idle apres un deplacement en ligne.
 
