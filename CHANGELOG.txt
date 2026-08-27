@@ -1,3 +1,8 @@
+0.3432 - Tri logique des portes
+    - Les deux parties des portes utilisent maintenant la meme profondeur par case que les creatures.
+    - Sur la case de porte, le bas reste derriere la creature et le haut reste devant.
+    - Une creature au sud de la porte apparait maintenant devant la porte complete.
+
 0.3431 - Portes et profondeur des diagonales
     - Le haut de 128 pixels des portes reste devant les creatures et le bas de 64 pixels reste derriere.
     - Les portes ne sont plus coupees par les murs et objets tries avec les creatures.

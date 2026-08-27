@@ -14,10 +14,14 @@ import {
   Text,
   Texture,
 } from "pixi.js";
-import { CHUNK_SIZE_TILES, PLAYER_APPEARANCE_LAYER_ORDER, TILE_SIZE } from "./core/gameConstants.js";
+import {
+  CHUNK_SIZE_TILES,
+  PLAYER_APPEARANCE_LAYER_ORDER,
+  TILE_SIZE,
+} from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
-import { getWorldRenderZIndex, WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
+import { getDoorRenderZIndexes, getWorldRenderZIndex, WORLD_ROOT_RENDER_Z_INDEX } from "./render/renderOrder.js";
 import {
   combatEffectsDatabase,
   EFFECT_ATLAS_CELL_SIZE,
@@ -113,7 +117,6 @@ let groundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
-let doorUpperContainer = null;
 let roofContainer = null;
 let feedbackEffectContainer = null;
 let entityNameplateContainer = null;
@@ -756,7 +759,7 @@ const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tiles
 };
 
 const upsertPixiDoorVisual = async (door, worldMap) => {
-  if (!entityContainer || !doorUpperContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
+  if (!entityContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
     return false;
   }
   let visual = doorVisualsByUid.get(door.uid);
@@ -774,16 +777,18 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     lowerRoot.addChild(lowerClosed, lowerOpen);
     upperRoot.addChild(upperClosed, upperOpen);
     entityContainer.addChild(lowerRoot);
-    doorUpperContainer.addChild(upperRoot);
+    entityContainer.addChild(upperRoot);
     visual = { lowerRoot, lowerClosed, lowerOpen, upperRoot, upperClosed, upperOpen, isReady: false };
     doorVisualsByUid.set(door.uid, visual);
   }
 
   visual.lowerRoot.x = door.x;
   visual.lowerRoot.y = door.y;
-  visual.lowerRoot.zIndex = getWorldRenderZIndex(door.y + door.height);
   visual.upperRoot.x = door.x;
   visual.upperRoot.y = door.y;
+  const doorZIndexes = getDoorRenderZIndexes(door.y, door.height);
+  visual.lowerRoot.zIndex = doorZIndexes.lower;
+  visual.upperRoot.zIndex = doorZIndexes.upper;
   visual.lowerRoot.visible = door.z === worldMap.z;
   visual.upperRoot.visible = door.z === worldMap.z;
   visual.lowerClosed.visible = door.isOpen !== true;
@@ -2569,7 +2574,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
-    doorUpperContainer = new Container();
     roofContainer = new Container();
     feedbackEffectContainer = new Container();
     entityNameplateContainer = new Container();
@@ -2584,7 +2588,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     entityContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.entity;
     projectileContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.projectile;
     topContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.top;
-    doorUpperContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.doorUpper;
     roofContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.roof;
     feedbackEffectContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.feedbackEffect;
 
@@ -2594,7 +2597,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
-    worldContainer.addChild(doorUpperContainer);
     worldContainer.addChild(roofContainer);
     worldContainer.addChild(feedbackEffectContainer);
     console.log("[Pixi] Stage hierarchy created");
