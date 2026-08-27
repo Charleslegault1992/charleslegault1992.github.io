@@ -1,3 +1,7 @@
+0.3419 - Profondeur des portes
+    - Le haut des portes passe au-dessus du joueur et des decorations du layer top.
+    - Le bas des portes reste derriere le joueur pour un passage naturel.
+
 0.3418 - Alignement et collision des portes
     - La porte lower ouverte est maintenant alignee a gauche du trou de la maison.
     - Les joueurs, monstres et NPC apparaissent devant les portes.

@@ -34,6 +34,7 @@ const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
+const DOOR_UPPER_SLICE_HEIGHT = TILE_SIZE * 2;
 const MINIMAP_CACHE_CELL_SIZE = 8;
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, -1],
@@ -111,7 +112,8 @@ let groundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
-let doorContainer = null;
+let doorLowerContainer = null;
+let doorUpperContainer = null;
 let roofContainer = null;
 let feedbackEffectContainer = null;
 let entityNameplateContainer = null;
@@ -702,26 +704,35 @@ const createTileSprite = (tilesets, gid, x, y) => {
 /* ==================================================== */
 //#region     -----  RENDU - PORTES  -----
 /* ==================================================== */
-const fillDoorStateContainer = (stateContainer, tilesets, tileset, stateData) => {
-  if (stateData?.frame) {
-    const { x, y, width, height } = stateData.frame;
-    const cacheKey = `${tileset.source}:door-frame:${x}:${y}:${width}:${height}`;
-    let texture = tileTextureByCacheKey.get(cacheKey);
-    if (!texture) {
-      const tilesetTexture = getTilesetTexture(tileset);
-      if (!tilesetTexture) {
-        return;
-      }
-      texture = new Texture({
-        source: tilesetTexture.source,
-        frame: new Rectangle(x, y, width, height),
-      });
-      tileTextureByCacheKey.set(cacheKey, texture);
+const fillDoorFrameSlice = (stateContainer, tileset, stateData, sliceY, sliceHeight) => {
+  const { x, y, width } = stateData.frame;
+  const cacheKey = `${tileset.source}:door-frame:${x}:${y + sliceY}:${width}:${sliceHeight}`;
+  let texture = tileTextureByCacheKey.get(cacheKey);
+  if (!texture) {
+    const tilesetTexture = getTilesetTexture(tileset);
+    if (!tilesetTexture) {
+      return;
     }
-    const sprite = new Sprite(texture);
-    sprite.x = stateData.offsetX ?? 0;
-    sprite.y = stateData.offsetY ?? 0;
-    stateContainer.addChild(sprite);
+    texture = new Texture({
+      source: tilesetTexture.source,
+      frame: new Rectangle(x, y + sliceY, width, sliceHeight),
+    });
+    tileTextureByCacheKey.set(cacheKey, texture);
+  }
+  const sprite = new Sprite(texture);
+  sprite.x = stateData.offsetX ?? 0;
+  sprite.y = (stateData.offsetY ?? 0) + sliceY;
+  stateContainer.addChild(sprite);
+};
+
+const fillDoorStateContainers = (upperContainer, lowerContainer, tilesets, tileset, stateData) => {
+  if (stateData?.frame) {
+    const upperHeight = Math.min(DOOR_UPPER_SLICE_HEIGHT, stateData.frame.height);
+    const lowerHeight = stateData.frame.height - upperHeight;
+    fillDoorFrameSlice(upperContainer, tileset, stateData, 0, upperHeight);
+    if (lowerHeight > 0) {
+      fillDoorFrameSlice(lowerContainer, tileset, stateData, upperHeight, lowerHeight);
+    }
     return;
   }
 
@@ -734,33 +745,45 @@ const fillDoorStateContainer = (stateContainer, tilesets, tileset, stateData) =>
       (tile.row - stateData.anchorRow) * TILE_SIZE,
     );
     if (sprite) {
-      stateContainer.addChild(sprite);
+      upperContainer.addChild(sprite);
     }
   }
 };
 
 const upsertPixiDoorVisual = async (door, worldMap) => {
-  if (!doorContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
+  if (!doorLowerContainer || !doorUpperContainer || !door?.uid || !Array.isArray(worldMap?.tilesets)) {
     return false;
   }
   let visual = doorVisualsByUid.get(door.uid);
   if (!visual) {
-    const root = new Container();
-    const closed = new Container();
-    const open = new Container();
-    root.label = `door:${door.uid}`;
-    root.eventMode = "none";
-    root.addChild(closed, open);
-    doorContainer.addChild(root);
-    visual = { root, closed, open, isReady: false };
+    const lowerRoot = new Container();
+    const lowerClosed = new Container();
+    const lowerOpen = new Container();
+    const upperRoot = new Container();
+    const upperClosed = new Container();
+    const upperOpen = new Container();
+    lowerRoot.label = `door-lower:${door.uid}`;
+    upperRoot.label = `door-upper:${door.uid}`;
+    lowerRoot.eventMode = "none";
+    upperRoot.eventMode = "none";
+    lowerRoot.addChild(lowerClosed, lowerOpen);
+    upperRoot.addChild(upperClosed, upperOpen);
+    doorLowerContainer.addChild(lowerRoot);
+    doorUpperContainer.addChild(upperRoot);
+    visual = { lowerRoot, lowerClosed, lowerOpen, upperRoot, upperClosed, upperOpen, isReady: false };
     doorVisualsByUid.set(door.uid, visual);
   }
 
-  visual.root.x = door.x;
-  visual.root.y = door.y;
-  visual.root.visible = door.z === worldMap.z;
-  visual.closed.visible = door.isOpen !== true;
-  visual.open.visible = door.isOpen === true;
+  visual.lowerRoot.x = door.x;
+  visual.lowerRoot.y = door.y;
+  visual.upperRoot.x = door.x;
+  visual.upperRoot.y = door.y;
+  visual.lowerRoot.visible = door.z === worldMap.z;
+  visual.upperRoot.visible = door.z === worldMap.z;
+  visual.lowerClosed.visible = door.isOpen !== true;
+  visual.lowerOpen.visible = door.isOpen === true;
+  visual.upperClosed.visible = door.isOpen !== true;
+  visual.upperOpen.visible = door.isOpen === true;
   if (visual.isReady) {
     return true;
   }
@@ -775,8 +798,20 @@ const upsertPixiDoorVisual = async (door, worldMap) => {
     return false;
   }
 
-  fillDoorStateContainer(visual.closed, worldMap.tilesets, tileset, doorVariantData.closed);
-  fillDoorStateContainer(visual.open, worldMap.tilesets, tileset, doorVariantData.open);
+  fillDoorStateContainers(
+    visual.upperClosed,
+    visual.lowerClosed,
+    worldMap.tilesets,
+    tileset,
+    doorVariantData.closed,
+  );
+  fillDoorStateContainers(
+    visual.upperOpen,
+    visual.lowerOpen,
+    worldMap.tilesets,
+    tileset,
+    doorVariantData.open,
+  );
   visual.isReady = true;
   return true;
 };
@@ -795,7 +830,8 @@ export const syncPixiDoorVisuals = (doors, worldMap) => {
   }
   for (const [doorUid, visual] of doorVisualsByUid) {
     if (!visibleDoorUids.has(doorUid)) {
-      visual.root.destroy({ children: true });
+      visual.lowerRoot.destroy({ children: true });
+      visual.upperRoot.destroy({ children: true });
       doorVisualsByUid.delete(doorUid);
     }
   }
@@ -2474,7 +2510,8 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
-    doorContainer = new Container();
+    doorLowerContainer = new Container();
+    doorUpperContainer = new Container();
     roofContainer = new Container();
     feedbackEffectContainer = new Container();
     entityNameplateContainer = new Container();
@@ -2485,11 +2522,12 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
 
     pixiApp.stage.addChild(worldContainer);
     worldContainer.addChild(mapBelowContainer);
-    worldContainer.addChild(doorContainer);
+    worldContainer.addChild(doorLowerContainer);
     worldContainer.addChild(itemUseTargetContainer);
     worldContainer.addChild(entityContainer);
     worldContainer.addChild(projectileContainer);
     worldContainer.addChild(topContainer);
+    worldContainer.addChild(doorUpperContainer);
     worldContainer.addChild(roofContainer);
     worldContainer.addChild(feedbackEffectContainer);
     console.log("[Pixi] Stage hierarchy created");
