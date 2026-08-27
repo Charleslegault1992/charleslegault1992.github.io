@@ -16,10 +16,6 @@ export const getEntityRenderSortY = (entity) => {
     Number.isFinite(entity.renderY) &&
     entity.oldY > entity.y &&
     entity.renderY > entity.y;
-  const isVerticalMovement =
-    !Number.isFinite(entity.oldX) ||
-    !Number.isFinite(entity.x) ||
-    entity.oldX === entity.x;
 
-  return isStillMovingUp && isVerticalMovement ? entity.oldY : entity.y;
+  return isStillMovingUp ? entity.oldY : entity.y;
 };
