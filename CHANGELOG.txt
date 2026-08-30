@@ -1,3 +1,7 @@
+0.3435 - Chargement automatique des etages Tiled
+    - Tous les fichiers world_zN.tmj sont maintenant decouverts sans modifier le JavaScript.
+    - Les nouveaux etages peuvent utiliser directement la composition verticale des chunks.
+
 0.3434 - Etages visibles sous les cases vides
     - Les cases sans sol montrent maintenant le premier etage disponible en dessous.
     - Seules les parties visibles des chunks inferieurs sont dessinees et gardees en cache.

@@ -1,8 +1,6 @@
 /* ==================================================== */
 //#region     -----  IMPORTS  -----
 /* ==================================================== */
-import worldZMinus1Raw from "./assets/maps/tiled/world_z-1.tmj?raw";
-import worldZ0Raw from "./assets/maps/tiled/world_z0.tmj?raw";
 import { importTiledMapIntoWorldMaps } from "./tiledWorldImporter.js";
 import { getFileNameFromPath, hydrateTiledMapTilesets } from "./world/tiledMapHydration.js";
 //#endregion  -----  IMPORTS  -----
@@ -11,6 +9,11 @@ import { getFileNameFromPath, hydrateTiledMapTilesets } from "./world/tiledMapHy
 //#region     -----  ASSETS - MODULES VITE  -----
 /* ==================================================== */
 const tilesetRawModulesByPath = import.meta.glob("./assets/tilesets/*.tsj", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+const tiledMapRawModulesByPath = import.meta.glob("./assets/maps/tiled/world_z*.tmj", {
   query: "?raw",
   import: "default",
   eager: true,
@@ -39,12 +42,17 @@ const createTilesetRawByFileName = () => {
 export const loadWorldMaps = () => {
   const tilesetRawByFileName = createTilesetRawByFileName();
   const worldMapsByZ = new Map();
-  const worldZ0 = JSON.parse(worldZ0Raw);
-  const worldZMinus1 = JSON.parse(worldZMinus1Raw);
-  const hydratedWorldZ0 = hydrateTiledMapTilesets(worldZ0, tilesetRawByFileName);
-  const hydratedWorldZMinus1 = hydrateTiledMapTilesets(worldZMinus1, tilesetRawByFileName);
-  importTiledMapIntoWorldMaps(worldMapsByZ, hydratedWorldZ0, "world_z0.tmj");
-  importTiledMapIntoWorldMaps(worldMapsByZ, hydratedWorldZMinus1, "world_z-1.tmj");
+  for (const [path, rawMap] of Object.entries(tiledMapRawModulesByPath)) {
+    const fileName = getFileNameFromPath(path);
+    if (!fileName) {
+      continue;
+    }
+    const tiledMap = JSON.parse(rawMap);
+    const hydratedMap = hydrateTiledMapTilesets(tiledMap, tilesetRawByFileName);
+    if (hydratedMap) {
+      importTiledMapIntoWorldMaps(worldMapsByZ, hydratedMap, fileName);
+    }
+  }
   return worldMapsByZ;
 };
 //#endregion  -----  WORLD MAPS - LOAD  -----
