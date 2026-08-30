@@ -8,7 +8,7 @@ import { getFileNameFromPath, hydrateTiledMapTilesets } from "./world/tiledMapHy
 /* ==================================================== */
 //#region     -----  ASSETS - MODULES VITE  -----
 /* ==================================================== */
-const tilesetRawModulesByPath = import.meta.glob("./assets/tilesets/*.tsj", {
+const tilesetRawModulesByPath = import.meta.glob(["./assets/tilesets/*.tsj", "./assets/maps/tiled/*.tsj"], {
   query: "?raw",
   import: "default",
   eager: true,

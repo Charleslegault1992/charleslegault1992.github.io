@@ -1,3 +1,7 @@
+0.3436 - Correction du chargement de la surface
+    - Les tilesets locaux aux maps Tiled sont maintenant charges par le client et le serveur.
+    - La map de surface apparait correctement des le spawn.
+
 0.3435 - Chargement automatique des etages Tiled
     - Tous les fichiers world_zN.tmj sont maintenant decouverts sans modifier le JavaScript.
     - Les nouveaux etages peuvent utiliser directement la composition verticale des chunks.

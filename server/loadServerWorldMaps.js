@@ -6,12 +6,17 @@ import { hydrateTiledMapTilesets } from "../src/world/tiledMapHydration.js";
 const tiledMapsDirectory = new URL("../src/assets/maps/tiled/", import.meta.url);
 const tilesetsDirectory = new URL("../src/assets/tilesets/", import.meta.url);
 
+const loadTilesetEntriesFromDirectory = async (directory) => {
+  const fileNames = (await readdir(directory)).filter((fileName) => fileName.endsWith(".tsj"));
+  return Promise.all(fileNames.map(async (fileName) => [fileName, await readFile(new URL(fileName, directory), "utf8")]));
+};
+
 const loadTilesetRawByFileName = async () => {
-  const fileNames = (await readdir(tilesetsDirectory)).filter((fileName) => fileName.endsWith(".tsj"));
-  const entries = await Promise.all(
-    fileNames.map(async (fileName) => [fileName, await readFile(new URL(fileName, tilesetsDirectory), "utf8")]),
-  );
-  return new Map(entries);
+  const [sharedTilesets, mapTilesets] = await Promise.all([
+    loadTilesetEntriesFromDirectory(tilesetsDirectory),
+    loadTilesetEntriesFromDirectory(tiledMapsDirectory),
+  ]);
+  return new Map([...sharedTilesets, ...mapTilesets]);
 };
 
 export const loadServerWorldMaps = async () => {
