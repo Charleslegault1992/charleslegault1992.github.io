@@ -36,6 +36,7 @@ test("the lower door section stays behind a creature on the collision tile", () 
 });
 
 test("top world layers always render after entities", () => {
+  assert.ok(WORLD_ROOT_RENDER_Z_INDEX.verticalFloorUnderlay < WORLD_ROOT_RENDER_Z_INDEX.mapBelow);
   assert.ok(WORLD_ROOT_RENDER_Z_INDEX.top > WORLD_ROOT_RENDER_Z_INDEX.entity);
   assert.ok(WORLD_ROOT_RENDER_Z_INDEX.doorUpper > WORLD_ROOT_RENDER_Z_INDEX.top);
   assert.ok(WORLD_ROOT_RENDER_Z_INDEX.roof > WORLD_ROOT_RENDER_Z_INDEX.doorUpper);

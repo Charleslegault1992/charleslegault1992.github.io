@@ -3,6 +3,7 @@ import { TILE_SIZE, WORLD_RENDER_LAYER_CREATURE, WORLD_RENDER_LAYER_SIZE } from 
 const WORLD_RENDER_Z_INDEX_BASE = 1000000;
 
 export const WORLD_ROOT_RENDER_Z_INDEX = Object.freeze({
+  verticalFloorUnderlay: -10,
   mapBelow: 0,
   itemUseTarget: 20,
   entity: 30,

@@ -30,6 +30,7 @@ import {
 } from "./data/combatEffectsDatabase.js";
 import { groundEffectsDatabase } from "./data/groundEffectsDatabase.js";
 import { getDoorData, getDoorVariantData } from "./data/doorsDatabase.js";
+import { createVerticalFallbackPlan } from "./world/verticalFloorComposition.js";
 //#endregion  -----  IMPORTS  -----
 
 /* ==================================================== */
@@ -39,6 +40,12 @@ const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails"];
 const MAP_DEPTH_LAYER_NAMES = ["walls", "objects"];
 const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
+const MAP_VERTICAL_FALLBACK_LAYER_NAMES = [
+  ...MAP_BELOW_LAYER_NAMES,
+  ...MAP_DEPTH_LAYER_NAMES,
+  ...MAP_TOP_LAYER_NAMES,
+  MAP_ROOF_LAYER_NAME,
+];
 const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
@@ -111,6 +118,7 @@ const effectImageUrlModulesByPath = import.meta.glob("./assets/images/effects/*.
 /* ==================================================== */
 let pixiApp = null;
 let worldContainer = null;
+let verticalFloorUnderlayContainer = null;
 let mapBelowContainer = null;
 let entityContainer = null;
 let groundEffectContainer = null;
@@ -127,6 +135,7 @@ let tilesetTextureByImageFileName = null;
 let tilesetTextureLoadPromiseByImageFileName = null;
 let tileTextureByCacheKey = null;
 let renderedChunkContainersByKey = null;
+let renderedVerticalFallbackChunksByKey = null;
 let worldEntityTextureByKey = null;
 let entityFrameTextureByCacheKey = null;
 let playerContainer = null;
@@ -2410,32 +2419,155 @@ const renderWorldChunk = (worldMap, chunk) => {
     roofContainersById: roofContainersForChunk,
   };
 };
+
+const renderVerticalFallbackChunk = (plan) => {
+  if (!plan || !Array.isArray(plan.sourcesByTileIndex)) {
+    return null;
+  }
+
+  const chunkContainer = new Container();
+  chunkContainer.label = `vertical-fallback:${plan.key}`;
+
+  for (const layerName of MAP_VERTICAL_FALLBACK_LAYER_NAMES) {
+    let layerContainer = null;
+
+    for (let index = 0; index < plan.sourcesByTileIndex.length; index++) {
+      const source = plan.sourcesByTileIndex[index];
+      const gid = source?.chunk?.layers?.[layerName]?.[index];
+      if (!Number.isFinite(gid) || gid <= 0) {
+        continue;
+      }
+
+      if (!layerContainer) {
+        layerContainer = new Container();
+        layerContainer.label = `${plan.key}:${layerName}`;
+        chunkContainer.addChild(layerContainer);
+      }
+
+      const localCol = index % CHUNK_SIZE_TILES;
+      const localRow = Math.floor(index / CHUNK_SIZE_TILES);
+      const worldCol = plan.chunkX * CHUNK_SIZE_TILES + localCol;
+      const worldRow = plan.chunkY * CHUNK_SIZE_TILES + localRow;
+      const sprite = createTileSprite(source.worldMap.tilesets, gid, worldCol * TILE_SIZE, worldRow * TILE_SIZE);
+      if (sprite) {
+        layerContainer.addChild(sprite);
+      }
+    }
+  }
+
+  return chunkContainer.children.length > 0 ? chunkContainer : null;
+};
 //#endregion  -----  RENDU - CHUNKS  -----
 
 /* ==================================================== */
 //#region     -----  RENDU - VISIBILITE CHUNKS  -----
 /* ==================================================== */
-const getVisibleChunkKeys = (worldMap, centerChunkX, centerChunkY, radiusChunks) => {
+const getVisibleChunkGridPositions = (centerChunkX, centerChunkY, radiusChunks) => {
   if (
-    !(worldMap?.chunksByKey instanceof Map) ||
     !Number.isInteger(centerChunkX) ||
     !Number.isInteger(centerChunkY) ||
     !Number.isInteger(radiusChunks) ||
     radiusChunks < 0
   ) {
+    return [];
+  }
+
+  const positions = [];
+  for (let chunkY = centerChunkY - radiusChunks; chunkY <= centerChunkY + radiusChunks; chunkY++) {
+    for (let chunkX = centerChunkX - radiusChunks; chunkX <= centerChunkX + radiusChunks; chunkX++) {
+      positions.push({ chunkX, chunkY });
+    }
+  }
+  return positions;
+};
+
+const getVisibleChunkKeys = (worldMap, chunkGridPositions) => {
+  if (
+    !(worldMap?.chunksByKey instanceof Map) ||
+    !Array.isArray(chunkGridPositions)
+  ) {
     return new Set();
   }
 
   const visibleChunkKeys = new Set();
-  for (let chunkY = centerChunkY - radiusChunks; chunkY <= centerChunkY + radiusChunks; chunkY++) {
-    for (let chunkX = centerChunkX - radiusChunks; chunkX <= centerChunkX + radiusChunks; chunkX++) {
-      const chunkKey = `${worldMap.z}:${chunkX}:${chunkY}`;
-      if (worldMap.chunksByKey.has(chunkKey)) {
-        visibleChunkKeys.add(chunkKey);
-      }
+  for (const { chunkX, chunkY } of chunkGridPositions) {
+    const chunkKey = `${worldMap.z}:${chunkX}:${chunkY}`;
+    if (worldMap.chunksByKey.has(chunkKey)) {
+      visibleChunkKeys.add(chunkKey);
     }
   }
   return visibleChunkKeys;
+};
+
+const createVisibleVerticalFallbackPlans = (worldMapsByZ, worldMap, chunkGridPositions) => {
+  const plansByKey = new Map();
+  if (!(worldMapsByZ instanceof Map) || !Array.isArray(chunkGridPositions)) {
+    return plansByKey;
+  }
+
+  for (const { chunkX, chunkY } of chunkGridPositions) {
+    const plan = createVerticalFallbackPlan({
+      worldMapsByZ,
+      currentWorldMap: worldMap,
+      chunkX,
+      chunkY,
+      chunkSizeTiles: CHUNK_SIZE_TILES,
+    });
+    if (plan) {
+      plansByKey.set(plan.key, plan);
+    }
+  }
+  return plansByKey;
+};
+
+const loadTilesetTexturesForVerticalFallbackPlans = async (plansByKey) => {
+  const chunkKeysByWorldMap = new Map();
+
+  for (const plan of plansByKey.values()) {
+    for (const [worldMap, chunkKeys] of plan.sourceChunkKeysByWorldMap) {
+      let combinedChunkKeys = chunkKeysByWorldMap.get(worldMap);
+      if (!combinedChunkKeys) {
+        combinedChunkKeys = new Set();
+        chunkKeysByWorldMap.set(worldMap, combinedChunkKeys);
+      }
+      for (const chunkKey of chunkKeys) {
+        combinedChunkKeys.add(chunkKey);
+      }
+    }
+  }
+
+  await Promise.all(
+    [...chunkKeysByWorldMap].map(([worldMap, chunkKeys]) => loadTilesetTexturesForChunks(worldMap, chunkKeys)),
+  );
+};
+
+const removeHiddenVerticalFallbackChunks = (visiblePlanKeys) => {
+  if (!(renderedVerticalFallbackChunksByKey instanceof Map)) {
+    return;
+  }
+  for (const [planKey, chunkContainer] of renderedVerticalFallbackChunksByKey) {
+    if (!visiblePlanKeys.has(planKey)) {
+      chunkContainer.removeFromParent();
+      chunkContainer.destroy({ children: true });
+      renderedVerticalFallbackChunksByKey.delete(planKey);
+    }
+  }
+};
+
+const addVisibleVerticalFallbackChunks = (plansByKey) => {
+  if (!verticalFloorUnderlayContainer || !(renderedVerticalFallbackChunksByKey instanceof Map)) {
+    return;
+  }
+  for (const [planKey, plan] of plansByKey) {
+    if (renderedVerticalFallbackChunksByKey.has(planKey)) {
+      continue;
+    }
+    const chunkContainer = renderVerticalFallbackChunk(plan);
+    if (chunkContainer) {
+      verticalFloorUnderlayContainer.addChild(chunkContainer);
+      renderedVerticalFallbackChunksByKey.set(planKey, chunkContainer);
+    }
+  }
 };
 
 const removeHiddenChunkContainers = (visibleChunkKeys) => {
@@ -2472,6 +2604,7 @@ const clearRenderedChunkContainers = () => {
   }
 
   renderedChunkContainersByKey.clear();
+  removeHiddenVerticalFallbackChunks(new Set());
 };
 
 const addVisibleChunkContainers = (worldMap, visibleChunkKeys) => {
@@ -2570,6 +2703,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     console.log("[Pixi] Canvas appended to DOM");
 
     worldContainer = new Container();
+    verticalFloorUnderlayContainer = new Container();
     mapBelowContainer = new Container();
     entityContainer = new Container();
     groundEffectContainer = new Container();
@@ -2586,6 +2720,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     entityNameplateContainer.sortableChildren = true;
     worldContainer.sortableChildren = true;
 
+    verticalFloorUnderlayContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.verticalFloorUnderlay;
     mapBelowContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.mapBelow;
     itemUseTargetContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.itemUseTarget;
     entityContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.entity;
@@ -2596,6 +2731,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     feedbackEffectContainer.zIndex = WORLD_ROOT_RENDER_Z_INDEX.feedbackEffect;
 
     pixiApp.stage.addChild(worldContainer);
+    worldContainer.addChild(verticalFloorUnderlayContainer);
     worldContainer.addChild(mapBelowContainer);
     worldContainer.addChild(itemUseTargetContainer);
     worldContainer.addChild(entityContainer);
@@ -2628,6 +2764,7 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     tilesetTextureLoadPromiseByImageFileName = new Map();
     tileTextureByCacheKey = new Map();
     renderedChunkContainersByKey = new Map();
+    renderedVerticalFallbackChunksByKey = new Map();
     worldEntityTextureByKey = new Map();
     entityFrameTextureByCacheKey = new Map();
     playerContainer = null;
@@ -2759,7 +2896,13 @@ export const renderPixiWorldMap = async (worldMap) => {
   addVisibleChunkContainers(worldMap, new Set(worldMap.chunksByKey.keys()));
 };
 
-export const renderPixiVisibleWorldChunks = async (worldMap, centerChunkX, centerChunkY, radiusChunks) => {
+export const renderPixiVisibleWorldChunks = async (
+  worldMap,
+  centerChunkX,
+  centerChunkY,
+  radiusChunks,
+  worldMapsByZ = null,
+) => {
   if (
     !(mapLayerContainersByName instanceof Map) ||
     !topContainer ||
@@ -2774,8 +2917,13 @@ export const renderPixiVisibleWorldChunks = async (worldMap, centerChunkX, cente
   }
 
   const renderGeneration = ++visibleChunkRenderGeneration;
-  const visibleChunkKeys = getVisibleChunkKeys(worldMap, centerChunkX, centerChunkY, radiusChunks);
-  await loadTilesetTexturesForChunks(worldMap, visibleChunkKeys);
+  const chunkGridPositions = getVisibleChunkGridPositions(centerChunkX, centerChunkY, radiusChunks);
+  const visibleChunkKeys = getVisibleChunkKeys(worldMap, chunkGridPositions);
+  const fallbackPlansByKey = createVisibleVerticalFallbackPlans(worldMapsByZ, worldMap, chunkGridPositions);
+  await Promise.all([
+    loadTilesetTexturesForChunks(worldMap, visibleChunkKeys),
+    loadTilesetTexturesForVerticalFallbackPlans(fallbackPlansByKey),
+  ]);
   if (renderGeneration !== visibleChunkRenderGeneration) {
     return;
   }
@@ -2784,6 +2932,8 @@ export const renderPixiVisibleWorldChunks = async (worldMap, centerChunkX, cente
     tileTextureByCacheKey = new Map();
   }
   removeHiddenChunkContainers(visibleChunkKeys);
+  removeHiddenVerticalFallbackChunks(new Set(fallbackPlansByKey.keys()));
+  addVisibleVerticalFallbackChunks(fallbackPlansByKey);
   addVisibleChunkContainers(worldMap, visibleChunkKeys);
 };
 //#endregion  -----  PIXI - RENDU MAP  -----

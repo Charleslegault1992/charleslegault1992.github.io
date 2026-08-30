@@ -1,3 +1,8 @@
+0.3434 - Etages visibles sous les cases vides
+    - Les cases sans sol montrent maintenant le premier etage disponible en dessous.
+    - Seules les parties visibles des chunks inferieurs sont dessinees et gardees en cache.
+    - Les collisions et changements detage restent controles par les transitions Tiled.
+
 0.3433 - Profondeur stable des portes et diagonales
     - Le decoupage des portes correspond maintenant a leur alignement reel de 192 pixels.
     - La profondeur diagonale conserve la rangee nord jusquau bon moment du mouvement.

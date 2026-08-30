@@ -7768,6 +7768,7 @@ const updatePixiVisibleChunksAroundPlayer = async () => {
     playerChunkPosition.chunkX,
     playerChunkPosition.chunkY,
     pixiWorldRenderState.visibleRadiusChunks,
+    pixiWorldRenderState.worldMapsByZ,
   );
   syncPixiDoorVisuals(doorsByUid.values(), actualMap);
 
