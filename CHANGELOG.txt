@@ -1,3 +1,9 @@
+0.3446 - Sauvegardes de la base de donnees
+    - Chaque backup SQLite est coherent, verifie et accompagne de son checksum.
+    - Une restauration complete est testee et lancienne base reste disponible en secours.
+    - Les backups de plus de 14 jours sont nettoyes automatiquement.
+    - Un backup est cree avant celui de OVH et pendant le reset quotidien.
+
 0.3445 - Reset quotidien du monde
     - Le serveur sauvegarde tous les personnages avant de repartir avec un monde propre a 5 h.
     - Les joueurs recoivent un avertissement avant le reset quotidien.

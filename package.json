@@ -1,11 +1,13 @@
 {
   "name": "nonameyet",
-  "version": "0.3445.0",
+  "version": "0.3446.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",
+    "backup:database": "node server/backupDatabase.js",
+    "restore:database": "node server/restoreDatabaseBackup.js",
     "auth:token": "node server/issueDevelopmentToken.js",
     "test:load": "node server/loadTest.js",
     "build": "vite build",

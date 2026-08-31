@@ -1,0 +1,17 @@
+[Unit]
+Description=Nonameyet verified SQLite backup
+After=nonameyet.service
+
+[Service]
+Type=oneshot
+User=nonameyet
+Group=nonameyet
+WorkingDirectory=/opt/nonameyet
+EnvironmentFile=/etc/nonameyet/nonameyet.env
+ExecStart=/usr/bin/node server/backupDatabase.js
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/nonameyet

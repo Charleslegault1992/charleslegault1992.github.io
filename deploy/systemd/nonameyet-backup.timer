@@ -1,0 +1,11 @@
+[Unit]
+Description=Create a verified Nonameyet backup before the OVH VPS backup
+
+[Timer]
+OnCalendar=*-*-* 00:45:00 UTC
+Persistent=true
+RandomizedDelaySec=0
+Unit=nonameyet-backup.service
+
+[Install]
+WantedBy=timers.target

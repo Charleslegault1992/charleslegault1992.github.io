@@ -1,3 +1,5 @@
+import { dirname, join } from "node:path";
+
 import { createAuthoritativeWorldRuntime } from "./authoritativeWorldRuntime.js";
 import { createHmacAuthService } from "./auth/hmacAuthService.js";
 import { createPasswordService } from "./auth/passwordService.js";
@@ -10,6 +12,7 @@ import { createSqliteAccountRepository } from "./persistence/sqliteAccountReposi
 import { createSqliteChatModerationRepository } from "./persistence/sqliteChatModerationRepository.js";
 import { createChatModerationService } from "./chatModerationService.js";
 import { createDailyWorldResetScheduler } from "./dailyWorldResetScheduler.js";
+import { createVerifiedSqliteBackup } from "./persistence/sqliteBackup.js";
 
 const port = Number.parseInt(process.env.GAME_SERVER_PORT ?? "8080", 10);
 const host = process.env.GAME_SERVER_HOST ?? "127.0.0.1";
@@ -34,6 +37,12 @@ if (!isProduction && !process.env.GAME_AUTH_SECRET) {
 }
 const authService = createHmacAuthService({ secret: authSecret });
 const databasePath = process.env.GAME_DATABASE_PATH ?? ".data/game.sqlite";
+const backupDirectory = process.env.GAME_BACKUP_DIRECTORY ?? join(dirname(databasePath), "backups");
+const configuredBackupRetentionDays = Number.parseInt(process.env.GAME_BACKUP_RETENTION_DAYS ?? "14", 10);
+const backupRetentionDays =
+  Number.isInteger(configuredBackupRetentionDays) && configuredBackupRetentionDays > 0
+    ? configuredBackupRetentionDays
+    : 14;
 const characterRepository = createSqliteCharacterRepository({ databasePath });
 const accountRepository = createSqliteAccountRepository({ databasePath });
 const chatModerationRepository = createSqliteChatModerationRepository({ databasePath });
@@ -78,7 +87,12 @@ console.log(`Game server listening on ws://${address.address}:${address.port}/ga
 
 let isStopping = false;
 let resetScheduler = null;
-const stop = async ({ exitCode = 0, closeCode = 1001, closeReason = "Server stopping" } = {}) => {
+const stop = async ({
+  exitCode = 0,
+  closeCode = 1001,
+  closeReason = "Server stopping",
+  createFinalBackup = false,
+} = {}) => {
   if (isStopping) {
     return;
   }
@@ -90,6 +104,18 @@ const stop = async ({ exitCode = 0, closeCode = 1001, closeReason = "Server stop
     const saveResult = runtime.saveAllPlayerPersistence();
     if (!saveResult.success) {
       console.error("Final player save failed:", saveResult.failedPlayerUids);
+    }
+    if (createFinalBackup) {
+      const backupResult = createVerifiedSqliteBackup({
+        databasePath,
+        backupDirectory,
+        retentionDays: backupRetentionDays,
+      });
+      if (!backupResult.success) {
+        console.error(`Final SQLite backup failed: ${backupResult.reason}`, backupResult.error ?? "");
+      } else {
+        console.log(`Final SQLite backup verified: ${backupResult.backupPath}`);
+      }
     }
     await server.stop({ closeCode, closeReason });
     accountRepository.close();
@@ -109,7 +135,12 @@ resetScheduler = createDailyWorldResetScheduler({
       fr: `Reset quotidien du monde dans ${minutes} minute${minutes === 1 ? "" : "s"}.`,
     });
   },
-  onReset: () => stop({ exitCode: 75, closeCode: 1012, closeReason: "Daily world reset" }),
+  onReset: () => stop({
+    exitCode: 75,
+    closeCode: 1012,
+    closeReason: "Daily world reset",
+    createFinalBackup: true,
+  }),
 });
 console.log(`Next daily world reset: ${new Date(resetScheduler.nextResetAt).toISOString()}`);
 
