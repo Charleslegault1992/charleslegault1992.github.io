@@ -1,3 +1,7 @@
+0.3444 - Banque dans la maison bleue
+    - Charles est maintenant place sur une case libre au centre de la maison bleue.
+    - Les dernieres modifications de la map et du tileset de sol sont incluses.
+
 0.3443 - Rendu des tiles en mouvement
     - La camera Pixi saligne maintenant sur les pixels physiques pendant les deplacements.
     - Les lignes noires temporaires entre les tiles sont eliminees sans travail ajoute par sprite.
