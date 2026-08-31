@@ -297,6 +297,22 @@ export const createServerPlayerItemUse = ({
     if (!getValidRuneTileTarget(target, useData) || groundEffectsDatabase[useData.groundEffectId]?.kind !== "field") {
       return { success: false, reason: "target-out-of-range" };
     }
+    let targetsAnotherPlayer = false;
+    for (const worldPlayer of players.values()) {
+      if (
+        worldPlayer !== player &&
+        worldPlayer.hp > 0 &&
+        worldPlayer.x === target.x &&
+        worldPlayer.y === target.y &&
+        worldPlayer.z === target.z
+      ) {
+        targetsAnotherPlayer = true;
+        break;
+      }
+    }
+    if (targetsAnotherPlayer && player.pvp?.enabled !== true) {
+      return { success: false, reason: "pvp-disabled" };
+    }
     const existingField = groundEffects
       .getAllAt(target.x, target.y, target.z)
       .some((effect) => groundEffectsDatabase[effect.groundEffectId]?.kind === "field");

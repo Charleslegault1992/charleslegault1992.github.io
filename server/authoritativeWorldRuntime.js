@@ -54,7 +54,11 @@ import {
   isPlayerNearTiledObject,
 } from "../src/world/tiledWorldObjects.js";
 import { applyPlayerWorldTransitionState } from "../src/world/worldTransitions.js";
-import { hydratePlayerFromPersistence } from "./playerPersistence.js";
+import {
+  collectItemTreeUids,
+  ensureUniquePlayerItemUids,
+  hydratePlayerFromPersistence,
+} from "./playerPersistence.js";
 import { createServerWorldEntities } from "./serverWorldEntities.js";
 import { createServerPlayerInventory } from "./serverPlayerInventory.js";
 import { createServerPlayerItemUse } from "./serverPlayerItemUse.js";
@@ -92,6 +96,29 @@ const PLAYER_SPAWN_TILE_OFFSETS = Object.freeze([
   Object.freeze({ col: 0, row: 1 }),
   Object.freeze({ col: 1, row: 1 }),
 ]);
+
+const getPlayerDeathIdentity = (player) => ({
+  entityType: "player",
+  name: typeof player?.name === "string" && player.name !== "" ? player.name : "Unknown player",
+});
+
+const getMonsterDeathIdentity = (monster) => ({
+  entityType: "monster",
+  monsterId: monster?.monsterId ?? null,
+  name: getMonsterData(monster?.monsterId)?.name ?? monster?.monsterId ?? "Unknown monster",
+});
+
+const getFieldDeathIdentity = (damageType) => ({
+  entityType: "field",
+  damageType: typeof damageType === "string" && damageType !== "" ? damageType : "magic",
+});
+
+const setCorpseDeathInfo = (corpse, victim, killer) => {
+  if (!corpse || !victim || !killer) {
+    return;
+  }
+  corpse.deathInfo = { victim, killer };
+};
 
 const findPlayerSpawn = (worldMap, spawnId) => {
   for (const chunk of worldMap?.chunksByKey?.values() ?? []) {
@@ -568,7 +595,7 @@ export const createAuthoritativeWorldRuntime = ({
   const canPlayerAttackMonster = (player, monster) => canPlayerAttackTarget(player, monster);
   const canPlayerAttackPlayer = (player, target) => canPlayerAttackTarget(player, target);
 
-  const resolvePlayerDamageToMonster = (player, monster, attackResult, initialEvents = []) => {
+  const resolvePlayerDamageToMonster = (player, monster, attackResult, initialEvents = [], deathSource = null) => {
     const targetRenderSnapshot = {
       uid: monster.uid,
       monsterId: monster.monsterId,
@@ -618,6 +645,11 @@ export const createAuthoritativeWorldRuntime = ({
         monster.z,
         lootContent,
         itemOptions,
+      );
+      setCorpseDeathInfo(
+        corpse,
+        getMonsterDeathIdentity(monster),
+        deathSource ?? (player ? getPlayerDeathIdentity(player) : getFieldDeathIdentity(attackResult.textType)),
       );
       if (!corpse || !worldEntities.worldItems.add(corpse)) {
         corpse = null;
@@ -711,7 +743,7 @@ export const createAuthoritativeWorldRuntime = ({
     ]);
   };
 
-  const resolvePlayerDeath = (target) => {
+  const resolvePlayerDeath = (target, deathSource) => {
     const deathPosition = { x: target.x, y: target.y, z: target.z };
     const backpack = target.equipment.backpack;
     if (backpack) {
@@ -721,6 +753,7 @@ export const createAuthoritativeWorldRuntime = ({
       decayingItems: worldEntities.decayingItems,
       now: () => currentServerTime,
     });
+    setCorpseDeathInfo(corpse, getPlayerDeathIdentity(target), deathSource ?? getFieldDeathIdentity("magic"));
     if (!corpse || !worldEntities.worldItems.add(corpse)) {
       target.equipment.backpack = backpack;
       corpse = null;
@@ -783,7 +816,7 @@ export const createAuthoritativeWorldRuntime = ({
     if (target.hp <= 0 && isUnjustifiedAttack) {
       recordUnjustifiedPlayerKill(player, currentServerTime);
     }
-    const deathResult = target.hp <= 0 ? resolvePlayerDeath(target) : null;
+    const deathResult = target.hp <= 0 ? resolvePlayerDeath(target, getPlayerDeathIdentity(player)) : null;
     const groundEffect = attackResult.finalDamage > 0
       ? addOrRefreshGroundEffect("blood", targetRenderSnapshot.x, targetRenderSnapshot.y, targetRenderSnapshot.z, deathResult ? 0 : 1)
       : null;
@@ -848,7 +881,8 @@ export const createAuthoritativeWorldRuntime = ({
       };
       if (entityType === "monster") {
         const sourcePlayer = playersByUid.get(sourcePlayerUid) ?? null;
-        const result = resolvePlayerDamageToMonster(sourcePlayer, entity, attackResult);
+        const deathSource = sourcePlayer ? getPlayerDeathIdentity(sourcePlayer) : getFieldDeathIdentity(damageType);
+        const result = resolvePlayerDamageToMonster(sourcePlayer, entity, attackResult, [], deathSource);
         result.events = (result.events ?? []).map((event) => ({ ...event, attackKind: "fieldTick", damageType }));
         return result;
       }
@@ -868,7 +902,7 @@ export const createAuthoritativeWorldRuntime = ({
 
       applyDamageToPlayer(entity, damage);
       recordPlayerCombatActivity(entity.uid);
-      const deathResult = entity.hp <= 0 ? resolvePlayerDeath(entity) : null;
+      const deathResult = entity.hp <= 0 ? resolvePlayerDeath(entity, getFieldDeathIdentity(damageType)) : null;
       return {
         success: true,
         events: [
@@ -915,7 +949,7 @@ export const createAuthoritativeWorldRuntime = ({
       }
       recordPlayerCombatActivity(target.uid);
       if (target.hp <= 0) {
-        const deathResult = resolvePlayerDeath(target);
+        const deathResult = resolvePlayerDeath(target, getMonsterDeathIdentity(monster));
         if (deathResult.corpse) {
           createdWorldItems.push(deathResult.corpse);
         }
@@ -1145,6 +1179,19 @@ export const createAuthoritativeWorldRuntime = ({
     });
   };
 
+  const collectOccupiedItemUids = () => {
+    const occupiedItemUids = new Set();
+    for (const worldItem of worldEntities.worldItems.values()) {
+      collectItemTreeUids(worldItem, occupiedItemUids);
+    }
+    for (const onlinePlayer of playersByUid.values()) {
+      for (const equipmentItem of Object.values(onlinePlayer.equipment ?? {})) {
+        collectItemTreeUids(equipmentItem, occupiedItemUids);
+      }
+    }
+    return occupiedItemUids;
+  };
+
   const connectClient = (_session, hello) => {
     const accountId = typeof hello?.accountId === "string" ? hello.accountId.trim() : "";
     const characterId = typeof hello?.characterId === "string" ? hello.characterId.trim() : "";
@@ -1168,6 +1215,7 @@ export const createAuthoritativeWorldRuntime = ({
     if (persistedCharacter) {
       hydratePlayerFromPersistence(player, persistedCharacter.snapshot);
     }
+    const itemUidStateChanged = ensureUniquePlayerItemUids(player, collectOccupiedItemUids());
     const starterKitStateChanged = applyPlayerStarterKit(player);
     const spawnWorldMap = worldMapsByZ.get(player.spawn.z);
     const savedWorldMap = worldMapsByZ.get(player.z);
@@ -1246,9 +1294,12 @@ export const createAuthoritativeWorldRuntime = ({
       version: persistedCharacter?.version ?? null,
       lastSavedAt: currentServerTime,
       nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
-      isDirty: starterKitStateChanged,
+      isDirty: starterKitStateChanged || itemUidStateChanged,
     };
     sessionsByPlayerUid.set(playerUid, persistenceSession);
+    if (persistenceSession.isDirty) {
+      nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
+    }
     simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse, persistenceSession));
     if (characterRepository && persistenceSession.version === null) {
       const saveResult = characterRepository.save(

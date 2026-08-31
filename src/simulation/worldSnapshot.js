@@ -44,6 +44,9 @@ export const serializeItem = (item) => {
   if (Array.isArray(item.content)) {
     serializedItem.content = item.content.map(serializeItem);
   }
+  if (item.deathInfo && typeof item.deathInfo === "object") {
+    serializedItem.deathInfo = structuredClone(item.deathInfo);
+  }
   return serializedItem;
 };
 

@@ -5136,6 +5136,16 @@ const showFloatingTextAboveTarget = (text, offsetY, target, textType = "look", d
   }, entry.durationMs);
 };
 
+const getDeathIdentityDisplayName = (identity) => {
+  if (identity?.entityType === "monster") {
+    return getLocalizedMonsterData(identity.monsterId)?.name ?? identity.name;
+  }
+  if (identity?.entityType === "field") {
+    return getGameUiText("fieldDeathSource")(identity.damageType);
+  }
+  return identity?.name ?? null;
+};
+
 const showLookFloatingText = (lookInfo) => {
   if (!lookInfo) {
     return;
@@ -5165,6 +5175,13 @@ const showLookFloatingText = (lookInfo) => {
     const detailLines = [];
     if (lookInfo.desc) {
       detailLines.push(lookInfo.desc);
+    }
+    if (lookInfo.deathInfo) {
+      const victimName = getDeathIdentityDisplayName(lookInfo.deathInfo.victim);
+      const killerName = getDeathIdentityDisplayName(lookInfo.deathInfo.killer);
+      if (victimName && killerName) {
+        detailLines.push(getGameUiText("corpseDeathDetails")(victimName, killerName));
+      }
     }
     const combatStats = [];
     if (Number.isFinite(lookInfo.attack)) {
@@ -5845,6 +5862,7 @@ const lookAtPointerTarget = (target) => {
       charges: target.item.charges,
       attack: itemData.combat?.attack,
       defense: itemData.combat?.defense,
+      deathInfo: target.item.deathInfo,
     };
     return lookInfo;
   } else if (target.interactable) {

@@ -1,3 +1,9 @@
+0.3447 - Corps et containers multijoueur
+    - Les UID des items sont maintenant uniques entre tous les personnages et le monde.
+    - Les sacs dans les corps restent utilisables sans remplacer le sac equipe.
+    - Le lookup dun corps affiche qui est mort et qui la tue.
+    - Un field ne peut pas etre place sous un autre joueur sans activer le PVP.
+
 0.34461 - Permissions des backups
     - Le dossier securise des backups est prepare automatiquement par systemd.
 

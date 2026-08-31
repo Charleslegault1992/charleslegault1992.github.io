@@ -1,3 +1,6 @@
+import { normalizePlayerPvpState } from "../src/combat/playerPvpState.js";
+import { allocateItemUid, observeExistingItemUid } from "../src/state/uidAllocator.js";
+
 const PLAYER_SCALAR_FIELDS = [
   "name",
   "appearanceId",
@@ -60,4 +63,63 @@ export const hydratePlayerFromPersistence = (player, snapshot) => {
   player.moveDuration = 0;
   return true;
 };
-import { normalizePlayerPvpState } from "../src/combat/playerPvpState.js";
+
+const collectItemTree = (item, items) => {
+  if (!item || !Array.isArray(items)) {
+    return;
+  }
+  items.push(item);
+  if (Array.isArray(item.content)) {
+    for (const contentItem of item.content) {
+      collectItemTree(contentItem, items);
+    }
+  }
+};
+
+export const collectItemTreeUids = (item, itemUids) => {
+  if (!item || !(itemUids instanceof Set)) {
+    return itemUids;
+  }
+  if (Number.isSafeInteger(item.uid) && item.uid > 0) {
+    itemUids.add(item.uid);
+  }
+  if (Array.isArray(item.content)) {
+    for (const contentItem of item.content) {
+      collectItemTreeUids(contentItem, itemUids);
+    }
+  }
+  return itemUids;
+};
+
+export const ensureUniquePlayerItemUids = (player, occupiedItemUids) => {
+  if (!player?.equipment || !(occupiedItemUids instanceof Set)) {
+    return false;
+  }
+
+  const playerItems = [];
+  for (const equipmentItem of Object.values(player.equipment)) {
+    collectItemTree(equipmentItem, playerItems);
+  }
+
+  for (const itemUid of occupiedItemUids) {
+    observeExistingItemUid(itemUid);
+  }
+  for (const item of playerItems) {
+    observeExistingItemUid(item.uid);
+  }
+
+  let didChange = false;
+  const assignedItemUids = new Set(occupiedItemUids);
+  for (const item of playerItems) {
+    if (!Number.isSafeInteger(item.uid) || item.uid <= 0 || assignedItemUids.has(item.uid)) {
+      let nextUid = allocateItemUid();
+      while (assignedItemUids.has(nextUid)) {
+        nextUid = allocateItemUid();
+      }
+      item.uid = nextUid;
+      didChange = true;
+    }
+    assignedItemUids.add(item.uid);
+  }
+  return didChange;
+};

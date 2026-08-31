@@ -25,6 +25,8 @@ import {
 import { createMoveItemAction, createSplitItemStackAction } from "../src/inventory/inventoryActions.js";
 import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { createUseItemAction } from "../src/items/itemUseActions.js";
+import { createPlayerState } from "../src/state/playerState.js";
+import { serializePlayerPrivateState } from "../src/simulation/worldSnapshot.js";
 
 test("the authoritative runtime creates independent players and replicates movement", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
@@ -397,6 +399,155 @@ test("PVP runes follow the authoritative aggressor and skull target rules", asyn
   assert.ok(attacker.hp < attackerHealthBeforeRetaliation);
   assert.equal(bystander.pvp.enabled, false);
   assert.equal(bystander.pvp.skullType, "none");
+});
+
+test("field runes cannot be placed under another player while PVP is disabled", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const attackerSession = {};
+  const targetSession = {};
+  attackerSession.playerUid = runtime.connectClient(attackerSession, {
+    accountId: "field-pvp",
+    characterId: "attacker",
+  }).playerUid;
+  targetSession.playerUid = runtime.connectClient(targetSession, {
+    accountId: "field-pvp",
+    characterId: "target",
+  }).playerUid;
+  const attacker = runtime.getPlayer(attackerSession.playerUid);
+  const target = runtime.getPlayer(targetSession.playerUid);
+  Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
+  const backpack = createItemInstance("bag", 1);
+  const rune = createItemInstance("fireFieldRune", 1);
+  backpack.content[0] = rune;
+  attacker.equipment.backpack = backpack;
+  const targetTile = { targetType: "tile", x: target.x, y: target.y, z: target.z };
+  const useField = () => runtime.dispatchAction(
+    attackerSession,
+    createUseItemAction({
+      source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 0 },
+      itemUid: rune.uid,
+      target: targetTile,
+      requestedAt: serverTime,
+    }),
+  );
+
+  const rejected = useField();
+  const chargesAfterRejected = rune.charges;
+  runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
+  const accepted = useField();
+
+  assert.equal(rejected.reason, "pvp-disabled");
+  assert.equal(chargesAfterRejected, 5);
+  assert.equal(rune.charges, 4);
+  assert.equal(accepted.success, true);
+  assert.equal(
+    runtime.getWorldEntities().groundEffects.getAllAt(target.x, target.y, target.z)[0]?.groundEffectId,
+    "fireField",
+  );
+});
+
+test("player corpses identify a player killer and an environmental field killer", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    now: () => serverTime,
+    combatRandom: { getInt: () => 1, getFloat: (_minimum, maximum) => maximum },
+  });
+  const attackerSession = {};
+  const targetSession = {};
+  attackerSession.playerUid = runtime.connectClient(attackerSession, {
+    accountId: "corpse-info",
+    characterId: "attacker",
+    name: "Attacker",
+  }).playerUid;
+  targetSession.playerUid = runtime.connectClient(targetSession, {
+    accountId: "corpse-info",
+    characterId: "target",
+    name: "Target",
+  }).playerUid;
+  const attacker = runtime.getPlayer(attackerSession.playerUid);
+  const target = runtime.getPlayer(targetSession.playerUid);
+  Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z, hp: 1 });
+  runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
+  serverTime += 1000;
+  runtime.update(serverTime);
+  const pvpDeath = runtime.dispatchAction(attackerSession, createAttackPlayerAction(target.uid, serverTime));
+  const pvpCorpse = runtime.getWorldEntities().worldItems.get(pvpDeath.changes.corpseUid);
+
+  assert.equal(pvpCorpse.deathInfo.victim.name, "Target");
+  assert.equal(pvpCorpse.deathInfo.killer.entityType, "player");
+  assert.equal(pvpCorpse.deathInfo.killer.name, "Attacker");
+
+  const fieldBackpack = createItemInstance("bag", 1);
+  const fieldRune = createItemInstance("fireFieldRune", 1);
+  fieldBackpack.content[0] = fieldRune;
+  target.equipment.backpack = fieldBackpack;
+  target.hp = 1;
+  const fieldPosition = { x: target.x, y: target.y, z: target.z };
+  const fieldResult = runtime.dispatchAction(
+    targetSession,
+    createUseItemAction({
+      source: { locationType: "containerSlot", parentContainerUid: fieldBackpack.uid, slotIndex: 0 },
+      itemUid: fieldRune.uid,
+      target: { targetType: "tile", ...fieldPosition },
+      requestedAt: serverTime,
+    }),
+  );
+  assert.equal(fieldResult.success, true);
+  const snapshot = runtime.createSnapshotForClient(targetSession);
+  serverTime += 2000;
+  runtime.update(serverTime);
+  const fieldDelta = runtime.getDeltasForClient(targetSession, snapshot.revision).at(-1);
+  const fieldDeathEvent = fieldDelta.events.find((event) => event.type === "player-died");
+  const fieldCorpse = runtime.getWorldEntities().worldItems.get(fieldDeathEvent.corpseUid);
+
+  assert.equal(fieldCorpse.deathInfo.victim.name, "Target");
+  assert.equal(fieldCorpse.deathInfo.killer.entityType, "field");
+  assert.equal(fieldCorpse.deathInfo.killer.damageType, "fire");
+});
+
+test("persisted item UIDs are remapped when two online characters own the same UID", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const snapshots = new Map();
+  for (const characterId of ["first", "second"]) {
+    const savedPlayer = createPlayerState();
+    savedPlayer.uid = `saved:${characterId}`;
+    savedPlayer.name = characterId;
+    savedPlayer.progress.starterKitGranted = true;
+    savedPlayer.equipment.backpack = createItemInstance("bag", 1);
+    savedPlayer.equipment.backpack.uid = 777777;
+    snapshots.set(characterId, serializePlayerPrivateState(savedPlayer));
+  }
+  const saveCalls = [];
+  const characterRepository = {
+    load: (_accountId, characterId) => ({ snapshot: structuredClone(snapshots.get(characterId)), version: 1 }),
+    save: (accountId, characterId, snapshot, expectedVersion) => {
+      saveCalls.push({ accountId, characterId, snapshot, expectedVersion });
+      return { success: true, version: expectedVersion + 1 };
+    },
+  };
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime, characterRepository });
+  const firstSession = {};
+  const secondSession = {};
+  firstSession.playerUid = runtime.connectClient(firstSession, {
+    accountId: "duplicate-items",
+    characterId: "first",
+  }).playerUid;
+  secondSession.playerUid = runtime.connectClient(secondSession, {
+    accountId: "duplicate-items",
+    characterId: "second",
+  }).playerUid;
+  const firstBackpack = runtime.getPlayer(firstSession.playerUid).equipment.backpack;
+  const secondBackpack = runtime.getPlayer(secondSession.playerUid).equipment.backpack;
+
+  assert.notEqual(firstBackpack.uid, secondBackpack.uid);
+  serverTime += 31000;
+  runtime.update(serverTime);
+  assert.equal(saveCalls.some((call) => call.characterId === "second"), true);
 });
 
 test("a disconnected character reloads its authoritative saved position", async () => {
@@ -1161,6 +1312,9 @@ test("monster combat death creates a corpse and resets the player to the saved s
   assert.equal(player.z, player.spawn.z);
   assert.equal(corpse.itemId, "playerCorpse");
   assert.equal(corpse.content[0].itemId, "bag");
+  assert.equal(corpse.deathInfo.victim.name, player.name);
+  assert.equal(corpse.deathInfo.killer.entityType, "monster");
+  assert.equal(corpse.deathInfo.killer.monsterId, monster.monsterId);
   assert.equal(player.equipment.backpack, null);
 });
 
@@ -1436,6 +1590,8 @@ test("monster death atomically grants experience, creates loot and schedules res
   assert.equal(player.mana, 5);
   assert.equal(corpse.itemId, "ratCorpse");
   assert.equal(corpse.content.length, 2);
+  assert.equal(corpse.deathInfo.victim.monsterId, "rat");
+  assert.equal(corpse.deathInfo.killer.name, player.name);
   assert.equal(spawnState.pendingRespawnCount, 1);
   assert.deepEqual(delta.removals.monsters, [monster.uid]);
   assert.equal(delta.upserts.worldItems[0].uid, corpse.uid);
