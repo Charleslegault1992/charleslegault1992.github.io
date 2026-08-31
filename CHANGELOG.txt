@@ -1,3 +1,8 @@
+0.3441 - Roue de couleur du personnage
+    - Les couleurs se modifient maintenant en direct avec une roue tactile et une luminosite.
+    - Le personnage reste a gauche et les choix dapparence sont regroupes a droite sur mobile.
+    - Le clavier ne souvre plus automatiquement en entrant dans la creation.
+
 0.3440 - Creation de personnage sur mobile
     - La fenetre de creation tient maintenant entierement en mode paysage.
     - Chaque couleur se choisit avec un seul carre qui ouvre le selecteur du telephone.

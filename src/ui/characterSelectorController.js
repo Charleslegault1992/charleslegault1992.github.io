@@ -32,6 +32,7 @@ import {
   gameWelcomeLanguageButtons,
   gameWelcomePlayButton,
 } from "./domRefs.js";
+import { createColorWheelPicker } from "./colorWheelPicker.js";
 
 export const ENTER_GAME_AFTER_RELOAD_SESSION_KEY = "no-name-yet:enter-game-after-reload";
 export const OPEN_CHARACTER_SELECTOR_AFTER_RELOAD_SESSION_KEY = "no-name-yet:open-character-selector-after-reload";
@@ -710,6 +711,7 @@ export const createCharacterSelectorController = ({
         selectedAppearanceId = getPlayerAppearanceData(appearanceId).appearanceId;
       },
     });
+    sexChoiceElement.classList.add("character-creator-sex");
     controlsElement.append(
       createAppearanceCycleControl({
         title: getGameUiText("head"),
@@ -739,24 +741,35 @@ export const createCharacterSelectorController = ({
 
     const colorOptionsElement = document.createElement("div");
     colorOptionsElement.classList.add("character-color-options");
+    const colorWheelPicker = createColorWheelPicker({
+      parentElement: characterSelector,
+      closeLabel: getGameUiText("closeCharacters"),
+    });
     const createColorControl = (colorKey, labelText) => {
       const labelElement = document.createElement("label");
       labelElement.classList.add("character-color-control");
       const labelTextElement = document.createElement("span");
       labelTextElement.textContent = labelText;
-      const inputElement = document.createElement("input");
+      const inputElement = document.createElement("button");
       inputElement.classList.add("character-color-input");
-      inputElement.type = "color";
-      inputElement.value = selectedAppearanceColors[colorKey];
+      inputElement.type = "button";
       inputElement.setAttribute("aria-label", labelText);
       inputElement.title = labelText;
-      inputElement.addEventListener("input", () => {
-        clearPlayerAppearanceColorTextureCache(colorKey, selectedAppearanceColors[colorKey]);
-        selectedAppearanceColors = normalizeCharacterAppearanceColors({
-          ...selectedAppearanceColors,
-          [colorKey]: inputElement.value,
+      inputElement.style.backgroundColor = selectedAppearanceColors[colorKey];
+      inputElement.addEventListener("click", () => {
+        colorWheelPicker?.open({
+          color: selectedAppearanceColors[colorKey],
+          label: labelText,
+          onColorInput: (color) => {
+            clearPlayerAppearanceColorTextureCache(colorKey, selectedAppearanceColors[colorKey]);
+            selectedAppearanceColors = normalizeCharacterAppearanceColors({
+              ...selectedAppearanceColors,
+              [colorKey]: color,
+            });
+            inputElement.style.backgroundColor = selectedAppearanceColors[colorKey];
+            refreshAppearancePreviews();
+          },
         });
-        refreshAppearancePreviews();
       });
       labelElement.append(labelTextElement, inputElement);
       return labelElement;
@@ -797,7 +810,6 @@ export const createCharacterSelectorController = ({
     wrapperElement.append(headerElement, separatorElement, formElement);
     windowElement.appendChild(wrapperElement);
     characterSelector.appendChild(windowElement);
-    nameInputElement.focus();
   };
 
   const toggleCharacterSelector = () => {
