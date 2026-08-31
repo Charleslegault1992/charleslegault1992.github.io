@@ -567,7 +567,8 @@ const getTilesetImageUrl = (tileset) => {
   if (!tileset?.image || !(tilesetImageUrlByFileName instanceof Map)) {
     return null;
   }
-  return tilesetImageUrlByFileName.get(tileset.image) ?? null;
+  const imageFileName = getFileNameFromPath(tileset.image);
+  return imageFileName ? (tilesetImageUrlByFileName.get(imageFileName) ?? null) : null;
 };
 
 const loadTilesetTextures = async (tilesets) => {

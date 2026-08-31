@@ -1,3 +1,7 @@
+0.3439 - Images des tilesets locaux
+    - Les chemins dimages des tilesets locaux sont maintenant resolus correctement par Pixi.
+    - Les nouveaux sols et maisons ne sont plus affiches en noir.
+
 0.3437 - Nouvelle maison bleue
     - Le nouveau tileset de maison est charge dans la map de surface.
     - Charles est maintenant place dans la nouvelle maison bleue.
