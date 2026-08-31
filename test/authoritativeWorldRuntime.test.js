@@ -34,8 +34,16 @@ test("the authoritative runtime creates independent players and replicates movem
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
   const firstSession = {};
   const secondSession = {};
-  const firstConnection = runtime.connectClient(firstSession, { accountId: "test", characterId: "first", name: "First" });
-  const secondConnection = runtime.connectClient(secondSession, { accountId: "test", characterId: "second", name: "Second" });
+  const firstConnection = runtime.connectClient(firstSession, {
+    accountId: "test",
+    characterId: "first",
+    name: "First",
+  });
+  const secondConnection = runtime.connectClient(secondSession, {
+    accountId: "test",
+    characterId: "second",
+    name: "Second",
+  });
   firstSession.playerUid = firstConnection.playerUid;
   secondSession.playerUid = secondConnection.playerUid;
   const firstPlayer = runtime.getPlayer(firstConnection.playerUid);
@@ -87,7 +95,10 @@ test("the authoritative runtime creates independent players and replicates movem
   );
   const deltas = runtime.getDeltasForClient(secondSession, 0);
   assert.equal(deltas.length, 1);
-  assert.equal(deltas[0].upserts.players.some((player) => player.uid === firstPlayer.uid), true);
+  assert.equal(
+    deltas[0].upserts.players.some((player) => player.uid === firstPlayer.uid),
+    true,
+  );
 });
 
 test("movement cooldown uses action receipt time between server ticks", async () => {
@@ -285,18 +296,12 @@ test("PVP lets an aggressor attack an innocent player and opens skull targets to
   Object.assign(target, { x: attacker.x + TILE_SIZE, y: attacker.y, z: attacker.z });
   Object.assign(bystander, { x: attacker.x, y: attacker.y + TILE_SIZE, z: attacker.z });
 
-  const rejected = runtime.dispatchAction(
-    attackerSession,
-    createAttackPlayerAction(target.uid, serverTime),
-  );
+  const rejected = runtime.dispatchAction(attackerSession, createAttackPlayerAction(target.uid, serverTime));
   runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(true, serverTime));
   serverTime += 1000;
   runtime.update(serverTime);
   const healthBeforeAttack = target.hp;
-  const accepted = runtime.dispatchAction(
-    attackerSession,
-    createAttackPlayerAction(target.uid, serverTime),
-  );
+  const accepted = runtime.dispatchAction(attackerSession, createAttackPlayerAction(target.uid, serverTime));
 
   assert.equal(rejected.reason, "pvp-disabled");
   assert.equal(accepted.success, true);
@@ -305,18 +310,9 @@ test("PVP lets an aggressor attack an innocent player and opens skull targets to
   assert.equal(attacker.pvp.skullType, "white");
   assert.equal(target.pvp.enabled, false);
 
-  const lockedToggle = runtime.dispatchAction(
-    attackerSession,
-    createSetPvpEnabledAction(false, serverTime),
-  );
-  const retaliation = runtime.dispatchAction(
-    targetSession,
-    createAttackPlayerAction(attacker.uid, serverTime),
-  );
-  const bystanderAttack = runtime.dispatchAction(
-    bystanderSession,
-    createAttackPlayerAction(attacker.uid, serverTime),
-  );
+  const lockedToggle = runtime.dispatchAction(attackerSession, createSetPvpEnabledAction(false, serverTime));
+  const retaliation = runtime.dispatchAction(targetSession, createAttackPlayerAction(attacker.uid, serverTime));
+  const bystanderAttack = runtime.dispatchAction(bystanderSession, createAttackPlayerAction(attacker.uid, serverTime));
 
   assert.equal(lockedToggle.reason, "pvp-locked-by-skull");
   assert.equal(retaliation.success, true);
@@ -367,19 +363,20 @@ test("PVP runes follow the authoritative aggressor and skull target rules", asyn
   };
   const attackerInventory = equipRune(attacker);
   const bystanderInventory = equipRune(bystander);
-  const useRune = (session, inventory, targetPlayer) => runtime.dispatchAction(
-    session,
-    createUseItemAction({
-      source: {
-        locationType: "containerSlot",
-        parentContainerUid: inventory.backpack.uid,
-        slotIndex: 0,
-      },
-      itemUid: inventory.rune.uid,
-      target: { targetType: "player", playerUid: targetPlayer.uid },
-      requestedAt: serverTime,
-    }),
-  );
+  const useRune = (session, inventory, targetPlayer) =>
+    runtime.dispatchAction(
+      session,
+      createUseItemAction({
+        source: {
+          locationType: "containerSlot",
+          parentContainerUid: inventory.backpack.uid,
+          slotIndex: 0,
+        },
+        itemUid: inventory.rune.uid,
+        target: { targetType: "player", playerUid: targetPlayer.uid },
+        requestedAt: serverTime,
+      }),
+    );
 
   const initialCharges = attackerInventory.rune.charges;
   const rejected = useRune(attackerSession, attackerInventory, target);
@@ -393,7 +390,10 @@ test("PVP runes follow the authoritative aggressor and skull target rules", asyn
   assert.equal(attackerInventory.rune.charges, initialCharges - 1);
   assert.equal(accepted.success, true);
   assert.ok(target.hp < targetHealthBeforeAttack);
-  assert.equal(accepted.events.some((event) => event.type === "player-pvp-rune-resolved"), true);
+  assert.equal(
+    accepted.events.some((event) => event.type === "player-pvp-rune-resolved"),
+    true,
+  );
   assert.equal(attacker.pvp.skullType, "white");
   assert.equal(openTargetAttack.success, true);
   assert.ok(attacker.hp < attackerHealthBeforeRetaliation);
@@ -423,15 +423,16 @@ test("field runes cannot be placed under another player while PVP is disabled", 
   backpack.content[0] = rune;
   attacker.equipment.backpack = backpack;
   const targetTile = { targetType: "tile", x: target.x, y: target.y, z: target.z };
-  const useField = () => runtime.dispatchAction(
-    attackerSession,
-    createUseItemAction({
-      source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 0 },
-      itemUid: rune.uid,
-      target: targetTile,
-      requestedAt: serverTime,
-    }),
-  );
+  const useField = () =>
+    runtime.dispatchAction(
+      attackerSession,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 0 },
+        itemUid: rune.uid,
+        target: targetTile,
+        requestedAt: serverTime,
+      }),
+    );
 
   const rejected = useField();
   const chargesAfterRejected = rune.charges;
@@ -547,7 +548,10 @@ test("persisted item UIDs are remapped when two online characters own the same U
   assert.notEqual(firstBackpack.uid, secondBackpack.uid);
   serverTime += 31000;
   runtime.update(serverTime);
-  assert.equal(saveCalls.some((call) => call.characterId === "second"), true);
+  assert.equal(
+    saveCalls.some((call) => call.characterId === "second"),
+    true,
+  );
 });
 
 test("a disconnected character reloads its authoritative saved position", async () => {
@@ -564,15 +568,12 @@ test("a disconnected character reloads its authoritative saved position", async 
   const player = runtime.getPlayer(connection.playerUid);
   const savedPosition = { x: player.x, y: player.y, z: player.z };
 
-  assert.equal(runtime.disconnectClient(firstSession), true);
+  assert.equal(await runtime.disconnectClient(firstSession), true);
   const reconnectedSession = {};
   const reconnection = runtime.connectClient(reconnectedSession, { accountId: "account", characterId: "saved" });
   const reconnectedPlayer = runtime.getPlayer(reconnection.playerUid);
 
-  assert.deepEqual(
-    { x: reconnectedPlayer.x, y: reconnectedPlayer.y, z: reconnectedPlayer.z },
-    savedPosition,
-  );
+  assert.deepEqual({ x: reconnectedPlayer.x, y: reconnectedPlayer.y, z: reconnectedPlayer.z }, savedPosition);
   repository.close();
 });
 
@@ -835,11 +836,12 @@ test("concurrent players cannot both move the same authoritative world item", as
   const apple = createGroundItem("apple", 1, firstPlayer.x, firstPlayer.y, firstPlayer.z);
   runtime.getWorldEntities().worldItems.add(apple);
 
-  const createPickupAction = (backpackUid) => createMoveItemAction(
-    { locationType: "worldItem", itemUid: apple.uid },
-    { locationType: "containerSlot", parentContainerUid: backpackUid, slotIndex: 0 },
-    apple.uid,
-  );
+  const createPickupAction = (backpackUid) =>
+    createMoveItemAction(
+      { locationType: "worldItem", itemUid: apple.uid },
+      { locationType: "containerSlot", parentContainerUid: backpackUid, slotIndex: 0 },
+      apple.uid,
+    );
   const firstResult = runtime.dispatchAction(firstSession, createPickupAction(firstPlayer.equipment.backpack.uid));
   const secondResult = runtime.dispatchAction(secondSession, createPickupAction(secondPlayer.equipment.backpack.uid));
 
@@ -859,10 +861,7 @@ test("a client cannot speak or execute commands as another player UID", async ()
   firstSession.playerUid = firstConnection.playerUid;
   secondSession.playerUid = secondConnection.playerUid;
 
-  const result = runtime.dispatchAction(
-    firstSession,
-    createSpeakToNpcAction("hello", secondConnection.playerUid, 0),
-  );
+  const result = runtime.dispatchAction(firstSession, createSpeakToNpcAction("hello", secondConnection.playerUid, 0));
 
   assert.equal(result.success, false);
   assert.equal(result.reason, "player-not-found");
@@ -884,15 +883,16 @@ test("item use and shared item cooldown are authoritative per player", async () 
   player.equipment.backpack = backpack;
   player.hp = 20;
 
-  const usePotion = (potion, slotIndex) => runtime.dispatchAction(
-    session,
-    createUseItemAction({
-      source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
-      itemUid: potion.uid,
-      target: { targetType: "self", playerUid: player.uid },
-      requestedAt: 0,
-    }),
-  );
+  const usePotion = (potion, slotIndex) =>
+    runtime.dispatchAction(
+      session,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
+        itemUid: potion.uid,
+        target: { targetType: "self", playerUid: player.uid },
+        requestedAt: 0,
+      }),
+    );
   const firstResult = usePotion(firstPotion, 0);
   const cooldownResult = usePotion(secondPotion, 1);
 
@@ -1031,15 +1031,16 @@ test("healing runes restore another player without consuming a charge at full he
   backpack.content[1] = smallRune;
   healer.equipment.backpack = backpack;
 
-  const useRune = (rune, slotIndex, runeTarget) => runtime.dispatchAction(
-    healerSession,
-    createUseItemAction({
-      source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
-      itemUid: rune.uid,
-      target: runeTarget,
-      requestedAt: serverTime,
-    }),
-  );
+  const useRune = (rune, slotIndex, runeTarget) =>
+    runtime.dispatchAction(
+      healerSession,
+      createUseItemAction({
+        source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex },
+        itemUid: rune.uid,
+        target: runeTarget,
+        requestedAt: serverTime,
+      }),
+    );
 
   const healResult = useRune(greatRune, 0, { targetType: "player", playerUid: target.uid });
   assert.equal(healResult.success, true);
@@ -1097,8 +1098,9 @@ test("every field rune creates its matching field and dissipation removes it", a
         requestedAt: serverTime,
       }),
     );
-    const field = runtime.getWorldEntities().groundEffects
-      .getAllAt(player.x, player.y, player.z)
+    const field = runtime
+      .getWorldEntities()
+      .groundEffects.getAllAt(player.x, player.y, player.z)
       .find((effect) => effect.groundEffectId === groundEffectId);
 
     assert.equal(createResult.success, true, `${fieldRune.itemId} should create a field`);
@@ -1200,7 +1202,9 @@ test("reward chests grant items and commit quest progress exactly once on the se
   const player = runtime.getPlayer(connection.playerUid);
   player.equipment.backpack = createItemInstance("bag", 1);
   const worldMap = [...worldMapsByZ.values()].find((map) =>
-    [...map.chunksByKey.values()].some((chunk) => chunk.interactables.some((entry) => entry.properties?.interactableType === "rewardChest")),
+    [...map.chunksByKey.values()].some((chunk) =>
+      chunk.interactables.some((entry) => entry.properties?.interactableType === "rewardChest"),
+    ),
   );
   const chest = [...worldMap.chunksByKey.values()]
     .flatMap((chunk) => chunk.interactables)
@@ -1232,8 +1236,16 @@ test("NPC conversations are queued and resolved by the authoritative server", as
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
   const firstSession = {};
   const secondSession = {};
-  const firstConnection = runtime.connectClient(firstSession, { accountId: "npc", characterId: "first", language: "fr" });
-  const secondConnection = runtime.connectClient(secondSession, { accountId: "npc", characterId: "second", language: "fr" });
+  const firstConnection = runtime.connectClient(firstSession, {
+    accountId: "npc",
+    characterId: "first",
+    language: "fr",
+  });
+  const secondConnection = runtime.connectClient(secondSession, {
+    accountId: "npc",
+    characterId: "second",
+    language: "fr",
+  });
   firstSession.playerUid = firstConnection.playerUid;
   secondSession.playerUid = secondConnection.playerUid;
   const npc = [...runtime.getWorldEntities().npcs.values()][0];
@@ -1242,17 +1254,14 @@ test("NPC conversations are queued and resolved by the authoritative server", as
   Object.assign(firstPlayer, { x: npc.x, y: npc.y, z: npc.z });
   Object.assign(secondPlayer, { x: npc.x, y: npc.y, z: npc.z });
 
-  const greeting = runtime.dispatchAction(
-    firstSession,
-    createSpeakToNpcAction("salut", firstPlayer.uid, 0),
-  );
-  const queued = runtime.dispatchAction(
-    secondSession,
-    createSpeakToNpcAction("salut", secondPlayer.uid, 0),
-  );
+  const greeting = runtime.dispatchAction(firstSession, createSpeakToNpcAction("salut", firstPlayer.uid, 0));
+  const queued = runtime.dispatchAction(secondSession, createSpeakToNpcAction("salut", secondPlayer.uid, 0));
 
   assert.equal(greeting.success, true);
-  assert.equal(greeting.events.some((event) => event.type === "npc-spoke"), true);
+  assert.equal(
+    greeting.events.some((event) => event.type === "npc-spoke"),
+    true,
+  );
   assert.equal(queued.success, false);
   assert.equal(queued.reason, "npc-busy");
   assert.equal(queued.changes.queuePosition, 1);
@@ -1482,7 +1491,10 @@ test("snapshots contain only nearby serialized world entities", async () => {
 
   const snapshot = runtime.createSnapshotForClient(session);
 
-  assert.equal(snapshot.entities.monsters.some((entity) => entity.uid === monster.uid), true);
+  assert.equal(
+    snapshot.entities.monsters.some((entity) => entity.uid === monster.uid),
+    true,
+  );
   assert.equal("path" in snapshot.entities.monsters.find((entity) => entity.uid === monster.uid), false);
 });
 
@@ -1519,7 +1531,10 @@ test("monster damage is calculated and replicated by the authoritative runtime",
   assert.ok(Number.isInteger(result.changes.groundEffectUid));
   assert.equal(runtime.getWorldEntities().groundEffects.has(result.changes.groundEffectUid), true);
   assert.equal(deltas[0].upserts.monsters.find((entity) => entity.uid === monster.uid).hp, monster.hp);
-  assert.equal(deltas[0].events.some((event) => event.type === "monster-damage-resolved"), true);
+  assert.equal(
+    deltas[0].events.some((event) => event.type === "monster-damage-resolved"),
+    true,
+  );
 });
 
 test("combat events do not leak to a client on another floor", async () => {
@@ -1624,7 +1639,7 @@ test("combat logout keeps the avatar for two minutes and allows reclaiming it", 
   const combatSnapshot = runtime.createSnapshotForClient(attackerSession);
   assert.equal(combatSnapshot.self.combatLogoutExpiresAt, serverTime + 120000);
 
-  assert.equal(runtime.disconnectClient(attackerSession), true);
+  assert.equal(await runtime.disconnectClient(attackerSession), true);
   assert.equal(runtime.getPlayer(attacker.uid), attacker);
 
   const reconnectSession = {};
@@ -1636,9 +1651,10 @@ test("combat logout keeps the avatar for two minutes and allows reclaiming it", 
   reconnectSession.playerUid = reconnectResult.playerUid;
   assert.equal(runtime.getPlayer(reconnectResult.playerUid), attacker);
 
-  runtime.disconnectClient(reconnectSession);
+  await runtime.disconnectClient(reconnectSession);
   serverTime += 120001;
   runtime.update(serverTime);
+  await Promise.resolve();
   assert.equal(runtime.getPlayer(attacker.uid), null);
 });
 
@@ -1652,6 +1668,579 @@ test("disconnecting outside combat removes the player immediately", async () => 
   }).playerUid;
 
   assert.ok(runtime.getPlayer(session.playerUid));
-  assert.equal(runtime.disconnectClient(session), true);
+  assert.equal(await runtime.disconnectClient(session), true);
   assert.equal(runtime.getPlayer(session.playerUid), null);
+});
+
+test("asynchronous character persistence never blocks the authoritative update loop", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  let serverTime = 1000;
+
+  const persistedPlayer = createPlayerState();
+
+  persistedPlayer.uid = "saved:async-save";
+
+  persistedPlayer.name = "Async Save";
+
+  persistedPlayer.progress.starterKitGranted = true;
+
+  const deferredSaves = [];
+
+  let saveCalls = 0;
+
+  const repository = {
+    load() {
+      return {
+        snapshot: serializePlayerPrivateState(persistedPlayer),
+
+        version: 1,
+      };
+    },
+
+    save() {
+      saveCalls += 1;
+
+      let resolve;
+
+      const promise = new Promise((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+
+      deferredSaves.push({
+        promise,
+        resolve,
+      });
+
+      return promise;
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    now: () => serverTime,
+  });
+
+  const session = {};
+
+  const connection = runtime.connectClient(session, {
+    accountId: "async",
+    characterId: "save",
+  });
+
+  session.playerUid = connection.playerUid;
+
+  runtime.dispatchAction(session, createSetPvpEnabledAction(true, serverTime));
+
+  serverTime += 30001;
+
+  runtime.update(serverTime);
+
+  assert.equal(saveCalls, 1);
+
+  /*
+   * The database save is still unresolved,
+   * but gameplay continues.
+   */
+  serverTime += 34;
+
+  runtime.update(serverTime);
+
+  assert.ok(runtime.getPlayer(session.playerUid));
+
+  deferredSaves[0].resolve({
+    success: true,
+    version: 2,
+  });
+
+  await Promise.resolve();
+});
+
+test("character persistence limits database save concurrency to two players", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  let serverTime = 1000;
+
+  let activeSaves = 0;
+  let maximumActiveSaves = 0;
+
+  const deferredSaves = [];
+
+  const savedPlayer = createPlayerState();
+
+  savedPlayer.progress.starterKitGranted = true;
+
+  const repository = {
+    load() {
+      return {
+        snapshot: serializePlayerPrivateState(savedPlayer),
+
+        version: 1,
+      };
+    },
+
+    save(_accountId, _characterId, _snapshot, expectedVersion) {
+      activeSaves += 1;
+
+      maximumActiveSaves = Math.max(maximumActiveSaves, activeSaves);
+
+      let resolve;
+
+      const promise = new Promise((resolvePromise) => {
+        resolve = () => {
+          activeSaves -= 1;
+
+          resolvePromise({
+            success: true,
+            version: expectedVersion + 1,
+          });
+        };
+      });
+
+      deferredSaves.push({
+        resolve,
+      });
+
+      return promise;
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    now: () => serverTime,
+  });
+
+  const sessions = [];
+
+  for (let index = 0; index < 5; index += 1) {
+    const session = {};
+
+    const connection = runtime.connectClient(session, {
+      accountId: "concurrency",
+
+      characterId: `player-${index}`,
+    });
+
+    session.playerUid = connection.playerUid;
+
+    sessions.push(session);
+
+    runtime.dispatchAction(session, createSetPvpEnabledAction(true, serverTime));
+  }
+
+  serverTime += 30001;
+
+  runtime.update(serverTime);
+
+  serverTime += 34;
+  runtime.update(serverTime);
+
+  serverTime += 34;
+  runtime.update(serverTime);
+
+  assert.equal(maximumActiveSaves, 2);
+
+  while (deferredSaves.length > 0) {
+    const deferred = deferredSaves.shift();
+
+    deferred.resolve();
+
+    await Promise.resolve();
+  }
+
+  assert.equal(maximumActiveSaves, 2);
+});
+
+test("disconnect waits for final asynchronous persistence before removing the player", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  const savedPlayer = createPlayerState();
+
+  savedPlayer.progress.starterKitGranted = true;
+
+  let resolveSave;
+
+  const repository = {
+    load() {
+      return {
+        snapshot: serializePlayerPrivateState(savedPlayer),
+
+        version: 1,
+      };
+    },
+
+    save() {
+      return new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    now: () => 1000,
+  });
+
+  const session = {};
+
+  const connection = runtime.connectClient(session, {
+    accountId: "disconnect-save",
+
+    characterId: "player",
+  });
+
+  session.playerUid = connection.playerUid;
+
+  const disconnectPromise = runtime.disconnectClient(session);
+
+  /*
+   * The final DB save has not completed,
+   * therefore the authoritative player
+   * still exists.
+   */
+  assert.ok(runtime.getPlayer(session.playerUid));
+
+  resolveSave({
+    success: true,
+    version: 2,
+  });
+
+  assert.equal(await disconnectPromise, true);
+
+  assert.equal(runtime.getPlayer(session.playerUid), null);
+});
+
+test("an asynchronous character load does not publish the player before persistence completes", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  const persistedPlayer = createPlayerState();
+
+  persistedPlayer.uid = "saved:async-load";
+
+  persistedPlayer.name = "Async Load";
+
+  persistedPlayer.progress.starterKitGranted = true;
+
+  let resolveLoad;
+
+  const loadPromise = new Promise((resolve) => {
+    resolveLoad = resolve;
+  });
+
+  let loadCalls = 0;
+
+  const repository = {
+    load() {
+      loadCalls += 1;
+      return loadPromise;
+    },
+
+    save() {
+      throw new Error("Existing character should not be created.");
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+  });
+
+  const session = {};
+
+  const connectionPromise = runtime.connectClient(session, {
+    accountId: "async-load",
+
+    characterId: "hero",
+  });
+
+  assert.equal(typeof connectionPromise.then, "function");
+
+  assert.equal(runtime.getPlayer("player:async-load:hero"), null);
+
+  assert.equal(runtime.isCharacterBusy("async-load", "hero"), true);
+
+  resolveLoad({
+    snapshot: serializePlayerPrivateState(persistedPlayer),
+
+    version: 7,
+  });
+
+  const connection = await connectionPromise;
+
+  assert.deepEqual(connection, {
+    success: true,
+    playerUid: "player:async-load:hero",
+  });
+
+  assert.equal(loadCalls, 1);
+
+  assert.ok(runtime.getPlayer(connection.playerUid));
+
+  assert.equal(runtime.isCharacterBusy("async-load", "hero"), true);
+});
+
+test("two simultaneous connections cannot load the same character twice", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  const persistedPlayer = createPlayerState();
+
+  persistedPlayer.progress.starterKitGranted = true;
+
+  let resolveLoad;
+
+  const loadPromise = new Promise((resolve) => {
+    resolveLoad = resolve;
+  });
+
+  let loadCalls = 0;
+
+  const repository = {
+    load() {
+      loadCalls += 1;
+      return loadPromise;
+    },
+
+    save() {
+      throw new Error("Unexpected character save.");
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+  });
+
+  const firstConnection = runtime.connectClient(
+    {},
+    {
+      accountId: "connection-race",
+
+      characterId: "hero",
+    },
+  );
+
+  const secondConnection = runtime.connectClient(
+    {},
+    {
+      accountId: "connection-race",
+
+      characterId: "hero",
+    },
+  );
+
+  assert.deepEqual(secondConnection, {
+    success: false,
+    reason: "character-connection-in-progress",
+  });
+
+  assert.equal(loadCalls, 1);
+
+  resolveLoad({
+    snapshot: serializePlayerPrivateState(persistedPlayer),
+
+    version: 1,
+  });
+
+  const firstResult = await firstConnection;
+
+  assert.equal(firstResult.success, true);
+
+  assert.equal(loadCalls, 1);
+});
+test("asynchronous character auto creation is persisted before the player enters the world", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  let resolveSave;
+
+  const savePromise = new Promise((resolve) => {
+    resolveSave = resolve;
+  });
+
+  let saveCalls = 0;
+
+  const repository = {
+    load() {
+      return null;
+    },
+
+    save(accountId, characterId, snapshot, expectedVersion) {
+      saveCalls += 1;
+
+      assert.equal(accountId, "async-create");
+
+      assert.equal(characterId, "hero");
+
+      assert.equal(expectedVersion, null);
+
+      assert.equal(snapshot.name, "Async Hero");
+
+      return savePromise;
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+
+    allowCharacterAutoCreate: true,
+  });
+
+  const connectionPromise = runtime.connectClient(
+    {},
+    {
+      accountId: "async-create",
+
+      characterId: "hero",
+
+      name: "Async Hero",
+    },
+  );
+
+  assert.equal(saveCalls, 1);
+
+  assert.equal(runtime.getPlayer("player:async-create:hero"), null);
+
+  assert.equal(runtime.isCharacterBusy("async-create", "hero"), true);
+
+  resolveSave({
+    success: true,
+    version: 1,
+  });
+
+  const result = await connectionPromise;
+
+  assert.equal(result.success, true);
+
+  assert.ok(runtime.getPlayer(result.playerUid));
+});
+test("failed asynchronous character creation leaves no online player or connection reservation", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  const repository = {
+    load() {
+      return null;
+    },
+
+    async save() {
+      return {
+        success: false,
+        reason: "character-name-taken",
+      };
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+
+    allowCharacterAutoCreate: true,
+  });
+
+  const result = await runtime.connectClient(
+    {},
+    {
+      accountId: "failed-create",
+
+      characterId: "hero",
+
+      name: "Taken Name",
+    },
+  );
+
+  assert.deepEqual(result, {
+    success: false,
+    reason: "character-name-taken",
+  });
+
+  assert.equal(runtime.getPlayer("player:failed-create:hero"), null);
+
+  assert.equal(runtime.isCharacterBusy("failed-create", "hero"), false);
+
+  const retry = await runtime.connectClient(
+    {},
+    {
+      accountId: "failed-create",
+
+      characterId: "hero",
+
+      name: "Taken Name",
+    },
+  );
+
+  assert.equal(retry.success, false);
+
+  assert.equal(retry.reason, "character-name-taken");
+});
+test("one slow character load does not block a different character connection", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+
+  const persistedPlayer = createPlayerState();
+
+  persistedPlayer.progress.starterKitGranted = true;
+
+  let resolveSlowLoad;
+
+  const slowLoad = new Promise((resolve) => {
+    resolveSlowLoad = resolve;
+  });
+
+  const repository = {
+    load(_accountId, characterId) {
+      if (characterId === "slow") {
+        return slowLoad;
+      }
+
+      return Promise.resolve({
+        snapshot: serializePlayerPrivateState(persistedPlayer),
+
+        version: 1,
+      });
+    },
+
+    save() {
+      throw new Error("Unexpected character save.");
+    },
+  };
+
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+  });
+
+  const slowConnection = runtime.connectClient(
+    {},
+    {
+      accountId: "parallel",
+
+      characterId: "slow",
+    },
+  );
+
+  const fastConnection = await runtime.connectClient(
+    {},
+    {
+      accountId: "parallel",
+
+      characterId: "fast",
+    },
+  );
+
+  assert.equal(fastConnection.success, true);
+
+  assert.ok(runtime.getPlayer(fastConnection.playerUid));
+
+  assert.equal(runtime.getPlayer("player:parallel:slow"), null);
+
+  resolveSlowLoad({
+    snapshot: serializePlayerPrivateState(persistedPlayer),
+
+    version: 1,
+  });
+
+  const slowResult = await slowConnection;
+
+  assert.equal(slowResult.success, true);
 });

@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "db:import-sqlite": "node server/importSqliteToPostgres.js",
     "server": "node server/index.js",
+    "db:migrate": "node server/migratePostgres.js",
     "backup:database": "node server/backupDatabase.js",
     "restore:database": "node server/restoreDatabaseBackup.js",
     "auth:token": "node server/issueDevelopmentToken.js",
@@ -28,6 +30,7 @@
   "homepage": "https://github.com/Charleslegault1992/charleslegault1992.github.io#readme",
   "dependencies": {
     "google-auth-library": "^11.0.2",
+    "pg": "^8.23.0",
     "pixi.js": "^8.19.0",
     "vite": "^8.1.0",
     "ws": "^8.21.3"

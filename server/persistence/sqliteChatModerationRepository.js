@@ -16,6 +16,17 @@ export const createSqliteChatModerationRepository = ({ databasePath = ".data/gam
     FROM chat_mutes
     WHERE account_id = ? AND muted_until > ?
   `);
+  const selectActiveMutes = database.prepare(`
+    SELECT
+      account_id,
+      muted_until,
+      reason,
+      moderator_account_id,
+      created_at
+    FROM chat_mutes
+    WHERE muted_until > ?
+    ORDER BY account_id ASC
+  `);
   const deleteMute = database.prepare("DELETE FROM chat_mutes WHERE account_id = ?");
   const deleteExpiredMutes = database.prepare("DELETE FROM chat_mutes WHERE muted_until <= ?");
 
@@ -45,6 +56,15 @@ export const createSqliteChatModerationRepository = ({ databasePath = ".data/gam
             createdAt: row.created_at,
           }
         : null;
+    },
+    listActiveMutes(now = Date.now()) {
+      return selectActiveMutes.all(now).map((row) => ({
+        accountId: row.account_id,
+        mutedUntil: row.muted_until,
+        reason: row.reason,
+        moderatorAccountId: row.moderator_account_id,
+        createdAt: row.created_at,
+      }));
     },
     unmute(accountId) {
       return deleteMute.run(accountId).changes === 1;

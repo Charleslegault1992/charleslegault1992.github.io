@@ -2,10 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createPlayerState } from "../../src/state/playerState.js";
 import { applyPlayerStarterKit } from "../../src/player/playerStarterKit.js";
-import {
-  normalizeCharacterAppearanceColors,
-  normalizeCharacterAppearanceParts,
-} from "../../src/characterSaveStore.js";
+import { normalizeCharacterAppearanceColors, normalizeCharacterAppearanceParts } from "../../src/characterSaveStore.js";
 
 const JSON_BODY_LIMIT_BYTES = 16 * 1024;
 const AUTH_ATTEMPT_LIMIT = 10;
@@ -89,7 +86,8 @@ export const createGameHttpApi = ({
 
   const getRequestAddress = (request) => {
     const socketAddress = request.socket?.remoteAddress ?? "unknown";
-    const isLoopbackProxy = socketAddress === "127.0.0.1" || socketAddress === "::1" || socketAddress === "::ffff:127.0.0.1";
+    const isLoopbackProxy =
+      socketAddress === "127.0.0.1" || socketAddress === "::1" || socketAddress === "::ffff:127.0.0.1";
     const forwardedAddress = request.headers["x-forwarded-for"];
     if (isLoopbackProxy && typeof forwardedAddress === "string") {
       return forwardedAddress.split(",")[0].trim() || socketAddress;
@@ -126,54 +124,99 @@ export const createGameHttpApi = ({
 
     if (request.method === "POST" && ["/auth/register", "/auth/login"].includes(url.pathname)) {
       if (!consumeAuthAttempt(request)) {
-        writeJson(response, 429, { success: false, reason: "too-many-attempts" }, {
-          ...corsHeaders,
-          "retry-after": "60",
-        });
+        writeJson(
+          response,
+          429,
+          { success: false, reason: "too-many-attempts" },
+          {
+            ...corsHeaders,
+            "retry-after": "60",
+          },
+        );
         return true;
       }
       const body = await readJsonBody(request);
       const password = body?.password;
       let authenticatedAccountId = null;
       if (url.pathname === "/auth/register") {
-        const accountId = String(body?.accountId ?? "").trim().toLocaleLowerCase();
-        const email = String(body?.email ?? "").trim().toLocaleLowerCase();
+        const accountId = String(body?.accountId ?? "")
+          .trim()
+          .toLocaleLowerCase();
+        const email = String(body?.email ?? "")
+          .trim()
+          .toLocaleLowerCase();
         const passwordHash = await passwordService.hashPassword(password);
-        const result = passwordHash ? accountRepository.create(accountId, email, passwordHash, now()) : null;
+
+        const result = passwordHash ? await accountRepository.create(accountId, email, passwordHash, now()) : null;
+
         if (!result?.success) {
           const isConflict = ["account-already-exists", "email-already-exists"].includes(result?.reason);
-          writeJson(response, isConflict ? 409 : 400, {
-            success: false,
-            reason: result?.reason ?? "invalid-credentials",
-          }, corsHeaders);
+
+          writeJson(
+            response,
+            isConflict ? 409 : 400,
+            {
+              success: false,
+              reason: result?.reason ?? "invalid-credentials",
+            },
+            corsHeaders,
+          );
+
           return true;
         }
+
         authenticatedAccountId = result.accountId;
       } else {
-        const login = String(body?.login ?? body?.accountId ?? "").trim().toLocaleLowerCase();
-        const account = accountRepository.findByLogin(login);
-        const passwordHash = account?.passwordHash ?? await dummyPasswordHashPromise;
+        const login = String(body?.login ?? body?.accountId ?? "")
+          .trim()
+          .toLocaleLowerCase();
+
+        const account = await accountRepository.findByLogin(login);
+
+        const passwordHash = account?.passwordHash ?? (await dummyPasswordHashPromise);
+
         const passwordMatches = await passwordService.verifyPassword(password, passwordHash);
+
         if (!account || !passwordMatches) {
-          writeJson(response, 401, { success: false, reason: "invalid-credentials" }, corsHeaders);
+          writeJson(
+            response,
+            401,
+            {
+              success: false,
+              reason: "invalid-credentials",
+            },
+            corsHeaders,
+          );
+
           return true;
         }
+
         authenticatedAccountId = account.accountId;
       }
-      writeJson(response, 200, {
-        success: true,
-        accountId: authenticatedAccountId,
-        token: issueToken(authenticatedAccountId),
-      }, corsHeaders);
+      writeJson(
+        response,
+        200,
+        {
+          success: true,
+          accountId: authenticatedAccountId,
+          token: issueToken(authenticatedAccountId),
+        },
+        corsHeaders,
+      );
       return true;
     }
 
     if (request.method === "POST" && url.pathname === "/auth/google") {
       if (!consumeAuthAttempt(request)) {
-        writeJson(response, 429, { success: false, reason: "too-many-attempts" }, {
-          ...corsHeaders,
-          "retry-after": "60",
-        });
+        writeJson(
+          response,
+          429,
+          { success: false, reason: "too-many-attempts" },
+          {
+            ...corsHeaders,
+            "retry-after": "60",
+          },
+        );
         return true;
       }
       if (!googleIdentityService?.isConfigured?.()) {
@@ -186,19 +229,29 @@ export const createGameHttpApi = ({
         writeJson(response, 401, { success: false, reason: "google-auth-failed" }, corsHeaders);
         return true;
       }
-      const result = accountRepository.findOrCreateExternalIdentity(externalIdentity, now());
+      const result = await accountRepository.findOrCreateExternalIdentity(externalIdentity, now());
       if (!result?.success) {
-        writeJson(response, 500, {
-          success: false,
-          reason: result?.reason ?? "external-account-creation-failed",
-        }, corsHeaders);
+        writeJson(
+          response,
+          500,
+          {
+            success: false,
+            reason: result?.reason ?? "external-account-creation-failed",
+          },
+          corsHeaders,
+        );
         return true;
       }
-      writeJson(response, 200, {
-        success: true,
-        accountId: result.accountId,
-        token: issueToken(result.accountId),
-      }, corsHeaders);
+      writeJson(
+        response,
+        200,
+        {
+          success: true,
+          accountId: result.accountId,
+          token: issueToken(result.accountId),
+        },
+        corsHeaders,
+      );
       return true;
     }
 
@@ -208,46 +261,95 @@ export const createGameHttpApi = ({
         writeJson(response, 401, { success: false, reason: "authentication-required" }, corsHeaders);
         return true;
       }
-      writeJson(response, 200, {
-        success: true,
-        accountId: identity.accountId,
-        token: issueToken(identity.accountId),
-      }, corsHeaders);
+      writeJson(
+        response,
+        200,
+        {
+          success: true,
+          accountId: identity.accountId,
+          token: issueToken(identity.accountId),
+        },
+        corsHeaders,
+      );
       return true;
     }
 
     if (url.pathname === "/characters") {
       const identity = getBearerIdentity(request, authService);
+
       if (!identity) {
-        writeJson(response, 401, { success: false, reason: "authentication-required" }, corsHeaders);
+        writeJson(
+          response,
+          401,
+          {
+            success: false,
+            reason: "authentication-required",
+          },
+          corsHeaders,
+        );
+
         return true;
       }
+
       if (request.method === "GET") {
-        writeJson(response, 200, {
-          success: true,
-          characters: characterRepository.list(identity.accountId),
-        }, corsHeaders);
+        const characters = await characterRepository.list(identity.accountId);
+
+        writeJson(
+          response,
+          200,
+          {
+            success: true,
+            characters,
+          },
+          corsHeaders,
+        );
+
         return true;
       }
+
       if (request.method === "POST") {
         const snapshot = createCharacterSnapshot(await readJsonBody(request));
+
         if (!snapshot) {
-          writeJson(response, 400, { success: false, reason: "invalid-character" }, corsHeaders);
+          writeJson(
+            response,
+            400,
+            {
+              success: false,
+              reason: "invalid-character",
+            },
+            corsHeaders,
+          );
+
           return true;
         }
+
         const characterId = randomUUID();
-        const result = characterRepository.save(identity.accountId, characterId, snapshot, null, now());
-        writeJson(response, result.success ? 201 : 409, {
-          success: result.success,
-          reason: result.reason ?? null,
-          character: result.success
-            ? characterRepository.list(identity.accountId).find((entry) => entry.characterId === characterId)
-            : null,
-        }, corsHeaders);
+
+        const result = await characterRepository.save(identity.accountId, characterId, snapshot, null, now());
+
+        let createdCharacter = null;
+
+        if (result.success) {
+          const characters = await characterRepository.list(identity.accountId);
+
+          createdCharacter = characters.find((entry) => entry.characterId === characterId) ?? null;
+        }
+
+        writeJson(
+          response,
+          result.success ? 201 : 409,
+          {
+            success: result.success,
+            reason: result.reason ?? null,
+            character: createdCharacter,
+          },
+          corsHeaders,
+        );
+
         return true;
       }
     }
-
     const characterMatch = url.pathname.match(/^\/characters\/([a-zA-Z0-9_-]{1,40})$/);
     if (request.method === "DELETE" && characterMatch) {
       const identity = getBearerIdentity(request, authService);
@@ -260,11 +362,16 @@ export const createGameHttpApi = ({
         writeJson(response, 409, { success: false, reason: "character-online" }, corsHeaders);
         return true;
       }
-      const deleted = characterRepository.delete(identity.accountId, characterId);
-      writeJson(response, deleted ? 200 : 404, {
-        success: deleted,
-        reason: deleted ? null : "character-not-found",
-      }, corsHeaders);
+      const deleted = await characterRepository.delete(identity.accountId, characterId);
+      writeJson(
+        response,
+        deleted ? 200 : 404,
+        {
+          success: deleted,
+          reason: deleted ? null : "character-not-found",
+        },
+        corsHeaders,
+      );
       return true;
     }
 

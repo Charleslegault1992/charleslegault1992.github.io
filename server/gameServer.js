@@ -146,58 +146,151 @@ export const createGameServer = ({
     return didSendDelta;
   };
 
-  const closeSession = (session) => {
+  const closeSession = async (session) => {
     if (!session || !sessionsBySocket.delete(session.socket)) {
-      return;
+      return false;
     }
-    if (session.isAuthenticated) {
-      runtime.disconnectClient(session);
+
+    if (session.isAuthenticated || typeof session.playerUid === "string") {
+      try {
+        await runtime.disconnectClient(session);
+      } catch (error) {
+        console.error("Runtime client disconnect failed:", error);
+      }
     }
+
+    return true;
   };
 
-  const handleHello = (session, message) => {
+  const handleHello = async (session, message) => {
     if (session.isAuthenticated) {
-      send(session, SERVER_MESSAGE_TYPE.error, { reason: "already-connected" });
+      send(session, SERVER_MESSAGE_TYPE.error, {
+        reason: "already-connected",
+      });
+
       return;
     }
-    const identity = authenticateClient(message.payload);
-    if (!identity || typeof identity.accountId !== "string") {
-      send(session, SERVER_MESSAGE_TYPE.error, { reason: "authentication-failed" });
-      session.socket.close(1008, "Authentication failed");
+
+    if (session.isConnecting) {
+      send(session, SERVER_MESSAGE_TYPE.error, {
+        reason: "connection-in-progress",
+      });
+
       return;
     }
-    const characterId = typeof message.payload?.characterId === "string" ? message.payload.characterId.trim() : "";
-    const clientInstanceId = getClientInstanceId(message.payload);
-    const existingSession = [...sessionsBySocket.values()].find(
-      (candidate) =>
-        candidate !== session &&
-        candidate.isAuthenticated &&
-        candidate.accountId === identity.accountId &&
-        candidate.characterId === characterId,
-    );
-    if (existingSession) {
-      if (existingSession.clientInstanceId && !clientInstanceId) {
-        send(session, SERVER_MESSAGE_TYPE.error, { reason: "connection-rejected" });
-        session.socket.close(SESSION_REPLACED_CLOSE_CODE, "Client update required");
+
+    session.isConnecting = true;
+
+    try {
+      const identity = authenticateClient(message.payload);
+
+      if (!identity || typeof identity.accountId !== "string") {
+        send(session, SERVER_MESSAGE_TYPE.error, {
+          reason: "authentication-failed",
+        });
+
+        session.socket.close(1008, "Authentication failed");
+
         return;
       }
-      send(existingSession, SERVER_MESSAGE_TYPE.error, { reason: "session-replaced" });
-      closeSession(existingSession);
-      existingSession.socket.close(SESSION_REPLACED_CLOSE_CODE, "Session replaced");
+
+      const characterId = typeof message.payload?.characterId === "string" ? message.payload.characterId.trim() : "";
+
+      const clientInstanceId = getClientInstanceId(message.payload);
+
+      const existingSession = [...sessionsBySocket.values()].find(
+        (candidate) =>
+          candidate !== session &&
+          candidate.isAuthenticated &&
+          candidate.accountId === identity.accountId &&
+          candidate.characterId === characterId,
+      );
+
+      if (existingSession) {
+        if (existingSession.clientInstanceId && !clientInstanceId) {
+          send(session, SERVER_MESSAGE_TYPE.error, {
+            reason: "connection-rejected",
+          });
+
+          session.socket.close(SESSION_REPLACED_CLOSE_CODE, "Client update required");
+
+          return;
+        }
+
+        send(existingSession, SERVER_MESSAGE_TYPE.error, {
+          reason: "session-replaced",
+        });
+
+        existingSession.socket.close(SESSION_REPLACED_CLOSE_CODE, "Session replaced");
+
+        await closeSession(existingSession);
+      }
+
+      let result;
+
+      try {
+        result = await runtime.connectClient(session, {
+          ...message.payload,
+          accountId: identity.accountId,
+        });
+      } catch (error) {
+        console.error("Runtime client connection failed:", error);
+
+        send(session, SERVER_MESSAGE_TYPE.error, {
+          reason: "persistence-unavailable",
+        });
+
+        session.socket.close(1011, "Connection failed");
+
+        return;
+      }
+
+      if (!result?.success || typeof result.playerUid !== "string") {
+        send(session, SERVER_MESSAGE_TYPE.error, {
+          reason: result?.reason ?? "connection-rejected",
+        });
+
+        session.socket.close(1008, "Connection rejected");
+
+        return;
+      }
+
+      /*
+       * The socket may have disappeared while
+       * an asynchronous persistence load was
+       * running.
+       */
+      if (!sessionsBySocket.has(session.socket) || session.socket.readyState !== WebSocket.OPEN) {
+        session.accountId = identity.accountId;
+
+        session.characterId = characterId;
+
+        session.playerUid = result.playerUid;
+
+        try {
+          await runtime.disconnectClient(session);
+        } catch (error) {
+          console.error("Disconnected client cleanup failed:", error);
+        }
+
+        return;
+      }
+
+      session.isAuthenticated = true;
+      session.accountId = identity.accountId;
+      session.characterId = characterId;
+      session.clientInstanceId = clientInstanceId;
+      session.playerUid = result.playerUid;
+
+      send(session, SERVER_MESSAGE_TYPE.welcome, {
+        clientId: session.clientId,
+        playerUid: session.playerUid,
+      });
+
+      sendSnapshot(session);
+    } finally {
+      session.isConnecting = false;
     }
-    const result = runtime.connectClient(session, { ...message.payload, accountId: identity.accountId });
-    if (!result?.success || typeof result.playerUid !== "string") {
-      send(session, SERVER_MESSAGE_TYPE.error, { reason: result?.reason ?? "connection-rejected" });
-      session.socket.close(1008, "Connection rejected");
-      return;
-    }
-    session.isAuthenticated = true;
-    session.accountId = identity.accountId;
-    session.characterId = characterId;
-    session.clientInstanceId = clientInstanceId;
-    session.playerUid = result.playerUid;
-    send(session, SERVER_MESSAGE_TYPE.welcome, { clientId: session.clientId, playerUid: session.playerUid });
-    sendSnapshot(session);
   };
 
   const handleClientMessage = (session, rawMessage, isBinary) => {
@@ -223,7 +316,18 @@ export const createGameServer = ({
     session.lastClientSequence = message.sequence;
 
     if (message.type === CLIENT_MESSAGE_TYPE.hello) {
-      handleHello(session, message);
+      void handleHello(session, message).catch((error) => {
+        console.error("WebSocket hello handling failed:", error);
+
+        if (session.socket.readyState === WebSocket.OPEN) {
+          send(session, SERVER_MESSAGE_TYPE.error, {
+            reason: "connection-rejected",
+          });
+
+          session.socket.close(1011, "Connection failed");
+        }
+      });
+
       return;
     }
     if (!session.isAuthenticated) {
@@ -288,6 +392,7 @@ export const createGameServer = ({
       clientId: randomUUID(),
       socket,
       isAuthenticated: false,
+      isConnecting: false,
       accountId: null,
       characterId: null,
       clientInstanceId: null,
@@ -307,8 +412,13 @@ export const createGameServer = ({
       session.lastPongAt = Date.now();
     });
     socket.on("message", (message, isBinary) => handleClientMessage(session, message, isBinary));
-    socket.on("close", () => closeSession(session));
-    socket.on("error", () => closeSession(session));
+    socket.on("close", () => {
+      void closeSession(session);
+    });
+
+    socket.on("error", () => {
+      void closeSession(session);
+    });
   });
 
   httpServer.on("upgrade", (request, socket, head) => {
@@ -371,11 +481,19 @@ export const createGameServer = ({
     },
     async stop({ closeCode = 1001, closeReason = "Server stopping" } = {}) {
       tickLoop.stop();
+
+      const closePromises = [];
+
       for (const session of [...sessionsBySocket.values()]) {
         session.socket.close(closeCode, closeReason);
-        closeSession(session);
+
+        closePromises.push(closeSession(session));
       }
+
+      await Promise.all(closePromises);
+
       webSocketServer.close();
+
       if (httpServer.listening) {
         await new Promise((resolve) => httpServer.close(resolve));
       }

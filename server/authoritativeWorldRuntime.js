@@ -54,11 +54,8 @@ import {
   isPlayerNearTiledObject,
 } from "../src/world/tiledWorldObjects.js";
 import { applyPlayerWorldTransitionState } from "../src/world/worldTransitions.js";
-import {
-  collectItemTreeUids,
-  ensureUniquePlayerItemUids,
-  hydratePlayerFromPersistence,
-} from "./playerPersistence.js";
+import { collectItemTreeUids, ensureUniquePlayerItemUids, hydratePlayerFromPersistence } from "./playerPersistence.js";
+import { createCoalescingAsyncQueue } from "./persistence/coalescingAsyncQueue.js";
 import { createServerWorldEntities } from "./serverWorldEntities.js";
 import { createServerPlayerInventory } from "./serverPlayerInventory.js";
 import { createServerPlayerItemUse } from "./serverPlayerItemUse.js";
@@ -88,6 +85,16 @@ import { getDoorInteriorPushTile, getDoorTiles } from "../src/world/doorModel.js
 const AUTOSAVE_INTERVAL_MS = 30000;
 const AUTOSAVE_RETRY_DELAY_MS = 5000;
 const MAX_AUTOSAVES_PER_TICK = 2;
+
+const MAX_CONCURRENT_PERSISTENCE_SAVES = 2;
+const FINAL_SAVE_BATCH_SIZE = 32;
+
+const isPromiseLike = (value) => {
+  return (
+    value !== null && (typeof value === "object" || typeof value === "function") && typeof value.then === "function"
+  );
+};
+
 const COMBAT_LOGOUT_DURATION_MS = 2 * 60 * 1000;
 const NETWORK_MOVEMENT_COOLDOWN_TOLERANCE_MS = 50;
 const PLAYER_SPAWN_TILE_OFFSETS = Object.freeze([
@@ -169,6 +176,8 @@ export const createAuthoritativeWorldRuntime = ({
   const combatLogoutExpiresAtByPlayerUid = new Map();
   const offlineCombatExpiresAtByPlayerUid = new Map();
   const connectedPlayerUids = new Set();
+  const connectingPlayerUids = new Set();
+  const reservedPlayerSpawnKeys = new Set();
   const journal = createWorldChangeJournal({ maxEntries: 512 });
   let currentServerTime = now();
   let isInitializingWorldEntities = true;
@@ -297,14 +306,113 @@ export const createAuthoritativeWorldRuntime = ({
   });
   isInitializingWorldEntities = false;
   const simulationsByPlayerUid = new Map();
+
   const inventoriesByPlayerUid = new Map();
+
   const sessionsByPlayerUid = new Map();
-  const markPlayerPersistenceDirty = (playerUid) => {
-    const persistenceSession = sessionsByPlayerUid.get(playerUid);
-    if (persistenceSession) {
+
+  const removalRequestedPlayerUids = new Set();
+
+  const pendingRemovalByPlayerUid = new Map();
+
+  const applyPersistenceSaveResult = (task, saveResult) => {
+    const { playerUid, persistenceSession, revision, savedAt } = task;
+
+    const completedAt = Math.max(currentServerTime, savedAt);
+
+    if (!saveResult?.success) {
       persistenceSession.isDirty = true;
+
+      persistenceSession.nextSaveAttemptAt = completedAt + AUTOSAVE_RETRY_DELAY_MS;
+
+      if (sessionsByPlayerUid.get(playerUid) === persistenceSession) {
+        nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
+      }
+
+      return false;
+    }
+
+    persistenceSession.version = saveResult.version;
+
+    persistenceSession.lastSavedAt = savedAt;
+
+    persistenceSession.nextSaveAttemptAt = completedAt + AUTOSAVE_INTERVAL_MS;
+
+    if (persistenceSession.dirtyRevision === revision) {
+      persistenceSession.isDirty = false;
+    } else {
+      persistenceSession.isDirty = true;
+
+      if (sessionsByPlayerUid.get(playerUid) === persistenceSession) {
+        nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
+      }
+    }
+
+    return true;
+  };
+
+  const handlePersistenceSaveError = (task, error) => {
+    const { playerUid, persistenceSession, savedAt } = task;
+
+    const completedAt = Math.max(currentServerTime, savedAt);
+
+    persistenceSession.isDirty = true;
+
+    persistenceSession.nextSaveAttemptAt = completedAt + AUTOSAVE_RETRY_DELAY_MS;
+
+    if (sessionsByPlayerUid.get(playerUid) === persistenceSession) {
       nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
     }
+
+    console.error(`Character persistence failed for ${playerUid}:`, error);
+
+    return false;
+  };
+
+  const persistenceSaveQueue = createCoalescingAsyncQueue({
+    maxConcurrency: MAX_CONCURRENT_PERSISTENCE_SAVES,
+
+    worker(_playerUid, task) {
+      let operation;
+
+      try {
+        operation = characterRepository.save(
+          task.persistenceSession.accountId,
+
+          task.persistenceSession.characterId,
+
+          task.snapshot,
+
+          task.persistenceSession.version,
+
+          task.savedAt,
+        );
+      } catch (error) {
+        return handlePersistenceSaveError(task, error);
+      }
+
+      if (operation && typeof operation.then === "function") {
+        return Promise.resolve(operation)
+          .then((saveResult) => applyPersistenceSaveResult(task, saveResult))
+          .catch((error) => handlePersistenceSaveError(task, error));
+      }
+
+      return applyPersistenceSaveResult(task, operation);
+    },
+  });
+
+  const markPlayerPersistenceDirty = (playerUid) => {
+    const persistenceSession = sessionsByPlayerUid.get(playerUid);
+
+    if (!persistenceSession) {
+      return;
+    }
+
+    persistenceSession.isDirty = true;
+
+    persistenceSession.dirtyRevision += 1;
+
+    nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
   };
   const npcConversationService = createServerNpcConversationService({
     npcs: worldEntities.npcs,
@@ -368,16 +476,36 @@ export const createAuthoritativeWorldRuntime = ({
       return [{ x: col * TILE_SIZE, y: row * TILE_SIZE }];
     });
     for (const position of validSpawnPositions) {
+      const positionKey = `${worldMap.z}:${position.x}:${position.y}`;
+
+      if (reservedPlayerSpawnKeys.has(positionKey)) {
+        continue;
+      }
+
       const occupiedByPlayer = [...playersByUid.values()].some(
         (player) => player.z === worldMap.z && player.x === position.x && player.y === position.y,
       );
+
       const occupiedByWorldCreature =
         worldEntities.monsters.getAt(position.x, position.y, worldMap.z) ||
         worldEntities.npcs.getAt(position.x, position.y, worldMap.z);
+
       if (!occupiedByPlayer && !occupiedByWorldCreature) {
         return position;
       }
     }
+
+    return (
+      validSpawnPositions.find((position) => {
+        const positionKey = `${worldMap.z}:${position.x}:${position.y}`;
+
+        return (
+          !reservedPlayerSpawnKeys.has(positionKey) &&
+          !worldEntities.monsters.getAt(position.x, position.y, worldMap.z) &&
+          !worldEntities.npcs.getAt(position.x, position.y, worldMap.z)
+        );
+      }) ?? null
+    );
     return (
       validSpawnPositions.find(
         (position) =>
@@ -542,9 +670,7 @@ export const createAuthoritativeWorldRuntime = ({
       changes: {
         doorUid: door.uid,
         isOpen: door.isOpen,
-        changedPlayerUids: closingPushes
-          .filter((push) => push.entityType === "player")
-          .map((push) => push.entity.uid),
+        changedPlayerUids: closingPushes.filter((push) => push.entityType === "player").map((push) => push.entity.uid),
         changedMonsterUids: closingPushes
           .filter((push) => push.entityType === "monster")
           .map((push) => push.entity.uid),
@@ -817,9 +943,16 @@ export const createAuthoritativeWorldRuntime = ({
       recordUnjustifiedPlayerKill(player, currentServerTime);
     }
     const deathResult = target.hp <= 0 ? resolvePlayerDeath(target, getPlayerDeathIdentity(player)) : null;
-    const groundEffect = attackResult.finalDamage > 0
-      ? addOrRefreshGroundEffect("blood", targetRenderSnapshot.x, targetRenderSnapshot.y, targetRenderSnapshot.z, deathResult ? 0 : 1)
-      : null;
+    const groundEffect =
+      attackResult.finalDamage > 0
+        ? addOrRefreshGroundEffect(
+            "blood",
+            targetRenderSnapshot.x,
+            targetRenderSnapshot.y,
+            targetRenderSnapshot.z,
+            deathResult ? 0 : 1,
+          )
+        : null;
     return {
       success: true,
       changes: {
@@ -854,12 +987,7 @@ export const createAuthoritativeWorldRuntime = ({
     }
     const attackResult = calculatePlayerAttackResult(target, player, combatRandom ?? undefined);
     const skillProgression = applyPlayerAttackSkillProgression(player, attackResult, currentServerTime);
-    const result = resolvePlayerPvpDamage(
-      player,
-      target,
-      attackResult,
-      "player-pvp-attack-resolved",
-    );
+    const result = resolvePlayerPvpDamage(player, target, attackResult, "player-pvp-attack-resolved");
     if (result?.events?.[0]) {
       result.events[0].skillProgression = skillProgression;
       result.events[0].weaponType = getEquippedWeaponCombatData(player)?.weaponType ?? "fist";
@@ -1192,168 +1320,488 @@ export const createAuthoritativeWorldRuntime = ({
     return occupiedItemUids;
   };
 
-  const connectClient = (_session, hello) => {
-    const accountId = typeof hello?.accountId === "string" ? hello.accountId.trim() : "";
-    const characterId = typeof hello?.characterId === "string" ? hello.characterId.trim() : "";
-    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(accountId) || !/^[a-zA-Z0-9_-]{1,40}$/.test(characterId)) {
-      return { success: false, reason: "invalid-account-or-character-id" };
-    }
-    const playerUid = `player:${accountId}:${characterId}`;
-    if (playersByUid.has(playerUid)) {
-      if (offlineCombatExpiresAtByPlayerUid.has(playerUid) && !connectedPlayerUids.has(playerUid)) {
-        offlineCombatExpiresAtByPlayerUid.delete(playerUid);
-        connectedPlayerUids.add(playerUid);
-        return { success: true, playerUid };
-      }
-      return { success: false, reason: "character-already-online" };
-    }
-    const player = createPlayerState();
-    const persistedCharacter = characterRepository?.load(accountId, characterId) ?? null;
-    if (characterRepository && !persistedCharacter && !allowCharacterAutoCreate) {
-      return { success: false, reason: "character-not-found" };
-    }
-    if (persistedCharacter) {
-      hydratePlayerFromPersistence(player, persistedCharacter.snapshot);
-    }
-    const itemUidStateChanged = ensureUniquePlayerItemUids(player, collectOccupiedItemUids());
-    const starterKitStateChanged = applyPlayerStarterKit(player);
+  const resolvePlayerConnectionPosition = (player) => {
     const spawnWorldMap = worldMapsByZ.get(player.spawn.z);
+
     const savedWorldMap = worldMapsByZ.get(player.z);
+
     const spawn = findPlayerSpawn(spawnWorldMap, player.spawn.spawnId);
+
     const savedCol = Number.isInteger(player.x) ? player.x / TILE_SIZE : null;
+
     const savedRow = Number.isInteger(player.y) ? player.y / TILE_SIZE : null;
+
+    const savedPositionKey =
+      Number.isInteger(player.z) && Number.isInteger(player.x) && Number.isInteger(player.y)
+        ? `${player.z}:${player.x}:${player.y}`
+        : null;
+
     const savedPositionIsValid =
       Number.isInteger(player.z) &&
       Number.isInteger(savedCol) &&
       Number.isInteger(savedRow) &&
       getWorldChunkForTilePosition(savedWorldMap, savedCol, savedRow) &&
       !isWorldCollisionAtTile(savedWorldMap, savedCol, savedRow) &&
+      !reservedPlayerSpawnKeys.has(savedPositionKey) &&
       ![...playersByUid.values()].some(
         (onlinePlayer) => onlinePlayer.z === player.z && onlinePlayer.x === player.x && onlinePlayer.y === player.y,
       );
-    const spawnPosition = savedPositionIsValid
-      ? { x: player.x, y: player.y }
-      : spawn
-        ? findAvailableSpawnPosition(spawnWorldMap, spawn)
-        : null;
+
+    if (savedPositionIsValid) {
+      return {
+        x: player.x,
+        y: player.y,
+        z: player.z,
+      };
+    }
+
+    if (!spawn) {
+      return null;
+    }
+
+    const spawnPosition = findAvailableSpawnPosition(spawnWorldMap, spawn);
+
     if (!spawnPosition) {
-      return { success: false, reason: "spawn-not-found" };
+      return null;
     }
-    player.uid = playerUid;
-    player.language = hello?.language === "fr" ? "fr" : "en";
-    if (!persistedCharacter) {
-      player.name =
-        typeof hello?.name === "string" && hello.name.trim() !== "" ? hello.name.trim().slice(0, 24) : characterId;
-    }
-    player.x = spawnPosition.x;
-    player.y = spawnPosition.y;
-    if (!savedPositionIsValid) {
-      player.z = player.spawn.z;
-    }
+
+    return {
+      x: spawnPosition.x,
+      y: spawnPosition.y,
+      z: player.spawn.z,
+    };
+  };
+
+  const applyPlayerConnectionPosition = (player, position) => {
+    player.x = position.x;
+    player.y = position.y;
+    player.z = position.z;
+
     player.oldX = player.x;
     player.oldY = player.y;
+
     player.renderX = player.x;
     player.renderY = player.y;
-    recordPlayerTileEntry(player);
-    playersByUid.set(playerUid, player);
-    connectedPlayerUids.add(playerUid);
-    const inventory = createServerPlayerInventory({ player, worldMapsByZ, worldItems: worldEntities.worldItems });
-    const itemUse = createServerPlayerItemUse({
-      player,
-      inventory,
-      worldMapsByZ,
-      groundEffects: worldEntities.groundEffects,
-      monsters: worldEntities.monsters,
-      players: playersByUid,
-      executeRuneDamage: (target, useData, targetType) => {
-        const attackResult = calculateRuneAttackResult(useData, player, combatRandom ?? undefined);
-        if (targetType === "player") {
-          if (!canInitiatePlayerPvpAttack(player, target, currentServerTime)) {
-            return { success: false, reason: "pvp-disabled" };
-          }
-          return resolvePlayerPvpDamage(player, target, attackResult, "player-pvp-rune-resolved");
-        }
-        return resolvePlayerDamageToMonster(player, target, attackResult);
-      },
-      onFieldCreated: (field, requestedAt) => {
-        for (const worldPlayer of playersByUid.values()) {
-          if (worldPlayer.x === field.x && worldPlayer.y === field.y && worldPlayer.z === field.z) {
-            fieldEffectSystem.applyFieldAtEntity(worldPlayer, "player", requestedAt);
-          }
-        }
-        const monster = worldEntities.monsters.getAt(field.x, field.y, field.z);
-        if (monster) {
-          fieldEffectSystem.applyFieldAtEntity(monster, "monster", requestedAt);
-        }
-      },
-    });
-    inventoriesByPlayerUid.set(playerUid, inventory);
-    const persistenceSession = {
-      accountId,
-      characterId,
-      version: persistedCharacter?.version ?? null,
-      lastSavedAt: currentServerTime,
-      nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
-      isDirty: starterKitStateChanged || itemUidStateChanged,
+  };
+
+  const connectClient = (_session, hello) => {
+    const accountId = typeof hello?.accountId === "string" ? hello.accountId.trim() : "";
+
+    const characterId = typeof hello?.characterId === "string" ? hello.characterId.trim() : "";
+
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(accountId) || !/^[a-zA-Z0-9_-]{1,40}$/.test(characterId)) {
+      return {
+        success: false,
+        reason: "invalid-account-or-character-id",
+      };
+    }
+
+    const playerUid = `player:${accountId}:${characterId}`;
+
+    const pendingRemoval = pendingRemovalByPlayerUid.get(playerUid);
+
+    if (pendingRemoval) {
+      return Promise.resolve(pendingRemoval).then(() => connectClient(_session, hello));
+    }
+
+    if (playersByUid.has(playerUid)) {
+      if (offlineCombatExpiresAtByPlayerUid.has(playerUid) && !connectedPlayerUids.has(playerUid)) {
+        removalRequestedPlayerUids.delete(playerUid);
+
+        offlineCombatExpiresAtByPlayerUid.delete(playerUid);
+
+        connectedPlayerUids.add(playerUid);
+
+        return {
+          success: true,
+          playerUid,
+        };
+      }
+
+      return {
+        success: false,
+        reason: "character-already-online",
+      };
+    }
+
+    if (connectingPlayerUids.has(playerUid)) {
+      return {
+        success: false,
+        reason: "character-connection-in-progress",
+      };
+    }
+
+    connectingPlayerUids.add(playerUid);
+
+    const releaseConnectionReservation = () => {
+      connectingPlayerUids.delete(playerUid);
     };
-    sessionsByPlayerUid.set(playerUid, persistenceSession);
-    if (persistenceSession.isDirty) {
-      nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
-    }
-    simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse, persistenceSession));
-    if (characterRepository && persistenceSession.version === null) {
-      const saveResult = characterRepository.save(
-        accountId,
-        characterId,
-        serializePlayerPrivateState(player),
-        null,
-        currentServerTime,
-      );
-      if (!saveResult.success) {
-        playersByUid.delete(playerUid);
-        simulationsByPlayerUid.delete(playerUid);
-        inventoriesByPlayerUid.delete(playerUid);
-        sessionsByPlayerUid.delete(playerUid);
-        return { success: false, reason: saveResult.reason };
+
+    const publishPlayer = ({ player, inventory, itemUse, persistenceSession }) => {
+      if (playersByUid.has(playerUid)) {
+        return {
+          success: false,
+          reason: "character-already-online",
+        };
       }
-      persistenceSession.version = saveResult.version;
+
+      recordPlayerTileEntry(player);
+
+      playersByUid.set(playerUid, player);
+
+      connectedPlayerUids.add(playerUid);
+
+      inventoriesByPlayerUid.set(playerUid, inventory);
+
+      sessionsByPlayerUid.set(playerUid, persistenceSession);
+
+      simulationsByPlayerUid.set(playerUid, createSimulationForPlayer(player, inventory, itemUse, persistenceSession));
+
+      if (persistenceSession.isDirty) {
+        nextAutosaveSweepAt = Math.min(nextAutosaveSweepAt, persistenceSession.nextSaveAttemptAt);
+      }
+
+      journal.record({
+        serverTime: currentServerTime,
+
+        upserts: {
+          players: [serializePlayerPublicState(player)],
+        },
+      });
+
+      return {
+        success: true,
+        playerUid,
+      };
+    };
+
+    const finishLoadedCharacter = (persistedCharacter) => {
+      if (playersByUid.has(playerUid)) {
+        return {
+          success: false,
+          reason: "character-already-online",
+        };
+      }
+
+      if (characterRepository && !persistedCharacter && !allowCharacterAutoCreate) {
+        return {
+          success: false,
+          reason: "character-not-found",
+        };
+      }
+
+      const player = createPlayerState();
+
+      if (persistedCharacter) {
+        hydratePlayerFromPersistence(player, persistedCharacter.snapshot);
+      }
+
+      let itemUidStateChanged = ensureUniquePlayerItemUids(player, collectOccupiedItemUids());
+
+      const starterKitStateChanged = applyPlayerStarterKit(player);
+
+      player.uid = playerUid;
+
+      player.language = hello?.language === "fr" ? "fr" : "en";
+
+      if (!persistedCharacter) {
+        player.name =
+          typeof hello?.name === "string" && hello.name.trim() !== "" ? hello.name.trim().slice(0, 24) : characterId;
+      }
+
+      const resolvedPosition = resolvePlayerConnectionPosition(player);
+
+      if (!resolvedPosition) {
+        return {
+          success: false,
+          reason: "spawn-not-found",
+        };
+      }
+
+      applyPlayerConnectionPosition(player, resolvedPosition);
+
+      let persistenceVersion = persistedCharacter?.version ?? null;
+
+      let persistenceIsDirty = starterKitStateChanged || itemUidStateChanged;
+
+      let lastSavedAt = currentServerTime;
+
+      const createRuntimeObjects = () => {
+        const inventory = createServerPlayerInventory({
+          player,
+          worldMapsByZ,
+
+          worldItems: worldEntities.worldItems,
+        });
+
+        const itemUse = createServerPlayerItemUse({
+          player,
+          inventory,
+          worldMapsByZ,
+
+          groundEffects: worldEntities.groundEffects,
+
+          monsters: worldEntities.monsters,
+
+          players: playersByUid,
+
+          executeRuneDamage: (target, useData, targetType) => {
+            const attackResult = calculateRuneAttackResult(useData, player, combatRandom ?? undefined);
+
+            if (targetType === "player") {
+              if (!canInitiatePlayerPvpAttack(player, target, currentServerTime)) {
+                return {
+                  success: false,
+                  reason: "pvp-disabled",
+                };
+              }
+
+              return resolvePlayerPvpDamage(player, target, attackResult, "player-pvp-rune-resolved");
+            }
+
+            return resolvePlayerDamageToMonster(player, target, attackResult);
+          },
+
+          onFieldCreated: (field, requestedAt) => {
+            for (const worldPlayer of playersByUid.values()) {
+              if (worldPlayer.x === field.x && worldPlayer.y === field.y && worldPlayer.z === field.z) {
+                fieldEffectSystem.applyFieldAtEntity(worldPlayer, "player", requestedAt);
+              }
+            }
+
+            const monster = worldEntities.monsters.getAt(field.x, field.y, field.z);
+
+            if (monster) {
+              fieldEffectSystem.applyFieldAtEntity(monster, "monster", requestedAt);
+            }
+          },
+        });
+
+        const persistenceSession = {
+          accountId,
+          characterId,
+          version: persistenceVersion,
+
+          lastSavedAt,
+
+          nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
+
+          isDirty: persistenceIsDirty,
+
+          dirtyRevision: persistenceIsDirty ? 1 : 0,
+
+          lastQueuedRevision: -1,
+        };
+
+        return publishPlayer({
+          player,
+          inventory,
+          itemUse,
+          persistenceSession,
+        });
+      };
+
+      if (!characterRepository || persistenceVersion !== null) {
+        return createRuntimeObjects();
+      }
+
+      const reservedSpawnKey = `${player.z}:${player.x}:${player.y}`;
+
+      reservedPlayerSpawnKeys.add(reservedSpawnKey);
+
+      const releaseSpawnReservation = () => {
+        reservedPlayerSpawnKeys.delete(reservedSpawnKey);
+      };
+
+      const initialSaveAt = currentServerTime;
+
+      const handleInitialSaveResult = (saveResult) => {
+        if (!saveResult?.success) {
+          return {
+            success: false,
+            reason: saveResult?.reason ?? "character-save-failed",
+          };
+        }
+
+        persistenceVersion = saveResult.version;
+
+        lastSavedAt = initialSaveAt;
+
+        /*
+         * Starter kit and the first UID
+         * normalization were included in
+         * this initial snapshot.
+         */
+        persistenceIsDirty = false;
+
+        /*
+         * Other characters may have joined
+         * while PostgreSQL was writing.
+         * Re-run UID collision repair before
+         * this player enters the world.
+         */
+        itemUidStateChanged = ensureUniquePlayerItemUids(player, collectOccupiedItemUids());
+
+        if (itemUidStateChanged) {
+          persistenceIsDirty = true;
+        }
+
+        return createRuntimeObjects();
+      };
+
+      let saveOperation;
+
+      try {
+        saveOperation = characterRepository.save(
+          accountId,
+          characterId,
+
+          serializePlayerPrivateState(player),
+
+          null,
+          initialSaveAt,
+        );
+      } catch (error) {
+        releaseSpawnReservation();
+        throw error;
+      }
+
+      if (isPromiseLike(saveOperation)) {
+        return Promise.resolve(saveOperation).then(handleInitialSaveResult).finally(releaseSpawnReservation);
+      }
+
+      try {
+        return handleInitialSaveResult(saveOperation);
+      } finally {
+        releaseSpawnReservation();
+      }
+    };
+
+    const runConnection = () => {
+      if (!characterRepository) {
+        return finishLoadedCharacter(null);
+      }
+
+      const loadOperation = characterRepository.load(accountId, characterId);
+
+      if (isPromiseLike(loadOperation)) {
+        return Promise.resolve(loadOperation).then(finishLoadedCharacter);
+      }
+
+      return finishLoadedCharacter(loadOperation);
+    };
+
+    let connectionResult;
+
+    try {
+      connectionResult = runConnection();
+    } catch (error) {
+      releaseConnectionReservation();
+      throw error;
     }
-    journal.record({ serverTime: currentServerTime, upserts: { players: [serializePlayerPublicState(player)] } });
-    return { success: true, playerUid };
+
+    if (isPromiseLike(connectionResult)) {
+      return Promise.resolve(connectionResult).finally(releaseConnectionReservation);
+    }
+
+    releaseConnectionReservation();
+
+    return connectionResult;
   };
 
-  const savePlayerPersistence = (playerUid) => {
+  const enqueuePlayerPersistence = (playerUid, { waitForCompletion = false, force = false } = {}) => {
     const player = playersByUid.get(playerUid);
+
     const persistenceSession = sessionsByPlayerUid.get(playerUid);
+
     if (!player || !characterRepository || !persistenceSession) {
-      return true;
+      return waitForCompletion ? Promise.resolve(true) : true;
     }
-    const saveResult = characterRepository.save(
-      persistenceSession.accountId,
-      persistenceSession.characterId,
-      serializePlayerPrivateState(player),
-      persistenceSession.version,
-      currentServerTime,
-    );
-    if (saveResult.success) {
-      persistenceSession.version = saveResult.version;
-      persistenceSession.lastSavedAt = currentServerTime;
-      persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_INTERVAL_MS;
-      persistenceSession.isDirty = false;
+
+    if (!force && !persistenceSession.isDirty) {
+      return waitForCompletion ? Promise.resolve(true) : true;
     }
-    return saveResult.success;
+
+    const revision = persistenceSession.dirtyRevision;
+
+    /*
+     * Avoid repeatedly queueing the exact same
+     * revision while it is already in-flight.
+     */
+    if (!force && persistenceSession.lastQueuedRevision === revision && persistenceSaveQueue.hasWork(playerUid)) {
+      return waitForCompletion ? persistenceSaveQueue.flush().then(() => true) : true;
+    }
+
+    const task = {
+      playerUid,
+      persistenceSession,
+
+      snapshot: serializePlayerPrivateState(player),
+
+      revision,
+      savedAt: currentServerTime,
+    };
+
+    persistenceSession.lastQueuedRevision = revision;
+
+    /*
+     * Prevent the autosave sweep from trying
+     * the same revision again immediately.
+     * Failure will replace this with the
+     * shorter retry delay.
+     */
+    persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_INTERVAL_MS;
+
+    if (waitForCompletion) {
+      return persistenceSaveQueue.enqueueAndWait(playerUid, task);
+    }
+
+    persistenceSaveQueue.enqueue(playerUid, task);
+
+    return true;
   };
 
-  const saveAllPlayerPersistence = () => {
+  const saveAllPlayerPersistence = async () => {
+    const playerUids = [...playersByUid.keys()];
+
     const failedPlayerUids = [];
-    for (const playerUid of playersByUid.keys()) {
-      if (!savePlayerPersistence(playerUid)) {
-        failedPlayerUids.push(playerUid);
+
+    let savedCount = 0;
+
+    for (let offset = 0; offset < playerUids.length; offset += FINAL_SAVE_BATCH_SIZE) {
+      const batch = playerUids.slice(offset, offset + FINAL_SAVE_BATCH_SIZE);
+
+      const results = await Promise.all(
+        batch.map(async (playerUid) => {
+          const success = await enqueuePlayerPersistence(playerUid, {
+            waitForCompletion: true,
+
+            force: true,
+          });
+
+          return {
+            playerUid,
+            success,
+          };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.success) {
+          savedCount += 1;
+        } else {
+          failedPlayerUids.push(result.playerUid);
+        }
       }
     }
+
+    await persistenceSaveQueue.flush();
+
     return {
       success: failedPlayerUids.length === 0,
-      savedCount: playersByUid.size - failedPlayerUids.length,
+
+      savedCount,
+
       failedPlayerUids,
     };
   };
@@ -1373,37 +1821,114 @@ export const createAuthoritativeWorldRuntime = ({
     return events.length;
   };
 
-  const removePlayerFromWorld = (playerUid) => {
+  const finalizePlayerRemoval = (playerUid) => {
     if (!playersByUid.has(playerUid)) {
       return false;
     }
-    savePlayerPersistence(playerUid);
+
     playersByUid.delete(playerUid);
     connectedPlayerUids.delete(playerUid);
+
+    removalRequestedPlayerUids.delete(playerUid);
+
     offlineCombatExpiresAtByPlayerUid.delete(playerUid);
+
     combatLogoutExpiresAtByPlayerUid.delete(playerUid);
+
     clearPlayerPvpAggressions(playerUid);
+
     simulationsByPlayerUid.delete(playerUid);
+
     inventoriesByPlayerUid.delete(playerUid);
+
     sessionsByPlayerUid.delete(playerUid);
-    journal.record({ serverTime: currentServerTime, removals: { players: [playerUid] } });
+
+    journal.record({
+      serverTime: currentServerTime,
+
+      removals: {
+        players: [playerUid],
+      },
+    });
+
     return true;
   };
 
-  const disconnectClient = (session) => {
+  const persistAndRemovePlayer = (playerUid) => {
+    if (!playersByUid.has(playerUid)) {
+      return Promise.resolve(false);
+    }
+
+    const existingOperation = pendingRemovalByPlayerUid.get(playerUid);
+
+    if (existingOperation) {
+      return existingOperation;
+    }
+
+    let operation;
+
+    operation = (async () => {
+      const saved = await enqueuePlayerPersistence(playerUid, {
+        waitForCompletion: true,
+        force: true,
+      });
+
+      if (!saved) {
+        return false;
+      }
+
+      /*
+       * The player may have reconnected while
+       * PostgreSQL was saving the snapshot.
+       */
+      if (connectedPlayerUids.has(playerUid)) {
+        removalRequestedPlayerUids.delete(playerUid);
+
+        return true;
+      }
+
+      return finalizePlayerRemoval(playerUid);
+    })().finally(() => {
+      if (pendingRemovalByPlayerUid.get(playerUid) === operation) {
+        pendingRemovalByPlayerUid.delete(playerUid);
+      }
+    });
+
+    pendingRemovalByPlayerUid.set(playerUid, operation);
+
+    return operation;
+  };
+  const disconnectClient = async (session) => {
     const playerUid = session?.playerUid;
+
     const player = playersByUid.get(playerUid);
+
     if (!player) {
       return false;
     }
+
     connectedPlayerUids.delete(playerUid);
+
     const combatExpiresAt = combatLogoutExpiresAtByPlayerUid.get(playerUid) ?? 0;
+
     if (player.hp > 0 && combatExpiresAt > currentServerTime) {
-      savePlayerPersistence(playerUid);
+      /*
+       * Save the disconnect state, but keep
+       * the combat avatar authoritative in RAM.
+       */
+      await enqueuePlayerPersistence(playerUid, {
+        waitForCompletion: true,
+        force: true,
+      });
+
       offlineCombatExpiresAtByPlayerUid.set(playerUid, combatExpiresAt);
+
       return true;
     }
-    return removePlayerFromWorld(playerUid);
+
+    removalRequestedPlayerUids.add(playerUid);
+
+    return persistAndRemovePlayer(playerUid);
   };
 
   const dispatchAction = (session, action) => {
@@ -1734,10 +2259,31 @@ export const createAuthoritativeWorldRuntime = ({
     return delta ? [delta] : null;
   };
 
+  const isCharacterBusy = (accountId, characterId) => {
+    if (typeof accountId !== "string" || typeof characterId !== "string") {
+      return false;
+    }
+
+    const normalizedAccountId = accountId.trim();
+
+    const normalizedCharacterId = characterId.trim();
+
+    if (normalizedAccountId === "" || normalizedCharacterId === "") {
+      return false;
+    }
+
+    const playerUid = `player:${normalizedAccountId}:${normalizedCharacterId}`;
+
+    return (
+      playersByUid.has(playerUid) || connectingPlayerUids.has(playerUid) || pendingRemovalByPlayerUid.has(playerUid)
+    );
+  };
+
   return Object.freeze({
     connectClient,
     disconnectClient,
     saveAllPlayerPersistence,
+    isCharacterBusy,
     announceSystemMessage,
     dispatchAction,
     createSnapshotForClient,
@@ -1792,9 +2338,7 @@ export const createAuthoritativeWorldRuntime = ({
         const removedMonsterUids = fieldEffectResult.events
           .filter((event) => event.type === "monster-damage-resolved" && event.didDie)
           .map((event) => event.monsterUid);
-        const changedWorldItemUids = fieldEffectResult.events
-          .map((event) => event.corpseUid)
-          .filter(Number.isInteger);
+        const changedWorldItemUids = fieldEffectResult.events.map((event) => event.corpseUid).filter(Number.isInteger);
         const changedGroundEffectUids = fieldEffectResult.events
           .map((event) => event.groundEffectUid)
           .filter(Number.isInteger);
@@ -1866,8 +2410,23 @@ export const createAuthoritativeWorldRuntime = ({
           continue;
         }
         if (currentServerTime >= expiresAt) {
-          removePlayerFromWorld(playerUid);
+          removalRequestedPlayerUids.add(playerUid);
         }
+      }
+      for (const playerUid of removalRequestedPlayerUids) {
+        if (pendingRemovalByPlayerUid.has(playerUid)) {
+          continue;
+        }
+
+        const persistenceSession = sessionsByPlayerUid.get(playerUid);
+
+        if (persistenceSession && currentServerTime < persistenceSession.nextSaveAttemptAt) {
+          continue;
+        }
+
+        void persistAndRemovePlayer(playerUid).catch((error) => {
+          console.error(`Deferred player removal failed for ${playerUid}:`, error);
+        });
       }
       const npcEvents = npcConversationService.update(currentServerTime);
       if (npcEvents.length > 0) {
@@ -1896,22 +2455,10 @@ export const createAuthoritativeWorldRuntime = ({
             continue;
           }
           autosavesThisTick++;
-          const saveResult = characterRepository.save(
-            persistenceSession.accountId,
-            persistenceSession.characterId,
-            serializePlayerPrivateState(player),
-            persistenceSession.version,
-            currentServerTime,
-          );
-          if (saveResult.success) {
-            persistenceSession.version = saveResult.version;
-            persistenceSession.lastSavedAt = currentServerTime;
-            persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_INTERVAL_MS;
-            persistenceSession.isDirty = false;
-          } else {
-            persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_RETRY_DELAY_MS;
-            nextSweepAt = Math.min(nextSweepAt, persistenceSession.nextSaveAttemptAt);
-          }
+
+          enqueuePlayerPersistence(playerUid);
+
+          nextSweepAt = Math.min(nextSweepAt, persistenceSession.nextSaveAttemptAt);
         }
         nextAutosaveSweepAt = nextSweepAt;
       }

@@ -85,3 +85,153 @@ test("the HTTP account flow owns character creation and deletion", async (testCo
   assert.equal(repeatedGoogleLogin.accountId, googleLogin.accountId);
   assert.equal(rejectedGoogleLogin.statusCode, 401);
 });
+
+test("the HTTP game API awaits asynchronous persistence repositories", async (testContext) => {
+  const sqliteAccounts =
+    createSqliteAccountRepository({
+      databasePath: ":memory:",
+    });
+
+  const sqliteCharacters =
+    createSqliteCharacterRepository({
+      databasePath: ":memory:",
+    });
+
+  const accountRepository = {
+    create: async (...argumentsList) =>
+      sqliteAccounts.create(
+        ...argumentsList,
+      ),
+
+    findByLogin:
+      async (...argumentsList) =>
+        sqliteAccounts.findByLogin(
+          ...argumentsList,
+        ),
+
+    findOrCreateExternalIdentity:
+      async (...argumentsList) =>
+        sqliteAccounts
+          .findOrCreateExternalIdentity(
+            ...argumentsList,
+          ),
+  };
+
+  const characterRepository = {
+    list: async (...argumentsList) =>
+      sqliteCharacters.list(
+        ...argumentsList,
+      ),
+
+    save: async (...argumentsList) =>
+      sqliteCharacters.save(
+        ...argumentsList,
+      ),
+
+    delete: async (...argumentsList) =>
+      sqliteCharacters.delete(
+        ...argumentsList,
+      ),
+  };
+
+  const auth =
+    createHmacAuthService({
+      secret:
+        "http-async-api-test-secret",
+    });
+
+  const api =
+    createGameHttpApi({
+      accountRepository,
+      characterRepository,
+      authService: auth,
+      passwordService:
+        createPasswordService(),
+    });
+
+  const server =
+    createGameServer({
+      runtime:
+        createRuntimeStub(),
+
+      authenticateClient:
+        () => null,
+
+      handleHttpRequest: api,
+      port: 0,
+    });
+
+  await server.start();
+
+  testContext.after(
+    async () => {
+      await server.stop();
+
+      sqliteAccounts.close();
+      sqliteCharacters.close();
+    },
+  );
+
+  const client =
+    createGameAccountApiClient({
+      baseUrl:
+        `http://127.0.0.1:${server.getAddress().port}`,
+    });
+
+  const registration =
+    await client.register(
+      "Async_Account",
+      "async@example.com",
+      "strong-password",
+    );
+
+  assert.equal(
+    registration.success,
+    true,
+  );
+
+  const login =
+    await client.login(
+      "async@example.com",
+      "strong-password",
+    );
+
+  assert.equal(
+    login.success,
+    true,
+  );
+
+  const created =
+    await client.createCharacter({
+      name: "Async Hero",
+      appearanceId: "male",
+    });
+
+  assert.equal(
+    created.statusCode,
+    201,
+  );
+
+  const listed =
+    await client.listCharacters();
+
+  assert.equal(
+    listed.characters.length,
+    1,
+  );
+
+  assert.equal(
+    listed.characters[0].name,
+    "Async Hero",
+  );
+
+  const deleted =
+    await client.deleteCharacter(
+      created.character.characterId,
+    );
+
+  assert.equal(
+    deleted.success,
+    true,
+  );
+});

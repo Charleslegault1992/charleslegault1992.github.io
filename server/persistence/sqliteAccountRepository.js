@@ -1,14 +1,16 @@
 import { createHash } from "node:crypto";
 
+import {
+  ACCOUNT_EMAIL_PATTERN,
+  ACCOUNT_ID_PATTERN,
+  EXTERNAL_PASSWORD_HASH,
+  EXTERNAL_PROVIDER_PATTERN,
+  normalizeAccountEmail,
+  normalizeAccountId,
+} from "./accountRepositoryRules.js";
 import { openGameDatabase } from "./sqliteDatabase.js";
 
-const ACCOUNT_ID_PATTERN = /^[a-z0-9_-]{3,40}$/;
-const ACCOUNT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const EXTERNAL_PROVIDER_PATTERN = /^[a-z0-9_-]{1,30}$/;
-const EXTERNAL_PASSWORD_HASH = "external-login-only";
-
-export const normalizeAccountId = (accountId) => String(accountId ?? "").trim().toLocaleLowerCase();
-export const normalizeAccountEmail = (email) => String(email ?? "").trim().toLocaleLowerCase();
+export { normalizeAccountEmail, normalizeAccountId } from "./accountRepositoryRules.js";
 
 export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlite" } = {}) => {
   const database = openGameDatabase({ databasePath });
@@ -88,7 +90,9 @@ export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlit
         : null;
     },
     findByLogin(login) {
-      const normalizedLogin = String(login ?? "").trim().toLocaleLowerCase();
+      const normalizedLogin = String(login ?? "")
+        .trim()
+        .toLocaleLowerCase();
       const row = ACCOUNT_EMAIL_PATTERN.test(normalizedLogin)
         ? selectAccountByEmail.get(normalizedLogin)
         : selectAccount.get(normalizedLogin);
@@ -97,10 +101,16 @@ export const createSqliteAccountRepository = ({ databasePath = ".data/game.sqlit
         : null;
     },
     findOrCreateExternalIdentity(identity, now = Date.now()) {
-      const provider = String(identity?.provider ?? "").trim().toLocaleLowerCase();
+      const provider = String(identity?.provider ?? "")
+        .trim()
+        .toLocaleLowerCase();
       const subject = String(identity?.subject ?? "").trim();
-      const email = String(identity?.email ?? "").trim().slice(0, 320);
-      const displayName = String(identity?.displayName ?? "").trim().slice(0, 200);
+      const email = String(identity?.email ?? "")
+        .trim()
+        .slice(0, 320);
+      const displayName = String(identity?.displayName ?? "")
+        .trim()
+        .slice(0, 200);
       if (
         !EXTERNAL_PROVIDER_PATTERN.test(provider) ||
         subject === "" ||

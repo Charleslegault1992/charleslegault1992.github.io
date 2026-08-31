@@ -87,18 +87,26 @@ test("the gateway executes a request ID once and rejects a conflicting replay", 
   const firstResultPromise = waitForMessage(socket, SERVER_MESSAGE_TYPE.actionResult);
   socket.send(
     encodeNetworkMessage(
-      createNetworkMessage(CLIENT_MESSAGE_TYPE.action, {
-        action: { requestId: "same-request", type: "test", payload: { value: 1 } },
-      }, 1),
+      createNetworkMessage(
+        CLIENT_MESSAGE_TYPE.action,
+        {
+          action: { requestId: "same-request", type: "test", payload: { value: 1 } },
+        },
+        1,
+      ),
     ),
   );
   const firstResult = await firstResultPromise;
   const conflictPromise = waitForMessage(socket, SERVER_MESSAGE_TYPE.actionResult);
   socket.send(
     encodeNetworkMessage(
-      createNetworkMessage(CLIENT_MESSAGE_TYPE.action, {
-        action: { requestId: "same-request", type: "test", payload: { value: 2 } },
-      }, 2),
+      createNetworkMessage(
+        CLIENT_MESSAGE_TYPE.action,
+        {
+          action: { requestId: "same-request", type: "test", payload: { value: 2 } },
+        },
+        2,
+      ),
     ),
   );
   const conflict = await conflictPromise;
@@ -251,4 +259,89 @@ test("the WebSocket gateway rejects an unexpected browser origin", async (testCo
 
   assert.equal(statusCode, 403);
   socket.close();
+});
+
+test("the WebSocket gateway waits for asynchronous character loading before authenticating the session", async (testContext) => {
+  let connectResolved = false;
+  let connectCalls = 0;
+
+  const runtime = {
+    async connectClient() {
+      connectCalls += 1;
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      connectResolved = true;
+
+      return {
+        success: true,
+        playerUid: "player:account-1:async",
+      };
+    },
+
+    async disconnectClient() {},
+
+    dispatchAction: (_session, action) => ({
+      success: true,
+      requestId: action.requestId,
+    }),
+
+    createSnapshotForClient: () => ({
+      revision: 0,
+      self: {
+        uid: "player:account-1:async",
+      },
+    }),
+
+    getDeltasForClient: () => [],
+    update: () => {},
+  };
+
+  const server = createGameServer({
+    runtime,
+
+    authenticateClient: () => ({
+      accountId: "account-1",
+    }),
+
+    port: 0,
+  });
+
+  await server.start();
+
+  testContext.after(() => server.stop());
+
+  const socket = new WebSocket(`ws://127.0.0.1:${server.getAddress().port}/game`);
+
+  await new Promise((resolve) => socket.once("open", resolve));
+
+  testContext.after(() => socket.close());
+
+  const welcomePromise = waitForMessage(socket, SERVER_MESSAGE_TYPE.welcome);
+
+  const snapshotPromise = waitForMessage(socket, SERVER_MESSAGE_TYPE.snapshot);
+
+  socket.send(
+    encodeNetworkMessage(
+      createNetworkMessage(
+        CLIENT_MESSAGE_TYPE.hello,
+        {
+          characterId: "async",
+        },
+        0,
+      ),
+    ),
+  );
+
+  const welcome = await welcomePromise;
+
+  const snapshot = await snapshotPromise;
+
+  assert.equal(connectCalls, 1);
+
+  assert.equal(connectResolved, true);
+
+  assert.equal(welcome.payload.playerUid, "player:account-1:async");
+
+  assert.equal(snapshot.payload.self.uid, "player:account-1:async");
 });
