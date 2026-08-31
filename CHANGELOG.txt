@@ -1,3 +1,6 @@
+0.34461 - Permissions des backups
+    - Le dossier securise des backups est prepare automatiquement par systemd.
+
 0.3446 - Sauvegardes de la base de donnees
     - Chaque backup SQLite est coherent, verifie et accompagne de son checksum.
     - Une restauration complete est testee et lancienne base reste disponible en secours.
