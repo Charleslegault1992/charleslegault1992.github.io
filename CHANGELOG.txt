@@ -1,3 +1,7 @@
+0.3437 - Nouvelle maison bleue
+    - Le nouveau tileset de maison est charge dans la map de surface.
+    - Charles est maintenant place dans la nouvelle maison bleue.
+
 0.3436 - Correction du chargement de la surface
     - Les tilesets locaux aux maps Tiled sont maintenant charges par le client et le serveur.
     - La map de surface apparait correctement des le spawn.
