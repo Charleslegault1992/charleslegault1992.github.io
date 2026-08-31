@@ -1,3 +1,7 @@
+0.3443 - Rendu des tiles en mouvement
+    - La camera Pixi saligne maintenant sur les pixels physiques pendant les deplacements.
+    - Les lignes noires temporaires entre les tiles sont eliminees sans travail ajoute par sprite.
+
 0.3442 - Rotation fiable sur iPhone
     - Le mode paysage utilise maintenant les dimensions reelles de la fenetre.
     - Le layout se recalcule une seule fois par frame et se confirme apres la rotation.

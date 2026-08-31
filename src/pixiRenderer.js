@@ -2871,10 +2871,13 @@ export const updatePixiCamera = (cameraX, cameraY) => {
   if (!worldContainer || !entityNameplateContainer || !Number.isFinite(cameraX) || !Number.isFinite(cameraY)) {
     return;
   }
-  worldContainer.x = -cameraX;
-  worldContainer.y = -cameraY;
-  entityNameplateContainer.x = -cameraX;
-  entityNameplateContainer.y = -cameraY;
+  const rendererResolution = pixiApp?.renderer?.resolution ?? 1;
+  const renderCameraX = Math.round(cameraX * rendererResolution) / rendererResolution;
+  const renderCameraY = Math.round(cameraY * rendererResolution) / rendererResolution;
+  worldContainer.x = -renderCameraX;
+  worldContainer.y = -renderCameraY;
+  entityNameplateContainer.x = -renderCameraX;
+  entityNameplateContainer.y = -renderCameraY;
 };
 //#endregion  -----  PIXI - CAMERA  -----
 
