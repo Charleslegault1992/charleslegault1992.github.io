@@ -1,3 +1,7 @@
+0.3440 - Creation de personnage sur mobile
+    - La fenetre de creation tient maintenant entierement en mode paysage.
+    - Chaque couleur se choisit avec un seul carre qui ouvre le selecteur du telephone.
+
 0.3439 - Images des tilesets locaux
     - Les chemins dimages des tilesets locaux sont maintenant resolus correctement par Pixi.
     - Les nouveaux sols et maisons ne sont plus affiches en noir.

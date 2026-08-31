@@ -748,6 +748,8 @@ export const createCharacterSelectorController = ({
       inputElement.classList.add("character-color-input");
       inputElement.type = "color";
       inputElement.value = selectedAppearanceColors[colorKey];
+      inputElement.setAttribute("aria-label", labelText);
+      inputElement.title = labelText;
       inputElement.addEventListener("input", () => {
         clearPlayerAppearanceColorTextureCache(colorKey, selectedAppearanceColors[colorKey]);
         selectedAppearanceColors = normalizeCharacterAppearanceColors({
