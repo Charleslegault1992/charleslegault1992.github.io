@@ -3710,6 +3710,7 @@ const presentItemUseFailure = (result) => {
     "torch-needs-placement": "torchNeedsPlacement",
     "sanity-full": "alreadyFull",
     "field-not-found": "fieldNotFound",
+    "field-occupied": "fieldOccupied",
   };
   const messageKey = messageKeyByReason[result?.reason];
   if (messageKey) {
@@ -9077,6 +9078,16 @@ const executeSimulationItemUse = (item, useData, payload) => {
       !hasPlayerLineOfSightToWorldPosition(payload.target)
     ) {
       return { success: false, reason: "target-out-of-range" };
+    }
+    const existingField = [...groundEffectsByUid.values()].some(
+      (effect) =>
+        effect.x === payload.target.x &&
+        effect.y === payload.target.y &&
+        effect.z === payload.target.z &&
+        getGroundEffectData(effect.groundEffectId)?.kind === "field",
+    );
+    if (existingField) {
+      return { success: false, reason: "field-occupied" };
     }
     const field = createFluidPuddle(useData.groundEffectId, payload.target.x, payload.target.y, payload.target.z);
     if (!field || !consumeOneChargeFromRune(item, payload.source)) {

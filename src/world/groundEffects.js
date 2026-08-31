@@ -47,6 +47,7 @@ export const renderGroundEffect = (groundEffect) => {
   return upsertPixiGroundEffectVisual({
     uid: groundEffect.uid,
     ...source,
+    kind: groundEffectData.kind,
     textureKey: groundEffectData.atlas,
     animationFrames: framesPerStage,
     animationFrameMs: groundEffectData.animationFrameMs ?? 0,

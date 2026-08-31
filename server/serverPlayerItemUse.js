@@ -297,6 +297,12 @@ export const createServerPlayerItemUse = ({
     if (!getValidRuneTileTarget(target, useData) || groundEffectsDatabase[useData.groundEffectId]?.kind !== "field") {
       return { success: false, reason: "target-out-of-range" };
     }
+    const existingField = groundEffects
+      .getAllAt(target.x, target.y, target.z)
+      .some((effect) => groundEffectsDatabase[effect.groundEffectId]?.kind === "field");
+    if (existingField) {
+      return { success: false, reason: "field-occupied" };
+    }
     if (!consumeRuneCharge(item, source)) {
       return { success: false, reason: "item-consume-failed" };
     }

@@ -1286,8 +1286,40 @@ export const createAuthoritativeWorldRuntime = ({
     );
     if (saveResult.success) {
       persistenceSession.version = saveResult.version;
+      persistenceSession.lastSavedAt = currentServerTime;
+      persistenceSession.nextSaveAttemptAt = currentServerTime + AUTOSAVE_INTERVAL_MS;
+      persistenceSession.isDirty = false;
     }
     return saveResult.success;
+  };
+
+  const saveAllPlayerPersistence = () => {
+    const failedPlayerUids = [];
+    for (const playerUid of playersByUid.keys()) {
+      if (!savePlayerPersistence(playerUid)) {
+        failedPlayerUids.push(playerUid);
+      }
+    }
+    return {
+      success: failedPlayerUids.length === 0,
+      savedCount: playersByUid.size - failedPlayerUids.length,
+      failedPlayerUids,
+    };
+  };
+
+  const announceSystemMessage = ({ en, fr }) => {
+    const events = [...playersByUid.values()].map((player) => ({
+      type: "chat-system-message",
+      channelId: "logs",
+      recipientPlayerUid: player.uid,
+      text: player.language === "fr" ? fr : en,
+      createdAt: currentServerTime,
+      visibility: "private",
+    }));
+    if (events.length > 0) {
+      journal.record({ serverTime: currentServerTime, events });
+    }
+    return events.length;
   };
 
   const removePlayerFromWorld = (playerUid) => {
@@ -1654,6 +1686,8 @@ export const createAuthoritativeWorldRuntime = ({
   return Object.freeze({
     connectClient,
     disconnectClient,
+    saveAllPlayerPersistence,
+    announceSystemMessage,
     dispatchAction,
     createSnapshotForClient,
     getDeltasForClient,

@@ -954,6 +954,24 @@ test("every field rune creates its matching field and dissipation removes it", a
     assert.equal(fieldRune.charges, 4);
     assert.ok(field, `${groundEffectId} should exist`);
 
+    if (index === 0) {
+      serverTime += 2000;
+      const blockedRune = fieldRunes[1];
+      const blockedResult = runtime.dispatchAction(
+        session,
+        createUseItemAction({
+          source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 1 },
+          itemUid: blockedRune.uid,
+          target,
+          requestedAt: serverTime,
+        }),
+      );
+      assert.equal(blockedResult.success, false);
+      assert.equal(blockedResult.reason, "field-occupied");
+      assert.equal(blockedRune.charges, 5);
+      assert.equal(runtime.getWorldEntities().groundEffects.has(field.uid), true);
+    }
+
     serverTime += 2000;
     const dispelResult = runtime.dispatchAction(
       session,

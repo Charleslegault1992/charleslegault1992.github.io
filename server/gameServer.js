@@ -369,10 +369,10 @@ export const createGameServer = ({
       tickLoop.start();
       return true;
     },
-    async stop() {
+    async stop({ closeCode = 1001, closeReason = "Server stopping" } = {}) {
       tickLoop.stop();
       for (const session of [...sessionsBySocket.values()]) {
-        session.socket.close(1001, "Server stopping");
+        session.socket.close(closeCode, closeReason);
         closeSession(session);
       }
       webSocketServer.close();

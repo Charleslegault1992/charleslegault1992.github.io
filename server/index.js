@@ -9,6 +9,7 @@ import { createSqliteCharacterRepository } from "./persistence/sqliteCharacterRe
 import { createSqliteAccountRepository } from "./persistence/sqliteAccountRepository.js";
 import { createSqliteChatModerationRepository } from "./persistence/sqliteChatModerationRepository.js";
 import { createChatModerationService } from "./chatModerationService.js";
+import { createDailyWorldResetScheduler } from "./dailyWorldResetScheduler.js";
 
 const port = Number.parseInt(process.env.GAME_SERVER_PORT ?? "8080", 10);
 const host = process.env.GAME_SERVER_HOST ?? "127.0.0.1";
@@ -76,17 +77,41 @@ const address = server.getAddress();
 console.log(`Game server listening on ws://${address.address}:${address.port}/game`);
 
 let isStopping = false;
-const stop = async () => {
+let resetScheduler = null;
+const stop = async ({ exitCode = 0, closeCode = 1001, closeReason = "Server stopping" } = {}) => {
   if (isStopping) {
     return;
   }
   isStopping = true;
-  await server.stop();
-  accountRepository.close();
-  chatModerationRepository.close();
-  characterRepository.close();
-  process.exit(0);
+  resetScheduler?.stop();
+  const forceExitTimer = setTimeout(() => process.exit(exitCode || 1), 25000);
+  forceExitTimer.unref();
+  try {
+    const saveResult = runtime.saveAllPlayerPersistence();
+    if (!saveResult.success) {
+      console.error("Final player save failed:", saveResult.failedPlayerUids);
+    }
+    await server.stop({ closeCode, closeReason });
+    accountRepository.close();
+    chatModerationRepository.close();
+    characterRepository.close();
+    process.exit(exitCode);
+  } catch (error) {
+    console.error("Graceful server shutdown failed:", error);
+    process.exit(exitCode || 1);
+  }
 };
 
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);
+resetScheduler = createDailyWorldResetScheduler({
+  onWarning: (minutes) => {
+    runtime.announceSystemMessage({
+      en: `Daily world reset in ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+      fr: `Reset quotidien du monde dans ${minutes} minute${minutes === 1 ? "" : "s"}.`,
+    });
+  },
+  onReset: () => stop({ exitCode: 75, closeCode: 1012, closeReason: "Daily world reset" }),
+});
+console.log(`Next daily world reset: ${new Date(resetScheduler.nextResetAt).toISOString()}`);
+
+process.on("SIGINT", () => stop());
+process.on("SIGTERM", () => stop());

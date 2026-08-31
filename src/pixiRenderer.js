@@ -121,7 +121,8 @@ let worldContainer = null;
 let verticalFloorUnderlayContainer = null;
 let mapBelowContainer = null;
 let entityContainer = null;
-let groundEffectContainer = null;
+let fluidGroundEffectContainer = null;
+let fieldGroundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
@@ -1807,6 +1808,7 @@ export const upsertPixiGroundEffectVisual = ({
   sourceY,
   sourceWidth,
   sourceHeight,
+  kind,
   textureKey = "items",
   animationFrames = 1,
   animationFrameMs = 0,
@@ -1814,8 +1816,9 @@ export const upsertPixiGroundEffectVisual = ({
   x,
   y,
 }) => {
+  const targetContainer = kind === "fluid" ? fluidGroundEffectContainer : fieldGroundEffectContainer;
   if (
-    !groundEffectContainer ||
+    !targetContainer ||
     !(groundEffectVisualsByUid instanceof Map) ||
     !Number.isInteger(uid) ||
     !Number.isFinite(x) ||
@@ -1833,10 +1836,13 @@ export const upsertPixiGroundEffectVisual = ({
   if (!refs) {
     const sprite = new Sprite(texture);
     sprite.label = `ground-effect:${uid}`;
-    groundEffectContainer.addChild(sprite);
+    targetContainer.addChild(sprite);
     refs = { sprite };
     groundEffectVisualsByUid.set(uid, refs);
   } else {
+    if (refs.sprite.parent !== targetContainer) {
+      targetContainer.addChild(refs.sprite);
+    }
     refs.sprite.texture = texture;
   }
 
@@ -2707,7 +2713,8 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     verticalFloorUnderlayContainer = new Container();
     mapBelowContainer = new Container();
     entityContainer = new Container();
-    groundEffectContainer = new Container();
+    fluidGroundEffectContainer = new Container();
+    fieldGroundEffectContainer = new Container();
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
@@ -2748,8 +2755,11 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
       layerContainer.label = layerName;
       mapBelowContainer.addChild(layerContainer);
       mapLayerContainersByName.set(layerName, layerContainer);
+      if (layerName === "ground") {
+        mapBelowContainer.addChild(fluidGroundEffectContainer);
+      }
       if (layerName === "groundDetails") {
-        mapBelowContainer.addChild(groundEffectContainer);
+        mapBelowContainer.addChild(fieldGroundEffectContainer);
       }
     }
 

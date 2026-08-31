@@ -1,3 +1,9 @@
+0.3445 - Reset quotidien du monde
+    - Le serveur sauvegarde tous les personnages avant de repartir avec un monde propre a 5 h.
+    - Les joueurs recoivent un avertissement avant le reset quotidien.
+    - Le sang reste sous les details, objets et creatures.
+    - Un field magique ne peut plus etre place par-dessus un autre field.
+
 0.3444 - Banque dans la maison bleue
     - Charles est maintenant place sur une case libre au centre de la maison bleue.
     - Les dernieres modifications de la map et du tileset de sol sont incluses.
