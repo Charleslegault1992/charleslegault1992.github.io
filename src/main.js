@@ -417,6 +417,7 @@ import {
   logoutConfirmationCancelButton,
   logoutConfirmationConfirmButton,
   mobileGameControls,
+  mobileOrientationLock,
   mobileJoystickZone,
   mobileJoystick,
   mobileJoystickKnob,
@@ -4568,12 +4569,26 @@ const mobileGameUiState = {
   joystickMaxDistance: null,
   joystickDeadZone: null,
 };
+let mobileViewportRefreshFrameId = null;
+let mobileOrientationFallbackTimeoutId = null;
 
 const isMobileGameLayout = () => {
   return mobileGameLayoutMedia.matches;
 };
 
+const syncMobileOrientationLock = () => {
+  if (!mobileOrientationLock) {
+    return;
+  }
+  const viewportWidth = window.innerWidth || window.visualViewport?.width || 0;
+  const viewportHeight = window.innerHeight || window.visualViewport?.height || 0;
+  const isPortrait = isMobileGameLayout() && viewportHeight > viewportWidth;
+  mobileOrientationLock.classList.toggle("mobile-orientation-lock-visible", isPortrait);
+  mobileOrientationLock.setAttribute("aria-hidden", String(!isPortrait));
+};
+
 const updateGameScale = () => {
+  syncMobileOrientationLock();
   boitePrincipale.style.height = `calc(100vh - ${nav.clientHeight}px)`;
   const mobileLayout = isMobileGameLayout();
   if (mobileLayout) {
@@ -4594,6 +4609,16 @@ const updateGameScale = () => {
   const visualGameHeight = GAME_HEIGHT * scale;
   const gameTop = (boiteJeux.clientHeight - visualGameHeight) / 2;
   boiteJeuxInner.style.top = `${gameTop}px`;
+};
+
+const scheduleMobileViewportRefresh = () => {
+  if (mobileViewportRefreshFrameId !== null) {
+    return;
+  }
+  mobileViewportRefreshFrameId = requestAnimationFrame(() => {
+    mobileViewportRefreshFrameId = null;
+    updateGameScale();
+  });
 };
 
 const getMobilePanelElement = (panelName) => {
@@ -5747,13 +5772,18 @@ window.addEventListener("pagehide", () => {
 
 /* ---------- INPUTS - RESIZE FENETRE ---------- */
 
-window.addEventListener("resize", () => {
-  updateGameScale();
-});
-window.visualViewport?.addEventListener("resize", updateGameScale);
+window.addEventListener("resize", scheduleMobileViewportRefresh);
+window.visualViewport?.addEventListener("resize", scheduleMobileViewportRefresh);
 window.addEventListener("orientationchange", () => {
   resetMobileJoystick();
-  requestAnimationFrame(updateGameScale);
+  scheduleMobileViewportRefresh();
+  if (mobileOrientationFallbackTimeoutId !== null) {
+    clearTimeout(mobileOrientationFallbackTimeoutId);
+  }
+  mobileOrientationFallbackTimeoutId = window.setTimeout(() => {
+    mobileOrientationFallbackTimeoutId = null;
+    scheduleMobileViewportRefresh();
+  }, 200);
 });
 
 /* ---------- INPUTS - SOURIS ---------- */

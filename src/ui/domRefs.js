@@ -42,6 +42,7 @@ export const logoutConfirmation = document.querySelector("#logout-confirmation")
 export const logoutConfirmationCancelButton = document.querySelector("#logout-confirmation-cancel");
 export const logoutConfirmationConfirmButton = document.querySelector("#logout-confirmation-confirm");
 export const mobileGameControls = document.querySelector("#mobile-game-controls");
+export const mobileOrientationLock = document.querySelector("#mobile-orientation-lock");
 export const mobileJoystickZone = document.querySelector("#mobile-joystick-zone");
 export const mobileJoystick = document.querySelector("#mobile-joystick");
 export const mobileJoystickKnob = document.querySelector("#mobile-joystick-knob");

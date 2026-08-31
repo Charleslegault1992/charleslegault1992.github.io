@@ -4535,8 +4535,8 @@ body.item-drag-active * {
   }
 }
 
-@media (max-width: 1024px) and (orientation: portrait) and (pointer: coarse) {
-  .mobile-orientation-lock {
+@media (max-width: 1024px) and (pointer: coarse) {
+  .mobile-orientation-lock.mobile-orientation-lock-visible {
     position: fixed;
     inset: 0;
     z-index: 2147483647;

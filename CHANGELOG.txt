@@ -1,3 +1,7 @@
+0.3442 - Rotation fiable sur iPhone
+    - Le mode paysage utilise maintenant les dimensions reelles de la fenetre.
+    - Le layout se recalcule une seule fois par frame et se confirme apres la rotation.
+
 0.3441 - Roue de couleur du personnage
     - Les couleurs se modifient maintenant en direct avec une roue tactile et une luminosite.
     - Le personnage reste a gauche et les choix dapparence sont regroupes a droite sur mobile.
