@@ -14,8 +14,10 @@ import { getDoorInteriorPushTile, getDoorTiles, initializeDoorsFromWorldMaps } f
 
 test("Tiled world objects are found by their logical tile", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
+  const embeddedTileset = worldMapsByZ.get(0).tilesets.find((tileset) => tileset.name === "outsideItem");
   const transition = findTransitionAtTile(worldMapsByZ.get(0), 14, 16);
 
+  assert.match(embeddedTileset?.source, /^embedded:/);
   assert.equal(transition.properties.transitionType, "ropeDown");
   assert.equal(isPlayerNearTiledObject({ x: 13 * TILE_SIZE, y: 16 * TILE_SIZE, z: 0 }, transition, 1), true);
   assert.equal(isPlayerNearTiledObject({ x: 10 * TILE_SIZE, y: 16 * TILE_SIZE, z: 0 }, transition, 1), false);

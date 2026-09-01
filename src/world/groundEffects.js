@@ -1,4 +1,10 @@
-import { ATLAS_CELL_SIZE, ATLAS_PADDING, DECAY_REFRESH_COOLDOWN_MS, SPRITE_SIZE } from "../core/gameConstants.js";
+import {
+  ATLAS_CELL_SIZE,
+  ATLAS_PADDING,
+  DECAY_REFRESH_COOLDOWN_MS,
+  SPRITE_SIZE,
+  WORLD_RENDER_LAYER_ITEM,
+} from "../core/gameConstants.js";
 import { EFFECT_ATLAS_CELL_SIZE } from "../data/combatEffectsDatabase.js";
 import { GROUND_EFFECT_DECAY_STAGE_MS, groundEffectsDatabase } from "../data/groundEffectsDatabase.js";
 import {
@@ -10,7 +16,8 @@ import { gameplayTimingState } from "../state/clientRuntimeState.js";
 import { playerState } from "../state/playerState.js";
 import { allocateGroundEffectUid } from "../state/uidAllocator.js";
 import { groundEffectsByUid, groundEffectUidByTileKey } from "../state/worldState.js";
-import { getWorldTileStackKey } from "./worldItemStacks.js";
+import { getWorldRenderZIndex } from "../render/renderOrder.js";
+import { getWorldDynamicStackIndex, getWorldTileStackKey } from "./worldItemStacks.js";
 
 export const getGroundEffectData = (groundEffectId) => {
   return groundEffectsDatabase[groundEffectId] ?? null;
@@ -54,6 +61,10 @@ export const renderGroundEffect = (groundEffect) => {
     frameStride: atlasCellSize,
     x: groundEffect.x,
     y: groundEffect.y,
+    zIndex: getWorldRenderZIndex(
+      groundEffect.y,
+      WORLD_RENDER_LAYER_ITEM + getWorldDynamicStackIndex(groundEffect, "field"),
+    ),
   });
 };
 
@@ -108,6 +119,7 @@ export const addOrRefreshGroundEffectState = (groundEffectId, x, y, z, decayStag
       decayStage,
       isPermanent: false,
       ownerUid: null,
+      tileStackOrder: Number.MAX_SAFE_INTEGER,
       nextDecayAt: now + (getGroundEffectData(groundEffectId)?.decayStageMs ?? GROUND_EFFECT_DECAY_STAGE_MS),
     };
     groundEffectsByUid.set(groundEffect.uid, groundEffect);

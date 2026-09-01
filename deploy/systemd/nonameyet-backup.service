@@ -1,6 +1,7 @@
 [Unit]
-Description=Nonameyet verified SQLite backup
-After=nonameyet.service
+Description=Nonameyet verified PostgreSQL backup
+After=postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=oneshot
@@ -8,10 +9,11 @@ User=nonameyet
 Group=nonameyet
 WorkingDirectory=/opt/nonameyet
 EnvironmentFile=/etc/nonameyet/nonameyet.env
+EnvironmentFile=/etc/nonameyet/postgres.env
 StateDirectory=nonameyet
 StateDirectoryMode=0700
-ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/nonameyet/backups
-ExecStart=/usr/bin/node server/backupDatabase.js
+ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/nonameyet/postgres-backups
+ExecStart=/usr/bin/node server/backupPostgresDatabase.js
 NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077

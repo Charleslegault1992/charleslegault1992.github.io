@@ -28,7 +28,7 @@ export const getEntityRenderSortY = (entity) => {
     return 0;
   }
   if (Number.isFinite(entity.oldY) && Number.isFinite(entity.renderY) && entity.renderY !== entity.y) {
-    return Math.min(entity.oldY, entity.y);
+    return Math.max(entity.oldY, entity.y);
   }
   return entity.y;
 };

@@ -1,6 +1,11 @@
 import { MAX_SURFACE_HEIGHT, TILE_SIZE } from "../core/gameConstants.js";
 import { getItemSurfaceHeight, isValidWorldItem } from "../items/itemModel.js";
-import { worldItemsByUid, worldTileStacksByKey } from "../state/worldState.js";
+import {
+  groundEffectsByUid,
+  groundEffectUidByTileKey,
+  worldItemsByUid,
+  worldTileStacksByKey,
+} from "../state/worldState.js";
 
 export const getWorldTileStackKey = (x, y, z) => {
   const col = Math.floor(x / TILE_SIZE);
@@ -141,6 +146,43 @@ export const getWorldItemStackIndex = (item) => {
 
   const index = tileStack.itemUids.indexOf(item.uid);
   return index === -1 ? 0 : index;
+};
+
+export const getWorldDynamicStackIndex = (entity, entityType) => {
+  if (
+    !entity ||
+    !Number.isFinite(entity.x) ||
+    !Number.isFinite(entity.y) ||
+    !Number.isInteger(entity.z) ||
+    (entityType !== "item" && entityType !== "field")
+  ) {
+    return 0;
+  }
+
+  const entityOrder = Number.isSafeInteger(entity.tileStackOrder)
+    ? entity.tileStackOrder
+    : entityType === "field" ? Number.MAX_SAFE_INTEGER : 0;
+  let index = 0;
+
+  for (const itemUid of getWorldTileStack(entity.x, entity.y, entity.z)?.itemUids ?? []) {
+    if (entityType === "item" && itemUid === entity.uid) {
+      continue;
+    }
+    const itemOrder = worldItemsByUid.get(itemUid)?.tileStackOrder;
+    if (Number.isSafeInteger(itemOrder) && itemOrder < entityOrder) {
+      index++;
+    }
+  }
+
+  if (entityType === "item") {
+    const fieldUid = groundEffectUidByTileKey.get(`${getWorldTileStackKey(entity.x, entity.y, entity.z)}:field`);
+    const fieldOrder = groundEffectsByUid.get(fieldUid)?.tileStackOrder;
+    if (Number.isSafeInteger(fieldOrder) && fieldOrder < entityOrder) {
+      index++;
+    }
+  }
+
+  return index;
 };
 
 export const getWorldTileSurfaceHeight = (x, y, z) => {

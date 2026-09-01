@@ -9,16 +9,16 @@ import {
   WORLD_ROOT_RENDER_Z_INDEX,
 } from "../src/render/renderOrder.js";
 
-test("vertical movement uses the logical destination row for the complete step", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 64, y: 64, oldY: 128, renderY: 96 }), 64);
+test("upward movement stays above depth tiles from its source row during interpolation", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 64, y: 64, oldY: 128, renderY: 96 }), 128);
 });
 
-test("diagonal movement uses the logical destination row for the complete step", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 64);
+test("upward diagonal movement stays above depth tiles from its source row", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 64, oldY: 128, renderY: 96 }), 128);
 });
 
-test("downward diagonal movement stays on its northern row until arrival", () => {
-  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 128, oldY: 64, renderY: 96 }), 64);
+test("downward diagonal movement uses the southern row during interpolation", () => {
+  assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 128, oldY: 64, renderY: 96 }), 128);
   assert.equal(getEntityRenderSortY({ x: 64, oldX: 0, y: 128, oldY: 64, renderY: 128 }), 128);
 });
 

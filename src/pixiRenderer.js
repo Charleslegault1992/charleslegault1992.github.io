@@ -122,7 +122,6 @@ let verticalFloorUnderlayContainer = null;
 let mapBelowContainer = null;
 let entityContainer = null;
 let fluidGroundEffectContainer = null;
-let fieldGroundEffectContainer = null;
 let itemUseTargetContainer = null;
 let projectileContainer = null;
 let topContainer = null;
@@ -684,7 +683,7 @@ const createTileTextureFromGid = (tilesets, gid) => {
   if (!tileRenderData) {
     return;
   }
-  const cacheKey = `${tileRenderData.tileset.source}:${gid}`;
+  const cacheKey = `${tileRenderData.tileset.source ?? tileRenderData.tileset.image}:${gid}`;
   if (tileTextureByCacheKey.has(cacheKey)) {
     return tileTextureByCacheKey.get(cacheKey);
   }
@@ -1815,14 +1814,16 @@ export const upsertPixiGroundEffectVisual = ({
   frameStride = sourceWidth,
   x,
   y,
+  zIndex = 0,
 }) => {
-  const targetContainer = kind === "fluid" ? fluidGroundEffectContainer : fieldGroundEffectContainer;
+  const targetContainer = kind === "fluid" ? fluidGroundEffectContainer : entityContainer;
   if (
     !targetContainer ||
     !(groundEffectVisualsByUid instanceof Map) ||
     !Number.isInteger(uid) ||
     !Number.isFinite(x) ||
-    !Number.isFinite(y)
+    !Number.isFinite(y) ||
+    !Number.isFinite(zIndex)
   ) {
     return false;
   }
@@ -1857,6 +1858,7 @@ export const upsertPixiGroundEffectVisual = ({
   refs.renderedFrame = 0;
   refs.sprite.x = x;
   refs.sprite.y = y;
+  refs.sprite.zIndex = zIndex;
   return true;
 };
 
@@ -2714,7 +2716,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
     mapBelowContainer = new Container();
     entityContainer = new Container();
     fluidGroundEffectContainer = new Container();
-    fieldGroundEffectContainer = new Container();
     itemUseTargetContainer = new Container();
     projectileContainer = new Container();
     topContainer = new Container();
@@ -2757,9 +2758,6 @@ export const initializePixiRenderer = async ({ htmlParentElement, gameWidth, gam
       mapLayerContainersByName.set(layerName, layerContainer);
       if (layerName === "ground") {
         mapBelowContainer.addChild(fluidGroundEffectContainer);
-      }
-      if (layerName === "groundDetails") {
-        mapBelowContainer.addChild(fieldGroundEffectContainer);
       }
     }
 

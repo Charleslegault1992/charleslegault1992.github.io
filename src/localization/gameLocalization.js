@@ -500,6 +500,11 @@ export const GAME_CONTENT_TEXT = {
     items: {
       apple: { name: "Pomme", pluralName: "Pommes", desc: "Une pomme.", suffix: "une" },
       cheese: { name: "Fromage", pluralName: "Fromages", desc: "Un morceau de fromage.", suffix: "un" },
+      bread: { name: "Pain", pluralName: "Pains", desc: "Un pain frais.", suffix: "un" },
+      watermelon: { name: "Tranche de melon d'eau", pluralName: "Tranches de melon d'eau", desc: "Une tranche bien juteuse.", suffix: "une" },
+      carrot: { name: "Carotte", pluralName: "Carottes", desc: "Une carotte croquante.", suffix: "une" },
+      sausage: { name: "Saucisse", pluralName: "Saucisses", desc: "Une saucisse fumee pour les voyageurs affames.", suffix: "une" },
+      banana: { name: "Banane", pluralName: "Bananes", desc: "Une banane bien mure.", suffix: "une" },
       box: { name: "Caisse", pluralName: "Caisses", desc: "Une grosse vieille caisse.", suffix: "une" },
       smallBox: { name: "Petite caisse", pluralName: "Petites caisses", desc: "Une petite caisse.", suffix: "une" },
       healthPotion: { name: "Potion de vie", pluralName: "Potions de vie", desc: "Une potion qui redonne de la vie.", suffix: "une" },

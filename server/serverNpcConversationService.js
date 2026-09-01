@@ -1,5 +1,6 @@
 import { MAX_ITEM_STACK_SIZE, NPC_DIALOGUE_CONFIG, TILE_SIZE } from "../src/core/gameConstants.js";
 import { npcsDatabase } from "../src/data/npcsDatabase.js";
+import { playerClassesDatabase } from "../src/data/playerClassesDatabase.js";
 import {
   commitPlayerCurrencyValuePlan,
   commitPlayerBackpackItemRemovalPlan,
@@ -13,8 +14,12 @@ import {
   rollbackPlayerCurrencyValuePlan,
 } from "../src/inventory/inventoryTransactions.js";
 import { spellsDatabase } from "../src/spellDatabase.js";
-import { getLocalizedItemNameForLanguage } from "../src/localization/gameLocalization.js";
+import {
+  getLocalizedContentDataForLanguage,
+  getLocalizedItemNameForLanguage,
+} from "../src/localization/gameLocalization.js";
 import { createItemInstance } from "../src/items/itemFactory.js";
+import { startPlayerRegenerationTimers } from "../src/player/playerRegeneration.js";
 
 const DAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
@@ -50,6 +55,24 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     getLocalizedItemNameForLanguage(itemId, quantity, player?.language);
   const getPlayerSpellName = (player, spell) =>
     player?.language === "fr" ? spell?.nameFr ?? spell?.name : spell?.name;
+  const getPlayerClassName = (player, classId) => {
+    const classData = playerClassesDatabase[classId];
+    return classData
+      ? getLocalizedContentDataForLanguage("classes", classId, classData, player?.language).name
+      : classId;
+  };
+  const getClassSuggestions = (player, npcData) =>
+    (npcData.service?.classIds ?? []).map((classId) => getPlayerClassName(player, classId));
+  const findClassIdForSpeech = (player, npcData, text) => {
+    const normalizedText = normalize(text);
+    return (npcData.service?.classIds ?? []).find((classId) => {
+      const classData = playerClassesDatabase[classId];
+      const localizedName = getPlayerClassName(player, classId);
+      return [classId, classData?.name, localizedName]
+        .filter(Boolean)
+        .some((candidate) => normalizedText.includes(normalize(candidate)));
+    }) ?? null;
+  };
   const getPlayerMagicLevel = (player) => player?.skills?.magic?.level ?? 0;
   const getSpellTeacherOfferList = (player, npcData) =>
     (npcData.service?.spellIds ?? [])
@@ -169,9 +192,31 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
 
   const executePendingAction = (npc, player, state, dialogue) => {
     const pending = state.pendingAction;
-    const inventory = getInventory(player.uid);
-    if (!pending || !inventory) {
+    if (!pending) {
       return createReply(npc, player, dialogue.cancelled ?? "Cancelled.");
+    }
+    if (pending.type === "change-class") {
+      const classData = playerClassesDatabase[pending.classId];
+      if (!classData || !(npcsDatabase[npc.npcId]?.service?.classIds ?? []).includes(pending.classId)) {
+        state.pendingAction = null;
+        return createReply(npc, player, dialogue.unavailable);
+      }
+      player.classId = pending.classId;
+      startPlayerRegenerationTimers(player, classData.regeneration, state.lastInteractionAt);
+      state.pendingAction = null;
+      return createReply(
+        npc,
+        player,
+        format(dialogue.changedClass, player, { className: getPlayerClassName(player, pending.classId) }),
+        getClassSuggestions(player, npcsDatabase[npc.npcId]),
+        [{ type: "npc-class-changed", npcUid: npc.uid, playerUid: player.uid, classId: pending.classId }],
+      );
+    }
+
+    const inventory = getInventory(player.uid);
+    if (!inventory) {
+      state.pendingAction = null;
+      return createReply(npc, player, dialogue.unavailable ?? dialogue.cancelled);
     }
     let completedText = dialogue.cancelled ?? "Cancelled.";
     let transactionSucceeded = false;
@@ -604,6 +649,56 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           outputQuantity: recipe.outputQuantity,
           outputName: getPlayerItemName(player, recipe.outputItemId, recipe.outputQuantity),
         }), dialogue.confirmationSuggestions);
+      }
+    }
+    if (npcData.service?.type === "classMaster") {
+      const minimumLevel = npcData.service.minimumLevel;
+      const classId = findClassIdForSpeech(player, npcData, text);
+      if (classId) {
+        if (player.level < minimumLevel) {
+          return createReply(
+            npc,
+            player,
+            format(dialogue.levelRequired, player, { minimumLevel }),
+            dialogue.greetingSuggestions,
+          );
+        }
+        if (player.classId === classId) {
+          return createReply(
+            npc,
+            player,
+            format(dialogue.alreadyClass, player, { className: getPlayerClassName(player, classId) }),
+            getClassSuggestions(player, npcData),
+          );
+        }
+        state.pendingAction = { type: "change-class", classId };
+        return createReply(
+          npc,
+          player,
+          format(dialogue.confirmClass, player, { className: getPlayerClassName(player, classId) }),
+          dialogue.confirmationSuggestions,
+        );
+      }
+      if (hasAnyWord(words, ["class", "classes", "vocation", "vocations", "carriere"])) {
+        if (player.level < minimumLevel) {
+          return createReply(
+            npc,
+            player,
+            format(dialogue.levelRequired, player, { minimumLevel }),
+            dialogue.greetingSuggestions,
+          );
+        }
+        return createReply(
+          npc,
+          player,
+          format(dialogue.classes, player, { classList: getClassSuggestions(player, npcData).join(", ") }),
+          getClassSuggestions(player, npcData),
+        );
+      }
+    }
+    if (npcData.service?.type === "raidTravel") {
+      if (hasAnyWord(words, ["raid", "raids", "travel", "voyage", "voyages", "ile", "iles"])) {
+        return createReply(npc, player, dialogue.raids, dialogue.greetingSuggestions);
       }
     }
     if (hasAnyWord(words, ["name", "nom"])) {

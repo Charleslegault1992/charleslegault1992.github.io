@@ -323,6 +323,15 @@ export const createAuthoritativeWorldRuntime = ({
     if (!saveResult?.success) {
       persistenceSession.isDirty = true;
 
+      if (saveResult?.reason === "version-conflict") {
+        persistenceSession.persistenceBlockedReason = "version-conflict";
+        persistenceSession.nextSaveAttemptAt = Number.POSITIVE_INFINITY;
+        console.error(
+          `Character persistence version conflict for ${playerUid}; automatic retries are blocked to prevent overwriting newer data.`,
+        );
+        return false;
+      }
+
       persistenceSession.nextSaveAttemptAt = completedAt + AUTOSAVE_RETRY_DELAY_MS;
 
       if (sessionsByPlayerUid.get(playerUid) === persistenceSession) {
@@ -333,6 +342,7 @@ export const createAuthoritativeWorldRuntime = ({
     }
 
     persistenceSession.version = saveResult.version;
+    persistenceSession.persistenceBlockedReason = null;
 
     persistenceSession.lastSavedAt = savedAt;
 
@@ -373,6 +383,10 @@ export const createAuthoritativeWorldRuntime = ({
     maxConcurrency: MAX_CONCURRENT_PERSISTENCE_SAVES,
 
     worker(_playerUid, task) {
+      if (task.persistenceSession.persistenceBlockedReason) {
+        return false;
+      }
+
       let operation;
 
       try {
@@ -1587,6 +1601,7 @@ export const createAuthoritativeWorldRuntime = ({
           nextSaveAttemptAt: currentServerTime + AUTOSAVE_INTERVAL_MS,
 
           isDirty: persistenceIsDirty,
+          persistenceBlockedReason: null,
 
           dirtyRevision: persistenceIsDirty ? 1 : 0,
 
@@ -1716,6 +1731,10 @@ export const createAuthoritativeWorldRuntime = ({
 
     if (!player || !characterRepository || !persistenceSession) {
       return waitForCompletion ? Promise.resolve(true) : true;
+    }
+
+    if (persistenceSession.persistenceBlockedReason) {
+      return waitForCompletion ? Promise.resolve(false) : false;
     }
 
     if (!force && !persistenceSession.isDirty) {

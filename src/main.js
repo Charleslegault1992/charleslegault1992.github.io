@@ -203,7 +203,7 @@ import {
   findWorldItemByUid,
   getEntitySurfaceOffsetY,
   getTopWorldItemAtTile,
-  getWorldItemStackIndex,
+  getWorldDynamicStackIndex,
   getWorldItemStackOffsetY,
   getWorldTileStack,
   isWorldItemTopOfTileStack,
@@ -1122,7 +1122,7 @@ const renderGroundItemParts = (item) => {
   }
 
   const stackOffsetY = getWorldItemStackOffsetY(item);
-  const stackIndex = getWorldItemStackIndex(item);
+  const stackIndex = getWorldDynamicStackIndex(item, "item");
   upsertPixiWorldItemVisual({
     uid: item.uid,
     parts: enrichedParts,
@@ -1237,7 +1237,7 @@ const updateItemPosition = () => {
     }
 
     const stackOffsetY = getWorldItemStackOffsetY(item);
-    const stackIndex = getWorldItemStackIndex(item);
+    const stackIndex = getWorldDynamicStackIndex(item, "item");
     updatePixiWorldItemTransform(
       item.uid,
       item.x,
@@ -1262,7 +1262,7 @@ const updateItemPosition = () => {
 const refreshGroundItemRender = (item) => {
   const parts = getItemRenderData(item);
   const stackOffsetY = getWorldItemStackOffsetY(item);
-  const stackIndex = getWorldItemStackIndex(item);
+  const stackIndex = getWorldDynamicStackIndex(item, "item");
   upsertPixiWorldItemVisual({
     uid: item.uid,
     parts,
@@ -9612,7 +9612,7 @@ const synchronizeRemoteWorldRender = (event) => {
   }
   const didChangeFloor = previousZ !== playerState.z;
 
-  if (didWorldItemsChange || didChangeFloor) {
+  if (didWorldItemsChange || didGroundEffectsChange || didChangeFloor) {
     rebuildWorldTileStacks();
   }
   if (didMonstersChange || didChangeFloor) {
@@ -9633,7 +9633,7 @@ const synchronizeRemoteWorldRender = (event) => {
     updatePixiVisibleChunksAroundPlayer();
   }
 
-  if (didWorldItemsChange || didChangeFloor) {
+  if (didWorldItemsChange || didGroundEffectsChange || didChangeFloor) {
     for (const itemUid of [...worldItemElementsByUid.keys()]) {
       const item = worldItemsByUid.get(itemUid);
       if (!item || item.z !== playerState.z) {
@@ -9642,7 +9642,7 @@ const synchronizeRemoteWorldRender = (event) => {
     }
     renderGroundItems([...worldItemsByUid.values()].filter((item) => item.z === playerState.z));
   }
-  if (didGroundEffectsChange || didChangeFloor) {
+  if (didWorldItemsChange || didGroundEffectsChange || didChangeFloor) {
     syncGroundEffectRenderForCurrentZ();
   }
   if (didMonstersChange || didChangeFloor) {

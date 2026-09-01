@@ -1,3 +1,10 @@
+0.3448 - Nouveaux NPC, Tiled et solidification PostgreSQL
+    - Dave permet maintenant de choisir une classe au niveau 12 et Jenny prepare les futurs voyages de raids.
+    - Amanda vend plusieurs nourritures avec des dialogues anglais et francais.
+    - Les nouveaux tilesets Tiled externes ou integres directement dans la map sont charges correctement.
+    - Les murs restent derriere les creatures pendant leurs mouvements et les fields respectent lordre des piles ditem.
+    - Les checksums PostgreSQL, conflits de sauvegarde, backups et statistiques du pool sont maintenant renforces.
+
 0.3447 - Corps et containers multijoueur
     - Les UID des items sont maintenant uniques entre tous les personnages et le monde.
     - Les sacs dans les corps restent utilisables sans remplacer le sac equipe.

@@ -1,6 +1,6 @@
 {
   "name": "nonameyet",
-  "version": "0.3447",
+  "version": "0.3448",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "db:import-sqlite": "node server/importSqliteToPostgres.js",
     "server": "node server/index.js",
     "db:migrate": "node server/migratePostgres.js",
-    "backup:database": "node server/backupDatabase.js",
+    "backup:database": "node server/backupPostgresDatabase.js",
+    "backup:sqlite": "node server/backupDatabase.js",
     "restore:database": "node server/restoreDatabaseBackup.js",
     "auth:token": "node server/issueDevelopmentToken.js",
     "test:load": "node server/loadTest.js",

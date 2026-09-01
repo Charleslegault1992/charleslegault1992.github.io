@@ -3,6 +3,7 @@ import {
 } from "./postgresDatabase.js";
 
 import {
+  createPostgresMigrationChecksum,
   POSTGRES_MIGRATIONS,
 } from "./postgresMigrations.js";
 
@@ -71,7 +72,8 @@ export const verifyPostgresRuntimeSchema =
         text: `
           SELECT
             version,
-            name
+            name,
+            checksum
           FROM game.schema_migrations
           ORDER BY version ASC
         `,
@@ -96,12 +98,14 @@ export const verifyPostgresRuntimeSchema =
 
       const actual =
         historyResult.rows[index];
+      const expectedChecksum = expected.checksum ?? createPostgresMigrationChecksum(expected);
 
       if (
         Number(actual?.version) !==
           expected.version ||
         actual?.name !==
-          expected.name
+          expected.name ||
+        actual?.checksum !== expectedChecksum
       ) {
         throw new Error(
           "PostgreSQL runtime migration history does not match this server build.",

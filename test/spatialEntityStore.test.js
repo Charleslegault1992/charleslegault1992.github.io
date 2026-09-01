@@ -30,3 +30,19 @@ test("spatial entity store refreshes configured stack order after an entity is r
   assert.equal(store.add(first), true);
   assert.ok(first.tileStackOrder > second.tileStackOrder);
 });
+
+test("spatial entity stores can share one stack order across entity types", () => {
+  const stackOrderState = { next: 1 };
+  const items = createSpatialEntityStore({ stackOrderField: "tileStackOrder", stackOrderState });
+  const fields = createSpatialEntityStore({ stackOrderField: "tileStackOrder", stackOrderState });
+  const bottomItem = { uid: 1, x: 0, y: 0, z: 0 };
+  const field = { uid: "field:1", x: 0, y: 0, z: 0 };
+  const topItem = { uid: 2, x: 0, y: 0, z: 0 };
+
+  items.add(bottomItem);
+  fields.add(field);
+  items.add(topItem);
+
+  assert.ok(bottomItem.tileStackOrder < field.tileStackOrder);
+  assert.ok(field.tileStackOrder < topItem.tileStackOrder);
+});

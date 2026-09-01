@@ -5,20 +5,16 @@ import {
   createPostgresRuntimePersistence,
   verifyPostgresRuntimeSchema,
 } from "../server/persistence/postgresRuntimePersistence.js";
+import {
+  createPostgresMigrationChecksum,
+  POSTGRES_MIGRATIONS,
+} from "../server/persistence/postgresMigrations.js";
 
-const migrationHistory = [
-  {
-    version: 1,
-    name:
-      "initial-persistence-schema",
-  },
-
-  {
-    version: 2,
-    name:
-      "application-schema-read-access",
-  },
-];
+const migrationHistory = POSTGRES_MIGRATIONS.map((migration) => ({
+  version: migration.version,
+  name: migration.name,
+  checksum: createPostgresMigrationChecksum(migration),
+}));
 
 const tableNames = [
   "accounts",
@@ -284,6 +280,28 @@ test("PostgreSQL runtime persistence refuses to start against an older schema an
     database.getCloseCalls(),
     1,
   );
+});
+
+test("PostgreSQL runtime persistence refuses a modified applied migration checksum", async () => {
+  const changedHistory = structuredClone(migrationHistory);
+  changedHistory[0].checksum = "0".repeat(64);
+  const database = createFakeDatabase({ history: changedHistory });
+
+  await assert.rejects(
+    createPostgresRuntimePersistence({
+      databaseOptions: {
+        user: "nonameyet_app",
+        password: "test-password",
+      },
+      databaseFactory() {
+        return database;
+      },
+      logger: { log() {} },
+    }),
+    /migration history does not match/,
+  );
+
+  assert.equal(database.getCloseCalls(), 1);
 });
 
 test("PostgreSQL runtime persistence refuses an overprivileged application role", async () => {

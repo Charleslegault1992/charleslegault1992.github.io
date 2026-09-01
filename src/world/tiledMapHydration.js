@@ -11,6 +11,17 @@ export const hydrateTiledMapTilesets = (tiledMap, tilesetRawByFileName) => {
   }
   const hydratedTilesets = [];
   for (const tilesetRef of tiledMap.tilesets) {
+    if (
+      Number.isFinite(tilesetRef?.firstgid) &&
+      Number.isFinite(tilesetRef?.columns) &&
+      Number.isFinite(tilesetRef?.tilewidth) &&
+      Number.isFinite(tilesetRef?.tileheight) &&
+      typeof tilesetRef?.image === "string" &&
+      tilesetRef.image !== ""
+    ) {
+      hydratedTilesets.push({ ...tilesetRef, source: tilesetRef.source ?? `embedded:${tilesetRef.name ?? tilesetRef.image}` });
+      continue;
+    }
     const fileName = getFileNameFromPath(tilesetRef.source);
     const rawData = fileName ? tilesetRawByFileName.get(fileName) : null;
     if (!rawData) {

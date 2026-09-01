@@ -183,6 +183,7 @@ export const serializeGroundEffectState = (groundEffect) => {
     nextDecayAt: groundEffect.nextDecayAt,
     isPermanent: groundEffect.isPermanent === true,
     ownerUid: typeof groundEffect.ownerUid === "string" ? groundEffect.ownerUid : null,
+    tileStackOrder: Number.isSafeInteger(groundEffect.tileStackOrder) ? groundEffect.tileStackOrder : 0,
   };
 };
 

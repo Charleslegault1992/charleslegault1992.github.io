@@ -96,15 +96,16 @@ export const POSTGRES_MIGRATIONS = Object.freeze([
   },
 ]);
 
-const createMigrationChecksum = (migration, migrationType) => {
-  const migrationSource = migrationType === "sql" ? migration.sql : migration.up.toString();
+export const createPostgresMigrationChecksum = (migration, migrationType = null) => {
+  const resolvedMigrationType = migrationType ?? (typeof migration?.sql === "string" ? "sql" : "up");
+  const migrationSource = resolvedMigrationType === "sql" ? migration.sql : migration.up.toString();
 
   return createHash("sha256")
     .update(String(migration.version))
     .update("\0")
     .update(migration.name)
     .update("\0")
-    .update(migrationType)
+    .update(resolvedMigrationType)
     .update("\0")
     .update(migrationSource)
     .digest("hex");
@@ -138,7 +139,7 @@ const normalizePostgresMigrations = (migrations) => {
         type: migrationType,
         sql: hasSql ? migration.sql : null,
         up: hasUp ? migration.up : null,
-        checksum: createMigrationChecksum(migration, migrationType),
+        checksum: createPostgresMigrationChecksum(migration, migrationType),
       });
     })
     .sort((first, second) => first.version - second.version);

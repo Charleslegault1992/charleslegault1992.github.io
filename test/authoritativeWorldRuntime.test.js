@@ -1757,6 +1757,49 @@ test("asynchronous character persistence never blocks the authoritative update l
   await Promise.resolve();
 });
 
+test("a persistence version conflict blocks an already coalesced follow-up save", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const persistedPlayer = createPlayerState();
+  persistedPlayer.progress.starterKitGranted = true;
+  let resolveFirstSave;
+  let saveCalls = 0;
+  const repository = {
+    load() {
+      return { snapshot: serializePlayerPrivateState(persistedPlayer), version: 1 };
+    },
+    save() {
+      saveCalls += 1;
+      return new Promise((resolve) => {
+        resolveFirstSave = resolve;
+      });
+    },
+  };
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    characterRepository: repository,
+    now: () => serverTime,
+  });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "version-conflict",
+    characterId: "player",
+  }).playerUid;
+
+  runtime.dispatchAction(session, createSetPvpEnabledAction(true, serverTime));
+  serverTime += 30001;
+  runtime.update(serverTime);
+  runtime.dispatchAction(session, createSetPvpEnabledAction(false, serverTime));
+  const finalSave = runtime.saveAllPlayerPersistence();
+
+  resolveFirstSave({ success: false, reason: "version-conflict" });
+  const result = await finalSave;
+
+  assert.equal(saveCalls, 1);
+  assert.equal(result.success, false);
+  assert.deepEqual(result.failedPlayerUids, [session.playerUid]);
+});
+
 test("character persistence limits database save concurrency to two players", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
 

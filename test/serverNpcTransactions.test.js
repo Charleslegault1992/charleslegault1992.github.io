@@ -177,3 +177,69 @@ test("Kev offers every spell and enforces magic level before charging gold", asy
   assert.equal(getPlayerGoldAmount(player), 20);
   assert.equal(player.spellbook.learnedSpellIds.includes("purgaVenenum"), true);
 });
+
+test("Dave changes class at level 12 and Jenny keeps raid travel unavailable", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "services",
+    characterId: "adventurer",
+    language: "fr",
+  }).playerUid;
+  const player = runtime.getPlayer(session.playerUid);
+  const npcs = [...runtime.getWorldEntities().npcs.values()];
+  const dave = npcs.find((npc) => npc.npcId === "dave");
+  const jenny = npcs.find((npc) => npc.npcId === "jenny");
+
+  assert.ok(dave);
+  assert.ok(jenny);
+  Object.assign(player, { x: dave.x, y: dave.y, z: dave.z, level: 11 });
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const blocked = speak(runtime, session, player, "chevalier");
+  assert.match(blocked.events.find((event) => event.type === "npc-spoke").text, /niveau 12/i);
+  assert.equal(player.classId, "noClass");
+
+  player.level = 12;
+  const confirmation = speak(runtime, session, player, "chevalier");
+  assert.match(confirmation.events.find((event) => event.type === "npc-spoke").text, /devenir Chevalier/i);
+  const changed = speak(runtime, session, player, "oui");
+  assert.equal(player.classId, "knight");
+  assert.equal(changed.events.some((event) => event.type === "npc-class-changed"), true);
+
+  Object.assign(player, { x: jenny.x, y: jenny.y, z: jenny.z });
+  runtime.update(62000);
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const raids = speak(runtime, session, player, "raids");
+  assert.match(raids.events.find((event) => event.type === "npc-spoke").text, /arrivent bientot/i);
+  assert.equal(player.z, jenny.z);
+});
+
+test("Amanda sells localized food through the authoritative inventory transaction", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
+  const session = {};
+  session.playerUid = runtime.connectClient(session, {
+    accountId: "food",
+    characterId: "hungry",
+    language: "fr",
+  }).playerUid;
+  const player = runtime.getPlayer(session.playerUid);
+  const amanda = [...runtime.getWorldEntities().npcs.values()].find((npc) => npc.npcId === "amanda");
+  const bag = createItemInstance("bag", 1);
+  bag.content[0] = createItemInstance("goldCoin", 20);
+  player.equipment.backpack = bag;
+  Object.assign(player, { x: amanda.x, y: amanda.y, z: amanda.z });
+
+  assert.ok(amanda);
+  assert.equal(speak(runtime, session, player, "salut").success, true);
+  const menu = speak(runtime, session, player, "achat");
+  assert.deepEqual(menu.events.find((event) => event.type === "npc-spoke").suggestions, ["Nourriture"]);
+  const confirmation = speak(runtime, session, player, "2 carottes");
+  assert.match(confirmation.events.find((event) => event.type === "npc-spoke").text, /2 Carottes.*8 pieces/i);
+  const purchase = speak(runtime, session, player, "oui");
+
+  assert.equal(purchase.success, true);
+  assert.equal(getPlayerGoldAmount(player), 12);
+  assert.equal(bag.content.some((item) => item?.itemId === "carrot" && item.quantity === 2), true);
+});

@@ -6,3 +6,4 @@ dist/
 .env.*.local
 .env
 docs.zip
+server.zip

@@ -20,8 +20,12 @@ export const createServerWorldEntities = (
   const npcs = createSpatialEntityStore();
   const doors = createSpatialEntityStore();
   const doorUidByTileKey = new Map();
-  const worldItems = createSpatialEntityStore({ stackOrderField: "tileStackOrder" });
-  const groundEffects = createSpatialEntityStore();
+  const worldStackOrderState = { next: 1 };
+  const worldItems = createSpatialEntityStore({ stackOrderField: "tileStackOrder", stackOrderState: worldStackOrderState });
+  const groundEffects = createSpatialEntityStore({
+    stackOrderField: "tileStackOrder",
+    stackOrderState: worldStackOrderState,
+  });
   const decayingItems = [];
   const spawnDefinitionsById = new Map();
   const spawnStateById = new Map();
