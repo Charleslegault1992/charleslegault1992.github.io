@@ -574,6 +574,7 @@ export const GAME_CONTENT_TEXT = {
     monsters: {
       rat: { name: "Rat", desc: "Un petit rat feroce.", suffix: "un" },
       spider: { name: "Araignee", desc: "Une araignee venimeuse.", suffix: "une" },
+      frog: { name: "Grenouille", desc: "Une petite grenouille du village.", suffix: "une" },
     },
     classes: {
       noClass: { name: "Sans classe" },

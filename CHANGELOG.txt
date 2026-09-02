@@ -1,3 +1,7 @@
+0.34494 - Grenouilles du village
+    - Frog est maintenant un monstre fonctionnel avec ses animations, son combat et son respawn.
+    - La nouvelle zone frog_village_01 de Tiled fait apparaitre jusqua cinq grenouilles.
+
 0.34493 - Validation complete des maps Tiled
     - Les maps, chunks, layers, GID, tilesets et dimensions PNG sont verifies avant le demarrage.
     - Les npcId et monsterId inconnus ou dupliques sont maintenant refuses avant le deploiement.

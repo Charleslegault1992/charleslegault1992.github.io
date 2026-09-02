@@ -691,8 +691,8 @@
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,1636,0,
-0,0,0,0,0,0,0,0,0,0,0,0,0,0,1668,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,1764,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,1828,0
 </chunk>
   </data>
  </layer>
@@ -863,7 +863,7 @@
   </data>
  </layer>
  <objectgroup id="9" name="transitions">
-  <object id="8" template="../../../../../../../../../../Users/Charles/Pictures/untitled.tx" gid="1700" x="896" y="1088" width="64" height="64">
+  <object id="8" template="../../../../../../../../../../Users/Charles/Pictures/untitled.tx" gid="1892" x="896" y="1088" width="64" height="64">
    <properties>
     <property name="targetCol" type="int" value="14"/>
     <property name="targetRow" type="int" value="16"/>
