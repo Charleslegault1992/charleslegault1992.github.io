@@ -1,3 +1,9 @@
+0.3449 - Bordures, bateau et rendu Tiled
+    - Le nouveau layer groundBorders reste sous les creatures et conserve les diagonales propres.
+    - Les rotations et miroirs de Tiled sont maintenant reproduits correctement dans le monde et la mini-carte.
+    - Le bateau utilise son vrai decoupage de 7 par 16 tiles et apparait comme dans Tiled.
+    - Les positions des nouveaux NPC et les collisions de leur case sont verifiees au chargement.
+
 0.3448 - Nouveaux NPC, Tiled et solidification PostgreSQL
     - Dave permet maintenant de choisir une classe au niveau 12 et Jenny prepare les futurs voyages de raids.
     - Amanda vend plusieurs nourritures avec des dialogues anglais et francais.

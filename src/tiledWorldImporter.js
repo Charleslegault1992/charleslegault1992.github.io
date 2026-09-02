@@ -97,6 +97,7 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
     chunkY,
     layers: {
       ground: [],
+      groundBorders: [],
       groundDetails: [],
       walls: [],
       objects: [],

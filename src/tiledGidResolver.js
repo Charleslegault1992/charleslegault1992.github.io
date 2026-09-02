@@ -1,6 +1,32 @@
 /* ==================================================== */
 //#region     -----  TILESETS - SELECTION  -----
 /* ==================================================== */
+const TILED_FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+const TILED_FLIPPED_VERTICALLY_FLAG = 0x40000000;
+const TILED_FLIPPED_DIAGONALLY_FLAG = 0x20000000;
+const TILED_ROTATED_HEXAGONAL_120_FLAG = 0x10000000;
+const TILED_GID_MASK = 0x0fffffff;
+
+export const decodeTiledGid = (rawGid) => {
+  if (!Number.isInteger(rawGid) || rawGid <= 0 || rawGid > 0xffffffff) {
+    return null;
+  }
+
+  const unsignedGid = rawGid >>> 0;
+  const gid = unsignedGid & TILED_GID_MASK;
+  if (gid <= 0) {
+    return null;
+  }
+
+  return {
+    gid,
+    flipHorizontal: (unsignedGid & TILED_FLIPPED_HORIZONTALLY_FLAG) !== 0,
+    flipVertical: (unsignedGid & TILED_FLIPPED_VERTICALLY_FLAG) !== 0,
+    flipDiagonal: (unsignedGid & TILED_FLIPPED_DIAGONALLY_FLAG) !== 0,
+    rotateHexagonal120: (unsignedGid & TILED_ROTATED_HEXAGONAL_120_FLAG) !== 0,
+  };
+};
+
 const getTilesetForGid = (tiledTilesets, gid) => {
   if (!Number.isFinite(gid) || gid <= 0 || !Array.isArray(tiledTilesets)) {
     return null;
@@ -77,17 +103,25 @@ const getTileSourcePositionInTileset = (tileset, localTileId) => {
 //#region     -----  RENDER DATA  -----
 /* ==================================================== */
 export const getTileRenderDataFromGid = (tiledTilesets, gid) => {
-  if (!Number.isFinite(gid) || gid <= 0 || !Array.isArray(tiledTilesets)) {
+  if (!Array.isArray(tiledTilesets)) {
     return null;
   }
 
-  const tileset = getTilesetForGid(tiledTilesets, gid);
+  const decodedGid = decodeTiledGid(gid);
+  if (!decodedGid) {
+    return null;
+  }
+
+  const tileset = getTilesetForGid(tiledTilesets, decodedGid.gid);
   if (!tileset) {
     return null;
   }
 
-  const localTileId = getLocalTileIdFromGid(tileset, gid);
-  if (!Number.isInteger(localTileId)) {
+  const localTileId = getLocalTileIdFromGid(tileset, decodedGid.gid);
+  if (
+    !Number.isInteger(localTileId) ||
+    (Number.isInteger(tileset.tilecount) && localTileId >= tileset.tilecount)
+  ) {
     return null;
   }
 
@@ -97,7 +131,8 @@ export const getTileRenderDataFromGid = (tiledTilesets, gid) => {
   }
 
   return {
-    gid,
+    rawGid: gid,
+    ...decodedGid,
     tileset,
     localTileId,
     ...sourcePosition,

@@ -36,7 +36,7 @@ import { createVerticalFallbackPlan } from "./world/verticalFloorComposition.js"
 /* ==================================================== */
 //#region     -----  CONFIG  -----
 /* ==================================================== */
-const MAP_BELOW_LAYER_NAMES = ["ground", "groundDetails"];
+const MAP_BELOW_LAYER_NAMES = ["ground", "groundBorders", "groundDetails"];
 const MAP_DEPTH_LAYER_NAMES = ["walls", "objects"];
 const MAP_TOP_LAYER_NAMES = ["top", "topDeco"];
 const MAP_ROOF_LAYER_NAME = "roofs";
@@ -46,7 +46,7 @@ const MAP_VERTICAL_FALLBACK_LAYER_NAMES = [
   ...MAP_TOP_LAYER_NAMES,
   MAP_ROOF_LAYER_NAME,
 ];
-const MINIMAP_LAYER_NAMES = ["ground", "groundDetails", "walls", "objects"];
+const MINIMAP_LAYER_NAMES = ["ground", "groundBorders", "groundDetails", "walls", "objects"];
 const MINIMAP_CACHE_CELL_SIZE = 8;
 const ITEM_SELECTION_OUTLINE_OFFSETS = [
   [-1, -1],
@@ -674,16 +674,14 @@ const ensureTilesetTextureLoaded = async (tileset) => {
 /* ==================================================== */
 //#region     -----  RENDU - TEXTURES ET SPRITES  -----
 /* ==================================================== */
-const createTileTextureFromGid = (tilesets, gid) => {
+const createTileTextureFromRenderData = (tileRenderData) => {
   if (!(tileTextureByCacheKey instanceof Map)) {
     return null;
   }
-
-  const tileRenderData = getTileRenderDataFromGid(tilesets, gid);
   if (!tileRenderData) {
-    return;
+    return null;
   }
-  const cacheKey = `${tileRenderData.tileset.source ?? tileRenderData.tileset.image}:${gid}`;
+  const cacheKey = `${tileRenderData.tileset.source ?? tileRenderData.tileset.image}:${tileRenderData.gid}`;
   if (tileTextureByCacheKey.has(cacheKey)) {
     return tileTextureByCacheKey.get(cacheKey);
   }
@@ -709,13 +707,39 @@ const createTileSprite = (tilesets, gid, x, y) => {
   if (!Number.isFinite(gid) || gid <= 0) {
     return null;
   }
-  const texture = createTileTextureFromGid(tilesets, gid);
+  const tileRenderData = getTileRenderDataFromGid(tilesets, gid);
+  if (!tileRenderData) {
+    return null;
+  }
+  const texture = createTileTextureFromRenderData(tileRenderData);
   if (!texture) {
     return null;
   }
   const sprite = new Sprite(texture);
-  sprite.x = x;
-  sprite.y = y;
+
+  if (!tileRenderData.flipHorizontal && !tileRenderData.flipVertical && !tileRenderData.flipDiagonal) {
+    sprite.x = x;
+    sprite.y = y;
+    return sprite;
+  }
+
+  sprite.anchor.set(0.5);
+  sprite.x = x + tileRenderData.sourceWidth / 2;
+  sprite.y = y + tileRenderData.sourceHeight / 2;
+
+  if (!tileRenderData.flipDiagonal) {
+    sprite.scale.set(tileRenderData.flipHorizontal ? -1 : 1, tileRenderData.flipVertical ? -1 : 1);
+  } else if (tileRenderData.flipHorizontal && tileRenderData.flipVertical) {
+    sprite.rotation = Math.PI / 2;
+    sprite.scale.set(1, -1);
+  } else if (tileRenderData.flipHorizontal) {
+    sprite.rotation = -Math.PI / 2;
+  } else if (tileRenderData.flipVertical) {
+    sprite.rotation = Math.PI / 2;
+  } else {
+    sprite.rotation = -Math.PI / 2;
+    sprite.scale.set(1, -1);
+  }
   return sprite;
 };
 //#endregion  -----  RENDU - TEXTURES ET SPRITES  -----
@@ -1015,17 +1039,41 @@ const drawMinimapTile = (context, tilesets, gid, x, y) => {
   if (!imageSource) {
     return false;
   }
+
+  const hasTransform =
+    tileRenderData.flipHorizontal || tileRenderData.flipVertical || tileRenderData.flipDiagonal;
+  if (hasTransform) {
+    context.save();
+    context.translate(x + MINIMAP_CACHE_CELL_SIZE / 2, y + MINIMAP_CACHE_CELL_SIZE / 2);
+    if (!tileRenderData.flipDiagonal) {
+      context.scale(tileRenderData.flipHorizontal ? -1 : 1, tileRenderData.flipVertical ? -1 : 1);
+    } else if (tileRenderData.flipHorizontal && tileRenderData.flipVertical) {
+      context.rotate(Math.PI / 2);
+      context.scale(1, -1);
+    } else if (tileRenderData.flipHorizontal) {
+      context.rotate(-Math.PI / 2);
+    } else if (tileRenderData.flipVertical) {
+      context.rotate(Math.PI / 2);
+    } else {
+      context.rotate(-Math.PI / 2);
+      context.scale(1, -1);
+    }
+  }
+
   context.drawImage(
     imageSource,
     tileRenderData.sourceX,
     tileRenderData.sourceY,
     tileRenderData.sourceWidth,
     tileRenderData.sourceHeight,
-    x,
-    y,
+    hasTransform ? -MINIMAP_CACHE_CELL_SIZE / 2 : x,
+    hasTransform ? -MINIMAP_CACHE_CELL_SIZE / 2 : y,
     MINIMAP_CACHE_CELL_SIZE,
     MINIMAP_CACHE_CELL_SIZE,
   );
+  if (hasTransform) {
+    context.restore();
+  }
   return true;
 };
 

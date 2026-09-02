@@ -44,7 +44,10 @@ const getMinimapTileColor = (worldMap, col, row) => {
   ) {
     return "#554b3b";
   }
-  if (getWorldLayerGidAtTile(worldMap, "groundDetails", col, row) > 0) {
+  if (
+    getWorldLayerGidAtTile(worldMap, "groundBorders", col, row) > 0 ||
+    getWorldLayerGidAtTile(worldMap, "groundDetails", col, row) > 0
+  ) {
     return "#756b56";
   }
   return "#91846a";
