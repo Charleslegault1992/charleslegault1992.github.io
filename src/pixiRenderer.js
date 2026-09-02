@@ -731,14 +731,14 @@ const createTileSprite = (tilesets, gid, x, y) => {
     sprite.scale.set(tileRenderData.flipHorizontal ? -1 : 1, tileRenderData.flipVertical ? -1 : 1);
   } else if (tileRenderData.flipHorizontal && tileRenderData.flipVertical) {
     sprite.rotation = Math.PI / 2;
-    sprite.scale.set(1, -1);
+    sprite.scale.set(-1, 1);
   } else if (tileRenderData.flipHorizontal) {
-    sprite.rotation = -Math.PI / 2;
-  } else if (tileRenderData.flipVertical) {
     sprite.rotation = Math.PI / 2;
+  } else if (tileRenderData.flipVertical) {
+    sprite.rotation = -Math.PI / 2;
   } else {
     sprite.rotation = -Math.PI / 2;
-    sprite.scale.set(1, -1);
+    sprite.scale.set(-1, 1);
   }
   return sprite;
 };
@@ -1049,14 +1049,14 @@ const drawMinimapTile = (context, tilesets, gid, x, y) => {
       context.scale(tileRenderData.flipHorizontal ? -1 : 1, tileRenderData.flipVertical ? -1 : 1);
     } else if (tileRenderData.flipHorizontal && tileRenderData.flipVertical) {
       context.rotate(Math.PI / 2);
-      context.scale(1, -1);
+      context.scale(-1, 1);
     } else if (tileRenderData.flipHorizontal) {
-      context.rotate(-Math.PI / 2);
-    } else if (tileRenderData.flipVertical) {
       context.rotate(Math.PI / 2);
+    } else if (tileRenderData.flipVertical) {
+      context.rotate(-Math.PI / 2);
     } else {
       context.rotate(-Math.PI / 2);
-      context.scale(1, -1);
+      context.scale(-1, 1);
     }
   }
 
