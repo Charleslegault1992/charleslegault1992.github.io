@@ -1113,10 +1113,12 @@ const createWorldItemHitbox = (item) => {
 };
 
 const getWorldItemRenderSortY = (item) => {
+  const isOnPlayerMovementEndpoint =
+    (item?.x === playerState.x && item.y === playerState.y) ||
+    (item?.x === playerState.oldX && item.y === playerState.oldY);
   if (
     item?.z === playerState.z &&
-    item.x === playerState.x &&
-    item.y === playerState.y &&
+    isOnPlayerMovementEndpoint &&
     Number.isFinite(playerState.renderY) &&
     playerState.renderY !== playerState.y
   ) {

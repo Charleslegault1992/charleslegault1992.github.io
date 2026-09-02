@@ -1,3 +1,6 @@
+0.3455 - Interpolation des items vers le haut
+    - Un item sur la case de depart reste maintenant sous le joueur pendant un mouvement vers le haut.
+
 0.3453 - Combat et progression authoritative
     - Les animations de combat ne modifient plus visuellement la barre de vie du joueur en ligne.
     - Seuls les vrais changements de HP recus du serveur mettent maintenant la barre a jour.
