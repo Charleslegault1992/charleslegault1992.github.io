@@ -1,3 +1,9 @@
+0.34493 - Validation complete des maps Tiled
+    - Les maps, chunks, layers, GID, tilesets et dimensions PNG sont verifies avant le demarrage.
+    - Les npcId et monsterId inconnus ou dupliques sont maintenant refuses avant le deploiement.
+    - Le serveur, les tests et GitHub Pages utilisent tous le meme validateur fail-fast.
+    - Les tests Tiled acceptent maintenant les deplacements et ajouts de bordures volontaires.
+
 0.34492 - Diagonales et bordures Tiled
     - Le tri des creatures garde la rangee nord pendant une transition diagonale.
     - Les huit rotations et miroirs Tiled utilisent maintenant leur orientation exacte.

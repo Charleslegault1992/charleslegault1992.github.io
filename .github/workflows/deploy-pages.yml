@@ -41,6 +41,9 @@ jobs:
           test -n "$VITE_GAME_SERVER_URL" || (echo "Missing VITE_GAME_SERVER_URL repository variable" && exit 1)
           test -n "$VITE_GAME_API_URL" || (echo "Missing VITE_GAME_API_URL repository variable" && exit 1)
 
+      - name: Validate Tiled world assets
+        run: npm run validate:maps
+
       - name: Build
         env:
           VITE_GAME_SERVER_URL: ${{ vars.VITE_GAME_SERVER_URL }}

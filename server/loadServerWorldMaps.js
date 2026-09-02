@@ -2,9 +2,19 @@ import { readFile, readdir } from "node:fs/promises";
 
 import { importTiledMapIntoWorldMaps } from "../src/tiledWorldImporter.js";
 import { hydrateTiledMapTilesets } from "../src/world/tiledMapHydration.js";
+import { formatTiledWorldValidationReport, validateTiledWorldAssets } from "./validateTiledWorld.js";
 
 const tiledMapsDirectory = new URL("../src/assets/maps/tiled/", import.meta.url);
 const tilesetsDirectory = new URL("../src/assets/tilesets/", import.meta.url);
+let tiledWorldValidationPromise = null;
+
+const ensureTiledWorldAssetsAreValid = async () => {
+  tiledWorldValidationPromise ??= validateTiledWorldAssets({ mapsDirectory: tiledMapsDirectory });
+  const report = await tiledWorldValidationPromise;
+  if (report.errors.length > 0) {
+    throw new Error(`Validation Tiled echouee:\n${formatTiledWorldValidationReport(report)}`);
+  }
+};
 
 const loadTilesetEntriesFromDirectory = async (directory) => {
   const fileNames = (await readdir(directory)).filter((fileName) => fileName.endsWith(".tsj"));
@@ -20,6 +30,7 @@ const loadTilesetRawByFileName = async () => {
 };
 
 export const loadServerWorldMaps = async () => {
+  await ensureTiledWorldAssetsAreValid();
   const tilesetRawByFileName = await loadTilesetRawByFileName();
   const mapFileNames = (await readdir(tiledMapsDirectory)).filter((fileName) => /^world_z-?\d+\.tmj$/.test(fileName));
   const worldMapsByZ = new Map();

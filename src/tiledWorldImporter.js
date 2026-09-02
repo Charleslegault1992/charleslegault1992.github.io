@@ -1,3 +1,9 @@
+import {
+  createTiledLayerCollections,
+  TILED_OBJECT_LAYER_NAMES,
+  TILED_TILE_LAYER_NAMES,
+} from "./world/tiledLayerSchema.js";
+
 /* ==================================================== */
 //#region     -----  CONFIG  -----
 /* ==================================================== */
@@ -95,25 +101,8 @@ const createEmptyWorldChunk = (z, chunkX, chunkY) => {
     z,
     chunkX,
     chunkY,
-    layers: {
-      ground: [],
-      groundBorders: [],
-      groundDetails: [],
-      walls: [],
-      objects: [],
-      top: [],
-      topDeco: [],
-      roofs: [],
-      collision: [],
-    },
-    interactables: [],
-    roofAreas: [],
-    roofRevealZones: [],
-    doors: [],
-    transitions: [],
-    spawns: [],
-    npcs: [],
-    zones: [],
+    layers: createTiledLayerCollections(TILED_TILE_LAYER_NAMES),
+    ...createTiledLayerCollections(TILED_OBJECT_LAYER_NAMES),
   };
 };
 

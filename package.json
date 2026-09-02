@@ -1,6 +1,6 @@
 {
   "name": "nonameyet",
-  "version": "0.34492",
+  "version": "0.34493",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "restore:database": "node server/restoreDatabaseBackup.js",
     "auth:token": "node server/issueDevelopmentToken.js",
     "test:load": "node server/loadTest.js",
+    "validate:maps": "node server/validateTiledWorld.js",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test"
