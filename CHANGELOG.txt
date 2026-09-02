@@ -1,3 +1,7 @@
+0.34491 - Correction des sprites Tiled
+    - Le tileset wallCave charge maintenant sa propre image au lieu de cavewall128.
+    - Les dimensions et le nombre de tiles de floortile correspondent maintenant au PNG reel.
+
 0.3449 - Bordures, bateau et rendu Tiled
     - Le nouveau layer groundBorders reste sous les creatures et conserve les diagonales propres.
     - Les rotations et miroirs de Tiled sont maintenant reproduits correctement dans le monde et la mini-carte.
