@@ -1,3 +1,8 @@
+0.34495 - Sangliers, corps et nouveaux loots
+    - Les nouveaux spawns Wild Boar de Tiled sont maintenant fonctionnels.
+    - Frog et Wild Boar ont leurs corps decomposables, leurs statistiques et leurs loots.
+    - La cuisse de poulet, la viande et le jambon sont maintenant des nourritures utilisables.
+
 0.34494 - Grenouilles du village
     - Frog est maintenant un monstre fonctionnel avec ses animations, son combat et son respawn.
     - La nouvelle zone frog_village_01 de Tiled fait apparaitre jusqua cinq grenouilles.
