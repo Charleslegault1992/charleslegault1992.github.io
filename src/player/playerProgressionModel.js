@@ -37,6 +37,35 @@ export const applyPlayerLevelProgression = (player) => {
   return { previousLevel, nextLevel, levelsGained, hpGain, manaGain, capacityGain };
 };
 
+export const applyPlayerLevelLoss = (player) => {
+  if (!player || !Number.isFinite(player.experience)) {
+    return null;
+  }
+  const nextLevel = getLevelFromExperience(player.experience);
+  const previousLevel = Number.isFinite(player.level) ? player.level : nextLevel;
+  const levelsLost = Math.max(previousLevel - nextLevel, 0);
+  player.level = nextLevel;
+  if (levelsLost === 0) {
+    return { previousLevel, nextLevel, levelsLost: 0 };
+  }
+
+  const gains = getPlayerClassData(player).levelUpGains;
+  const hpLost = gains.hp * levelsLost;
+  const manaLost = gains.mana * levelsLost;
+  const capacityLost = gains.capacity * levelsLost;
+  if (Number.isFinite(player.maxHp)) {
+    player.maxHp = Math.max(player.maxHp - hpLost, 1);
+  }
+  if (Number.isFinite(player.maxMana)) {
+    player.maxMana = Math.max(player.maxMana - manaLost, 0);
+    player.mana = Math.min(player.mana, player.maxMana);
+  }
+  if (Number.isFinite(player.capacity)) {
+    player.capacity = Math.max(player.capacity - capacityLost, 0);
+  }
+  return { previousLevel, nextLevel, levelsLost, hpLost, manaLost, capacityLost };
+};
+
 export const applyPlayerAttackSkillProgression = (player, attackResult, now) => {
   if (!player || !attackResult?.didHit || !Number.isFinite(now)) {
     return null;

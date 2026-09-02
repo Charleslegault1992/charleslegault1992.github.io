@@ -2423,11 +2423,8 @@ export const createAuthoritativeWorldRuntime = ({
         });
       }
       const regeneratedPlayers = [];
-      const regenerationEvents = [];
       for (const player of playersByUid.values()) {
         const classData = playerClassesDatabase[player.classId] ?? playerClassesDatabase.noClass;
-        const previousHp = player.hp;
-        const previousMana = player.mana;
         let didChange = advancePlayerRegeneration(player, classData.regeneration, currentServerTime);
         if (player.spellEffects.light.expiresAt > 0 && currentServerTime >= player.spellEffects.light.expiresAt) {
           player.spellEffects.light.radius = 0;
@@ -2436,17 +2433,6 @@ export const createAuthoritativeWorldRuntime = ({
         }
         if (didChange) {
           regeneratedPlayers.push(player);
-          const healthRestored = Math.max(player.hp - previousHp, 0);
-          const manaRestored = Math.max(player.mana - previousMana, 0);
-          if (healthRestored > 0 || manaRestored > 0) {
-            regenerationEvents.push({
-              type: "player-regeneration-resolved",
-              playerUid: player.uid,
-              recipientPlayerUid: player.uid,
-              healthRestored,
-              manaRestored,
-            });
-          }
         }
       }
       if (regeneratedPlayers.length > 0) {
@@ -2456,7 +2442,6 @@ export const createAuthoritativeWorldRuntime = ({
         journal.record({
           serverTime: currentServerTime,
           upserts: { players: regeneratedPlayers.map(serializePlayerPublicState) },
-          events: regenerationEvents,
         });
       }
       const pvpStateChangedPlayers = [];

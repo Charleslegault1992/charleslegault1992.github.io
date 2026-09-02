@@ -1,3 +1,5 @@
+import { applyPlayerLevelLoss } from "./playerProgressionModel.js";
+
 export const applyPlayerDeathState = (player, spawnPosition) => {
   if (
     !player ||
@@ -13,6 +15,7 @@ export const applyPlayerDeathState = (player, spawnPosition) => {
   const previousPosition = { x: player.x, y: player.y, z: player.z };
   const experienceLost = player.experience - Math.floor(player.experience * 0.9);
   player.experience = Math.max(player.experience - experienceLost, 0);
+  const levelLoss = applyPlayerLevelLoss(player);
   player.hp = player.maxHp;
   player.x = spawnPosition.x;
   player.y = spawnPosition.y;
@@ -33,6 +36,8 @@ export const applyPlayerDeathState = (player, spawnPosition) => {
       hp: player.hp,
       experience: player.experience,
       experienceLost,
+      level: player.level,
+      levelLoss,
     },
   };
 };

@@ -1,3 +1,9 @@
+0.34498 - Barre de vie authoritative
+    - Les animations de combat ne modifient plus visuellement la barre de vie du joueur en ligne.
+    - Seuls les vrais changements de HP recus du serveur mettent maintenant la barre a jour.
+    - Le texte flottant de regeneration a ete retire.
+    - Une perte dexperience a la mort recalcule maintenant le niveau, les stats et la barre dexperience.
+
 0.34497 - Combat, fields et replication en ligne
     - Les projectiles, runes et impacts restent attaches a la position visible de leur cible, meme lors dune mort.
     - Les fields appliquent leur premier tick sans retard et la regeneration vie/mana est maintenant visible.

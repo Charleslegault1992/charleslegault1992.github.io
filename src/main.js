@@ -9384,7 +9384,9 @@ const handleMonsterAttackResolvedEffect = (event) => {
     playGameSfx(GAME_SFX.armorBlock);
   }
 
-  refreshPlayerVitalsUi();
+  if (!gameRuntimeState.isRemoteSession) {
+    refreshPlayerVitalsUi();
+  }
 };
 
 const handleMonsterDamageResolvedEffect = (event) => {
@@ -9450,19 +9452,9 @@ const handleFieldDamageResolvedEffect = (event) => {
   playCombatEffectAtTarget(event.damageType, "statusTick", target);
   if ((event.targetPlayerUid ?? event.playerUid) === playerState.uid) {
     showFloatingTextAbovePlayer(event.damageApplied, event.damageType);
-    refreshPlayerVitalsUi();
-  }
-};
-
-const handlePlayerRegenerationResolvedEffect = (event) => {
-  if (event.playerUid !== playerState.uid) {
-    return;
-  }
-  if (event.healthRestored > 0) {
-    showFloatingTextAbovePlayer(`+${event.healthRestored}`, "heal");
-  }
-  if (event.manaRestored > 0) {
-    showFloatingTextAbovePlayer(`+${event.manaRestored}`, "mana");
+    if (!gameRuntimeState.isRemoteSession) {
+      refreshPlayerVitalsUi();
+    }
   }
 };
 
@@ -9478,7 +9470,9 @@ const handlePlayerPvpFieldResolvedEffect = (event) => {
     updateRemotePlayerVisual(liveTargetPlayer);
   }
   if (event.targetPlayerUid === playerState.uid) {
-    refreshPlayerVitalsUi();
+    if (!gameRuntimeState.isRemoteSession) {
+      refreshPlayerVitalsUi();
+    }
   }
 };
 
@@ -9627,7 +9621,6 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
   "player-pvp-rune-resolved": handlePlayerPvpRuneResolvedEffect,
   "player-pvp-field-resolved": handlePlayerPvpFieldResolvedEffect,
-  "player-regeneration-resolved": handlePlayerRegenerationResolvedEffect,
   "player-died": handleServerPlayerDeathEffect,
   "player-pvp-state-changed": (event) => {
     if (event.playerUid === playerState.uid && event.pvp) {
