@@ -296,3 +296,30 @@ test("item use resolves the current source again inside the simulation", () => {
   assert.equal(accepted.events[0].type, "item-use-resolved");
   assert.equal(stale.reason, "item-changed");
 });
+
+test("item use rejects an inaccessible nested container source before executing", () => {
+  const item = { uid: 16, itemId: "apple", quantity: 1 };
+  const source = { locationType: "containerSlot", parentContainerUid: 3, slotIndex: 0 };
+  let executionCount = 0;
+  const simulation = createGameSimulation({
+    state: {
+      player: { uid: "player-1", x: 0, y: 0, z: 0, hp: 100 },
+      monstersByUid: new Map(),
+      timing: { nextPlayerMoveTime: 0, nextPlayerAttackTime: 0 },
+    },
+    rules: { canUseItemSource: () => false },
+    commands: {
+      getItemFromLocation: () => item,
+      getItemUseData: () => ({ action: "eat" }),
+      executeItemUse: () => {
+        executionCount++;
+        return { success: true };
+      },
+    },
+  });
+
+  const result = simulation.dispatch(createUseItemAction({ source, itemUid: item.uid, requestedAt: 100 }));
+
+  assert.equal(result.reason, "invalid-source");
+  assert.equal(executionCount, 0);
+});

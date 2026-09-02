@@ -1554,33 +1554,45 @@ const syncOpenedContainerItemReferences = () => {
     wrapper.sourceType = sourceTypeByLocationType[currentLocation.locationType] ?? wrapper.sourceType;
   }
 
-  for (const wrapper of openedContainers) {
+  for (let index = openedContainers.length - 1; index >= 0; index--) {
+    const wrapper = openedContainers[index];
     const visitedContainerUids = new Set([wrapper.itemUid]);
     let childWrapper = wrapper;
     let parentWrapper = wrapper.parent;
+    let childLocation = findItemLocationByUid(wrapper.itemUid);
+    let hasValidAncestry = Boolean(childLocation);
 
-    while (parentWrapper) {
+    while (hasValidAncestry && childLocation.locationType === "containerSlot") {
+      const expectedParentUid = childLocation.parentContainerUid;
+      if (!parentWrapper) {
+        hasValidAncestry = false;
+        break;
+      }
       const parentUid = parentWrapper.itemUid ?? parentWrapper.item?.uid;
-      if (!Number.isInteger(parentUid) || visitedContainerUids.has(parentUid)) {
-        childWrapper.parent = null;
-        childWrapper.parentUid = null;
+      if (parentUid !== expectedParentUid || visitedContainerUids.has(parentUid)) {
+        hasValidAncestry = false;
         break;
       }
 
       const parentLocation = findItemLocationByUid(parentUid);
       const parentItem = parentLocation ? getItemFromLocation(parentLocation) : null;
       if (!parentItem || !isOpenableContainerItem(parentItem)) {
-        childWrapper.parent = null;
-        childWrapper.parentUid = null;
+        hasValidAncestry = false;
         break;
       }
 
       parentWrapper.itemUid = parentUid;
       parentWrapper.item = parentItem;
+      parentWrapper.sourceType = sourceTypeByLocationType[parentLocation.locationType] ?? parentWrapper.sourceType;
       childWrapper.parentUid = parentUid;
       visitedContainerUids.add(parentUid);
       childWrapper = parentWrapper;
+      childLocation = parentLocation;
       parentWrapper = parentWrapper.parent;
+    }
+
+    if (!hasValidAncestry || parentWrapper) {
+      openedContainers.splice(index, 1);
     }
   }
 };
@@ -2206,6 +2218,38 @@ const isItemLocationCarriedByPlayer = (itemLocation) => {
     return isItemCarriedByPlayer(parentContainer.uid);
   }
   return false;
+};
+
+const getRootItemLocation = (itemUid) => {
+  const visitedItemUids = new Set();
+  let currentItemUid = itemUid;
+
+  while (Number.isInteger(currentItemUid) && !visitedItemUids.has(currentItemUid)) {
+    visitedItemUids.add(currentItemUid);
+    const location = findItemLocationByUid(currentItemUid);
+    if (!location || location.locationType !== "containerSlot") {
+      return location;
+    }
+    currentItemUid = location.parentContainerUid;
+  }
+  return null;
+};
+
+const canAccessItemSource = (source) => {
+  if (source?.locationType === "equipmentSlot") {
+    return true;
+  }
+  if (source?.locationType === "worldItem") {
+    return canInteractWithWorldItemSource(source);
+  }
+  if (source?.locationType !== "containerSlot") {
+    return false;
+  }
+  if (isItemLocationCarriedByPlayer(source)) {
+    return true;
+  }
+  const rootLocation = getRootItemLocation(source.parentContainerUid);
+  return rootLocation?.locationType === "worldItem" && canInteractWithWorldItemSource(rootLocation);
 };
 
 const isExceedCapacity = (source, destination, item) => {
@@ -3583,6 +3627,10 @@ const handleUseItemFromSource = (source) => {
     }
     return;
   }
+  if (!canAccessItemSource(source)) {
+    refreshInventoryUi();
+    return;
+  }
   if (!useData) {
     if (isOpenableContainerItem(item)) {
       handleOpenContainerUse(source, item, itemData);
@@ -3817,8 +3865,9 @@ const completeItemUseFromEvent = (e) => {
   const item = itemUseState.item;
   const useData = itemUseState.useData;
   const source = itemUseState.source;
-  if (source?.locationType === "worldItem" && !canInteractWithWorldItemSource(source)) {
+  if (!canAccessItemSource(source)) {
     cancelItemUse();
+    refreshInventoryUi();
     return;
   }
   if (useData.action === "drinkPotion") {
@@ -8788,6 +8837,12 @@ inventoryMoveService = createInventoryMoveService({
     }
     return isWorldItemAvailableForInteraction(item) ? true : INVENTORY_ACTION_REASON.notTopOfStack;
   },
+  canAccessLocation: (location) => {
+    if (location?.locationType !== "containerSlot") {
+      return true;
+    }
+    return canAccessItemSource(location);
+  },
   canPlaceWorldItem: (_source, _item, destination) =>
     isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) && hasPlayerLineOfSightToWorldPosition(destination),
   onItemLocationChanged: (item, destination) => {
@@ -9447,7 +9502,7 @@ gameSimulation = createGameSimulation({
       canInitiatePlayerPvpAttack(attacker, target, payload.requestedAt),
     canPlayerMove: canSimulationPlayerMove,
     canPlayerUseWorldTransition: (movingPlayer, transition) => isNearPlayer(transition, 1),
-    canUseWorldItemSource: (source) => canInteractWithWorldItemSource(source),
+    canUseItemSource: (source) => canAccessItemSource(source),
     getPlayerAttackCooldownMs: () => PLAYER_ATTACK_COOLDOWN_MS,
     getPlayerMoveTiming: getSimulationPlayerMoveTiming,
   },

@@ -1,3 +1,8 @@
+0.34496 - Conteneurs imbriques beton
+    - Les fenetres enfants ferment maintenant lorsque leur bag parent devient inaccessible.
+    - Le serveur refuse toute utilisation ou tout deplacement depuis un conteneur au sol trop loin.
+    - La chaine complete des bags imbriques est resynchronisee apres chaque changement dinventaire.
+
 0.34495 - Sangliers, corps et nouveaux loots
     - Les nouveaux spawns Wild Boar de Tiled sont maintenant fonctionnels.
     - Frog et Wild Boar ont leurs corps decomposables, leurs statistiques et leurs loots.

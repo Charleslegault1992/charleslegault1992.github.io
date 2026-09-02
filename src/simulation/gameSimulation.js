@@ -227,7 +227,14 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
     if (!item || item.uid !== payload.itemUid) {
       return rejectCommand("item-changed");
     }
-    if (payload.source.locationType === "worldItem" && rules.canUseWorldItemSource?.(payload.source, item) !== true) {
+    if (typeof rules.canUseItemSource === "function") {
+      if (rules.canUseItemSource(payload.source, item) !== true) {
+        return rejectCommand("invalid-source");
+      }
+    } else if (
+      payload.source.locationType === "worldItem" &&
+      rules.canUseWorldItemSource?.(payload.source, item) !== true
+    ) {
       return rejectCommand("invalid-source");
     }
     const useData = commands.getItemUseData?.(item) ?? null;

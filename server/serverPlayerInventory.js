@@ -209,6 +209,16 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     return isTopWorldItem(item) ? true : "not-top-of-stack";
   };
 
+  const canUseItemSource = (location, item) => {
+    if (location?.locationType === "equipmentSlot") {
+      return true;
+    }
+    if (location?.locationType === "worldItem") {
+      return canInteractWithWorldItem(location, item) === true;
+    }
+    return location?.locationType === "containerSlot" && canAccessLocation(location);
+  };
+
   const moveService = createInventoryMoveService({
     getItem: locationController.getItem,
     getParentContainer: locationController.getParentContainer,
@@ -349,6 +359,7 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
 
   return Object.freeze({
     canInteractWithWorldItem,
+    canUseItemSource,
     executeMove,
     findContainerByUid,
     findItemLocationByUid,
