@@ -1701,6 +1701,47 @@ test("monster death atomically grants experience, creates loot and schedules res
   assert.equal(delta.upserts.worldItems[0].uid, corpse.uid);
 });
 
+test("monster experience is shared proportionally between damage contributors", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({
+    worldMapsByZ,
+    now: () => serverTime,
+    combatRandom: { getInt: () => 1, getFloat: (_minimum, maximum) => maximum },
+  });
+  const firstSession = {};
+  const secondSession = {};
+  firstSession.playerUid = runtime.connectClient(firstSession, {
+    accountId: "shared-xp",
+    characterId: "first",
+  }).playerUid;
+  secondSession.playerUid = runtime.connectClient(secondSession, {
+    accountId: "shared-xp",
+    characterId: "second",
+  }).playerUid;
+  const firstPlayer = runtime.getPlayer(firstSession.playerUid);
+  const secondPlayer = runtime.getPlayer(secondSession.playerUid);
+  const monster = [...runtime.getWorldEntities().monsters.values()].find((entity) => entity.monsterId === "rat");
+  Object.assign(firstPlayer, { x: monster.x - TILE_SIZE, y: monster.y, z: monster.z, experience: 0 });
+  Object.assign(secondPlayer, { x: monster.x - TILE_SIZE, y: monster.y, z: monster.z, experience: 0 });
+
+  monster.hp = 1000;
+  serverTime += 1000;
+  runtime.update(serverTime);
+  const firstAttack = runtime.dispatchAction(firstSession, createAttackMonsterAction(monster.uid, serverTime));
+  assert.equal(firstAttack.success, true);
+  assert.ok(firstAttack.changes.finalDamage > 0);
+
+  monster.hp = 1;
+  const killingAttack = runtime.dispatchAction(secondSession, createAttackMonsterAction(monster.uid, serverTime));
+  const awards = killingAttack.events.filter((event) => event.type === "monster-experience-awarded");
+
+  assert.equal(killingAttack.changes.didDie, true);
+  assert.equal(awards.length, 2);
+  assert.equal(awards.reduce((sum, award) => sum + award.experienceReward, 0), 50);
+  assert.equal(firstPlayer.experience + secondPlayer.experience, 50);
+});
+
 test("combat logout keeps the avatar for two minutes and allows reclaiming it", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   let serverTime = 1000;

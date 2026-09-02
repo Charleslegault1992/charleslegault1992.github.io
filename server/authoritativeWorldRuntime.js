@@ -38,7 +38,7 @@ import { createGroundItem, createItemInstance } from "../src/items/itemFactory.j
 import { getItemData } from "../src/items/itemModel.js";
 import { getMonsterData } from "../src/monsters/monsterModel.js";
 import { getNpcData } from "../src/npcs/npcModel.js";
-import { applyMonsterExperienceReward, generateMonsterLoot } from "../src/monsters/monsterRewards.js";
+import { generateMonsterLoot } from "../src/monsters/monsterRewards.js";
 import {
   applyPlayerAttackSkillProgression,
   applyPlayerLevelProgression,
@@ -773,6 +773,38 @@ export const createAuthoritativeWorldRuntime = ({
     };
   };
 
+  const recordMonsterDamageContribution = (monster, player, damage) => {
+    if (!monster || !player || !Number.isFinite(damage) || damage <= 0) {
+      return;
+    }
+    if (!(monster.damageByPlayerUid instanceof Map)) {
+      monster.damageByPlayerUid = new Map();
+    }
+    monster.damageByPlayerUid.set(player.uid, (monster.damageByPlayerUid.get(player.uid) ?? 0) + damage);
+  };
+
+  const grantMonsterExperienceByDamage = (monster, monsterData) => {
+    const totalExperience = Math.max(Math.floor(monsterData?.experience ?? 0), 0);
+    const contributors = [...(monster.damageByPlayerUid instanceof Map ? monster.damageByPlayerUid : [])]
+      .map(([playerUid, damage]) => ({ player: playersByUid.get(playerUid), damage }))
+      .filter(({ player: contributor, damage }) => contributor && Number.isFinite(damage) && damage > 0);
+    const totalDamage = contributors.reduce((sum, contribution) => sum + contribution.damage, 0);
+    if (totalExperience <= 0 || totalDamage <= 0) {
+      return [];
+    }
+    let remainingExperience = totalExperience;
+    return contributors.map(({ player: contributor, damage }, index) => {
+      const experience = index === contributors.length - 1
+        ? remainingExperience
+        : Math.floor(totalExperience * damage / totalDamage);
+      remainingExperience -= experience;
+      contributor.experience += experience;
+      const levelProgression = experience > 0 ? applyPlayerLevelProgression(contributor) : null;
+      markPlayerPersistenceDirty(contributor.uid);
+      return { playerUid: contributor.uid, experience, levelProgression };
+    }).filter(({ experience }) => experience > 0);
+  };
+
   const resolvePlayerDamageToMonster = (player, monster, attackResult, initialEvents = [], deathSource = null) => {
     const attackerRenderSnapshot = createCombatPositionSnapshot(player);
     const targetRenderSnapshot = createCombatPositionSnapshot(monster);
@@ -785,11 +817,13 @@ export const createAuthoritativeWorldRuntime = ({
     let lootContent = [];
     let experienceReward = 0;
     let levelProgression = null;
+    let grantExperienceEvents = [];
     let groundEffect = null;
     if (player) {
       recordPlayerCombatActivity(player.uid);
     }
     if (healthResult.success) {
+      recordMonsterDamageContribution(monster, player, healthResult.damageApplied);
       groundEffect = addOrRefreshGroundEffect(
         monsterData?.bloodEffectId,
         monster.x,
@@ -825,10 +859,21 @@ export const createAuthoritativeWorldRuntime = ({
       if (!corpse || !worldEntities.worldItems.add(corpse)) {
         corpse = null;
       }
-      experienceReward = player ? applyMonsterExperienceReward(player, monsterData) : 0;
-      if (experienceReward > 0) {
-        levelProgression = applyPlayerLevelProgression(player);
-      }
+      const experienceAwards = grantMonsterExperienceByDamage(monster, monsterData);
+      const playerAward = experienceAwards.find((award) => award.playerUid === player?.uid) ?? null;
+      experienceReward = playerAward?.experience ?? 0;
+      levelProgression = playerAward?.levelProgression ?? null;
+      grantExperienceEvents = experienceAwards.map((award) => ({
+        type: "monster-experience-awarded",
+        recipientPlayerUid: award.playerUid,
+        playerUid: award.playerUid,
+        monsterId: monster.monsterId,
+        experienceReward: award.experience,
+        levelProgression: award.levelProgression,
+        x: targetRenderSnapshot.x,
+        y: targetRenderSnapshot.y,
+        z: targetRenderSnapshot.z,
+      }));
       worldEntities.respawnSystem.decreaseAliveCount(monster);
       worldEntities.respawnSystem.schedule(monster.spawnId, currentServerTime);
       worldEntities.monsters.remove(monster.uid);
@@ -852,6 +897,11 @@ export const createAuthoritativeWorldRuntime = ({
         attackerRenderSnapshot,
         targetRenderSnapshot,
       });
+      if (healthResult.didDie) {
+        for (const award of grantExperienceEvents) {
+          events.push(award);
+        }
+      }
     }
     return {
       success: true,
@@ -864,6 +914,7 @@ export const createAuthoritativeWorldRuntime = ({
         corpseUid: corpse?.uid ?? null,
         experienceReward,
         levelProgression,
+        changedPlayerUids: grantExperienceEvents.map((event) => event.playerUid),
         groundEffectUid: groundEffect?.uid ?? null,
       },
       events,
@@ -2389,6 +2440,17 @@ export const createAuthoritativeWorldRuntime = ({
         });
       }
       const fieldEffectResult = fieldEffectSystem.update(currentServerTime);
+      const changedFieldPlayerUids = new Set(fieldEffectResult.changedPlayers.map((player) => player.uid));
+      for (const event of fieldEffectResult.events) {
+        if (event.type !== "monster-experience-awarded" || changedFieldPlayerUids.has(event.playerUid)) {
+          continue;
+        }
+        const rewardedPlayer = playersByUid.get(event.playerUid);
+        if (rewardedPlayer) {
+          fieldEffectResult.changedPlayers.push(rewardedPlayer);
+          changedFieldPlayerUids.add(rewardedPlayer.uid);
+        }
+      }
       if (
         fieldEffectResult.changedPlayers.length > 0 ||
         fieldEffectResult.changedMonsters.length > 0 ||

@@ -47,5 +47,6 @@ export const createMonster = (monsterId, x, y, z) => {
     nextWanderAt: 0,
     wanderStepsRemaining: 0,
     statusEffects: {},
+    damageByPlayerUid: new Map(),
   };
 };

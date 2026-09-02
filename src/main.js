@@ -1112,6 +1112,19 @@ const createWorldItemHitbox = (item) => {
   return hitbox;
 };
 
+const getWorldItemRenderSortY = (item) => {
+  if (
+    item?.z === playerState.z &&
+    item.x === playerState.x &&
+    item.y === playerState.y &&
+    Number.isFinite(playerState.renderY) &&
+    playerState.renderY !== playerState.y
+  ) {
+    return getEntityRenderSortY(playerState);
+  }
+  return item?.y ?? 0;
+};
+
 const renderGroundItemParts = (item) => {
   if (!item || item.z !== playerState.z) {
     return;
@@ -1123,12 +1136,13 @@ const renderGroundItemParts = (item) => {
 
   const stackOffsetY = getWorldItemStackOffsetY(item);
   const stackIndex = getWorldDynamicStackIndex(item, "item");
+  const renderSortY = getWorldItemRenderSortY(item);
   upsertPixiWorldItemVisual({
     uid: item.uid,
     parts: enrichedParts,
     x: item.x,
     y: item.y - stackOffsetY,
-    zIndex: getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
+    zIndex: getWorldRenderZIndex(renderSortY, WORLD_RENDER_LAYER_ITEM + stackIndex),
   });
 
   const existingRefs = findWorldItemRenderRefs(item.uid);
@@ -1238,11 +1252,12 @@ const updateItemPosition = () => {
 
     const stackOffsetY = getWorldItemStackOffsetY(item);
     const stackIndex = getWorldDynamicStackIndex(item, "item");
+    const renderSortY = getWorldItemRenderSortY(item);
     updatePixiWorldItemTransform(
       item.uid,
       item.x,
       item.y - stackOffsetY,
-      getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
+      getWorldRenderZIndex(renderSortY, WORLD_RENDER_LAYER_ITEM + stackIndex),
     );
 
     const itemHitboxElement = findWorldItemHitboxElement(item.uid);
@@ -1263,12 +1278,13 @@ const refreshGroundItemRender = (item) => {
   const parts = getItemRenderData(item);
   const stackOffsetY = getWorldItemStackOffsetY(item);
   const stackIndex = getWorldDynamicStackIndex(item, "item");
+  const renderSortY = getWorldItemRenderSortY(item);
   upsertPixiWorldItemVisual({
     uid: item.uid,
     parts,
     x: item.x,
     y: item.y - stackOffsetY,
-    zIndex: getWorldRenderZIndex(item.y, WORLD_RENDER_LAYER_ITEM + stackIndex),
+    zIndex: getWorldRenderZIndex(renderSortY, WORLD_RENDER_LAYER_ITEM + stackIndex),
   });
 };
 
@@ -4538,7 +4554,9 @@ const updatePlayerExperience = () => {
     addLevelUpFeedback(progressData.level);
   }
   playerState.level = progressData.level;
-  syncPlayerDerivedStats();
+  if (!gameRuntimeState.isRemoteSession) {
+    syncPlayerDerivedStats();
+  }
   if (didLevelUp) {
     applyPlayerCurrentVitalLevelUpGains(previousMaxHp, previousMaxMana);
   }
@@ -9425,15 +9443,6 @@ const handleMonsterDamageResolvedEffect = (event) => {
   removeMonsterRender(event.monsterUid);
   clearSelectedMonsterIfNeeded(event.targetRenderSnapshot);
   addLootLogMessage(event.lootContent, localizedMonsterData?.name ?? null);
-  if (wasLocalPlayerAttack && event.experienceReward > 0) {
-    addExperienceGainFeedback(event.experienceReward, localizedMonsterData?.name ?? null);
-    const previousLevel = event.levelProgression?.previousLevel ?? playerState.level;
-    const nextLevel = event.levelProgression?.nextLevel ?? playerState.level;
-    for (let level = previousLevel + 1; level <= nextLevel; level++) {
-      addLevelUpFeedback(level);
-    }
-  }
-
   const deathSfxByMonsterId = {
     rat: GAME_SFX.ratDeath,
     spider: GAME_SFX.spiderDeath,
@@ -9441,6 +9450,20 @@ const handleMonsterDamageResolvedEffect = (event) => {
   const deathSfx = deathSfxByMonsterId[event.monsterId];
   if (deathSfx) {
     playGameSfx(deathSfx);
+  }
+};
+
+const handleMonsterExperienceAwardedEffect = (event) => {
+  if (event.playerUid !== playerState.uid || !Number.isFinite(event.experienceReward) || event.experienceReward <= 0) {
+    return;
+  }
+  const monsterData = getLocalizedMonsterData(event.monsterId) ?? getMonsterData(event.monsterId);
+  addExperienceGainFeedback(event.experienceReward, monsterData?.name ?? null);
+  showFloatingTextAboveTarget(`+${event.experienceReward} XP`, -58, playerState, "experience", 2500);
+  const previousLevel = event.levelProgression?.previousLevel ?? playerState.level;
+  const nextLevel = event.levelProgression?.nextLevel ?? playerState.level;
+  for (let level = previousLevel + 1; level <= nextLevel; level++) {
+    addLevelUpFeedback(level);
   }
 };
 
@@ -9614,6 +9637,7 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "inventory-move-completed": (event) => playGameSfx(event.sfx),
   "item-use-resolved": handleItemUseResolvedEffect,
   "monster-damage-resolved": handleMonsterDamageResolvedEffect,
+  "monster-experience-awarded": handleMonsterExperienceAwardedEffect,
   "field-damage-resolved": handleFieldDamageResolvedEffect,
   "monster-attack-resolved": handleMonsterAttackResolvedEffect,
   "npc-spoke": handleRemoteNpcSpeechEffect,
@@ -9852,7 +9876,9 @@ const initializePlayerUi = () => {
   showPlayerName(playerState.name);
   updatePlayerSprite();
   refreshInventoryUi();
-  syncPlayerDerivedStats();
+  if (!gameRuntimeState.isRemoteSession) {
+    syncPlayerDerivedStats();
+  }
   refreshPlayerVitalsUi();
 };
 
