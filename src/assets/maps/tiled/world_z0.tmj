@@ -6975,7 +6975,7 @@
                         {
                          "name":"maxCount",
                          "type":"int",
-                         "value":5
+                         "value":4
                         }, 
                         {
                          "name":"monsterId",
@@ -7000,9 +7000,47 @@
                  "rotation":0,
                  "type":"",
                  "visible":true,
-                 "width":3968,
-                 "x":-2240,
+                 "width":4736,
+                 "x":-2688,
                  "y":1792
+                }, 
+                {
+                 "height":384,
+                 "id":79,
+                 "name":"",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"maxCount",
+                         "type":"int",
+                         "value":1
+                        }, 
+                        {
+                         "name":"monsterId",
+                         "type":"string",
+                         "value":"frog"
+                        }, 
+                        {
+                         "name":"respawnMs",
+                         "type":"int",
+                         "value":120000
+                        }, 
+                        {
+                         "name":"spawnId",
+                         "type":"string",
+                         "value":"frog_village_02"
+                        }, 
+                        {
+                         "name":"spawnType",
+                         "type":"string",
+                         "value":"monster"
+                        }],
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":384,
+                 "x":1664,
+                 "y":1408
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -7148,7 +7186,7 @@
          "y":0
         }],
  "nextlayerid":21,
- "nextobjectid":79,
+ "nextobjectid":80,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.12.2",
