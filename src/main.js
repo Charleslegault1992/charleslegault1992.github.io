@@ -9459,7 +9459,7 @@ const handleMonsterExperienceAwardedEffect = (event) => {
   }
   const monsterData = getLocalizedMonsterData(event.monsterId) ?? getMonsterData(event.monsterId);
   addExperienceGainFeedback(event.experienceReward, monsterData?.name ?? null);
-  showFloatingTextAboveTarget(`+${event.experienceReward} XP`, -58, playerState, "experience", 2500);
+  showFloatingTextAboveTarget(`+${event.experienceReward}`, 90, playerState, "experience", 1500);
   const previousLevel = event.levelProgression?.previousLevel ?? playerState.level;
   const nextLevel = event.levelProgression?.nextLevel ?? playerState.level;
   for (let level = previousLevel + 1; level <= nextLevel; level++) {

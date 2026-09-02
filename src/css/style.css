@@ -2043,6 +2043,11 @@ body.item-drag-active * {
   font-weight: 700;
 }
 
+.floating-text-experience {
+  color: white;
+  animation: floating-text-animation var(--floating-text-duration) ease-out forwards;
+}
+
 @keyframes floating-text-animation {
   0% {
     opacity: 0;
@@ -3016,9 +3021,7 @@ body.item-drag-active * {
     position: absolute;
     top: max(var(--mobile-edge), env(safe-area-inset-top));
     right: max(var(--mobile-edge), env(safe-area-inset-right));
-    bottom: calc(
-      var(--mobile-control-size) + var(--mobile-edge) + var(--mobile-edge) + env(safe-area-inset-bottom)
-    );
+    bottom: calc(var(--mobile-control-size) + var(--mobile-edge) + var(--mobile-edge) + env(safe-area-inset-bottom));
     z-index: 10000003;
     width: min(68vw, 252px);
     height: max-content;
@@ -3434,7 +3437,9 @@ body.item-drag-active * {
     border-left: 1px solid rgba(205, 193, 153, 0.28);
     border-radius: 0 3px 0 0;
     background: rgba(31, 29, 24, 0.78);
-    font: 400 19px/1 Arial, sans-serif;
+    font:
+      400 19px/1 Arial,
+      sans-serif;
     pointer-events: auto;
     touch-action: manipulation;
   }
@@ -3717,9 +3722,7 @@ body.item-drag-active * {
   .mobile-action-menu {
     position: absolute;
     right: max(var(--mobile-edge), env(safe-area-inset-right));
-    bottom: calc(
-      max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 9px
-    );
+    bottom: calc(max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 9px);
     z-index: 4;
     display: grid;
     width: min(236px, calc(100vw - 160px - env(safe-area-inset-left) - env(safe-area-inset-right)));
@@ -3748,7 +3751,10 @@ body.item-drag-active * {
   .mobile-action-menu-title {
     margin-bottom: 3px;
     color: rgba(231, 221, 193, 0.72);
-    font: 700 7px/9px Verdana, Geneva, sans-serif;
+    font:
+      700 7px/9px Verdana,
+      Geneva,
+      sans-serif;
     text-align: center;
     text-shadow: 1px 1px 2px #000;
   }
@@ -3940,7 +3946,9 @@ body.item-drag-active * {
 
   .mobile-panel-icon-menu::before {
     top: 4px;
-    box-shadow: 0 5px 0 currentColor, 0 10px 0 currentColor;
+    box-shadow:
+      0 5px 0 currentColor,
+      0 10px 0 currentColor;
   }
 
   .mobile-panel-icon-menu::after {
@@ -4092,9 +4100,7 @@ body.item-drag-active * {
   }
 
   .game-status-message {
-    bottom: calc(
-      max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 12px
-    );
+    bottom: calc(max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 12px);
     max-width: min(74vw, 360px);
     padding: 3px 7px;
     border-radius: 3px;
@@ -4357,9 +4363,7 @@ body.item-drag-active * {
   }
 
   .game-status-message {
-    bottom: calc(
-      max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 12px
-    );
+    bottom: calc(max(var(--mobile-edge), env(safe-area-inset-bottom)) + var(--mobile-control-size) + 12px);
   }
 }
 
