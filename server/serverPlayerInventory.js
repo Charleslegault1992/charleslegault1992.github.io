@@ -274,10 +274,12 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
       item?.uid !== itemUid ||
       !Number.isInteger(splitQuantity) ||
       splitQuantity <= 0 ||
-      splitQuantity >= item.quantity ||
-      !canAccessLocation(source)
+      splitQuantity >= item.quantity
     ) {
       return { success: false, reason: "item-changed" };
+    }
+    if (!canAccessLocation(source)) {
+      return { success: false, reason: "invalid-source" };
     }
 
     const changedWorldContainerUids = new Set();

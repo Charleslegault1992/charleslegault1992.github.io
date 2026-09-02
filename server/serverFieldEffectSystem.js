@@ -47,7 +47,7 @@ export const createServerFieldEffectSystem = ({
       damageType: fieldData.damageType,
       damageTicks: nextDamageTicks,
       nextDamageIndex: 0,
-      nextTickAt: now + STATUS_TICK_INTERVAL_MS,
+      nextTickAt: now,
       expiresAt: now + STATUS_TICK_INTERVAL_MS * nextDamageTicks.length,
       sourcePlayerUid: typeof field.ownerUid === "string" ? field.ownerUid : null,
     };

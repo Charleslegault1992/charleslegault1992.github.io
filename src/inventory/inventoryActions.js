@@ -66,6 +66,9 @@ export const executeInsertItemsAction = (action, context) => {
   if (!Number.isInteger(containerUid) || !Array.isArray(itemEntries)) {
     return rejectGameAction(action, INVENTORY_ACTION_REASON.invalidRequest);
   }
+  if (typeof context?.canInsertItems === "function" && context.canInsertItems(containerUid, itemEntries) !== true) {
+    return rejectGameAction(action, INVENTORY_ACTION_REASON.invalidRequest);
+  }
 
   const container = context?.findContainerByUid?.(containerUid) ?? null;
   if (!container) {

@@ -67,7 +67,10 @@ export const createClientReplicationStore = () => {
     }
 
     if (delta.upserts?.self) {
-      self = structuredClone(delta.upserts.self);
+      self = {
+        ...self,
+        ...structuredClone(delta.upserts.self),
+      };
     }
     acknowledgedActionRequestId = delta.acknowledgedActionRequestId ?? acknowledgedActionRequestId;
     for (const entityType of Object.keys(entities)) {

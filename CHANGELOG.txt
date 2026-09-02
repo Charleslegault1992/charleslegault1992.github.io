@@ -1,3 +1,9 @@
+0.34497 - Combat, fields et replication en ligne
+    - Les projectiles, runes et impacts restent attaches a la position visible de leur cible, meme lors dune mort.
+    - Les fields appliquent leur premier tick sans retard et la regeneration vie/mana est maintenant visible.
+    - Les deplacements ne retransmettent plus les sacs et lequipement inchanges a chaque pas.
+    - Le serveur refuse les actions de sacs imbriques hors portee et la creation ditem non autorisee.
+
 0.34496 - Conteneurs imbriques beton
     - Les fenetres enfants ferment maintenant lorsque leur bag parent devient inaccessible.
     - Le serveur refuse toute utilisation ou tout deplacement depuis un conteneur au sol trop loin.

@@ -245,6 +245,7 @@ export const createGameSimulation = ({ state, rules, commands, onListenerError =
   };
 
   const context = Object.freeze({
+    canInsertItems: rules.canInsertItems,
     executeAttackMonster,
     executeAttackPlayer,
     executeCastSpell,

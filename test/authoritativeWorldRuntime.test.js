@@ -22,7 +22,11 @@ import {
   isTiledCollisionAtTile,
   isWorldCollisionAtTile,
 } from "../src/world/worldCoordinates.js";
-import { createMoveItemAction, createSplitItemStackAction } from "../src/inventory/inventoryActions.js";
+import {
+  createInsertItemsAction,
+  createMoveItemAction,
+  createSplitItemStackAction,
+} from "../src/inventory/inventoryActions.js";
 import { createGroundItem, createItemInstance } from "../src/items/itemFactory.js";
 import { createUseItemAction } from "../src/items/itemUseActions.js";
 import { createPlayerState } from "../src/state/playerState.js";
@@ -819,6 +823,75 @@ test("private inventory deltas are sent only as self state", async () => {
   assert.equal("equipment" in observerDelta.upserts.players.find((entry) => entry.uid === owner.uid), false);
 });
 
+test("movement deltas do not resend unchanged private inventory trees", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  let serverTime = 1000;
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => serverTime });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "network", characterId: "lean-movement" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  player.equipment.backpack = createItemInstance("bag", 1);
+  const snapshot = runtime.createSnapshotForClient(session);
+  const start = { x: player.x, y: player.y, z: player.z };
+  const worldMap = worldMapsByZ.get(player.z);
+  const destination = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]
+    .map(([colOffset, rowOffset]) => ({
+      x: start.x + colOffset * TILE_SIZE,
+      y: start.y + rowOffset * TILE_SIZE,
+    }))
+    .find(({ x, y }) => {
+      const col = x / TILE_SIZE;
+      const row = y / TILE_SIZE;
+      return getWorldChunkForTilePosition(worldMap, col, row) && !isTiledCollisionAtTile(worldMap, col, row);
+    });
+  assert.ok(destination);
+  serverTime += 1000;
+  runtime.update(serverTime);
+  const movementResult = runtime.dispatchAction(
+    session,
+    createMovePlayerAction({
+      fromX: start.x,
+      fromY: start.y,
+      fromZ: start.z,
+      toX: destination.x,
+      toY: destination.y,
+      direction: "right",
+      isNavigationMovement: false,
+      requestedAt: 0,
+    }),
+  );
+  assert.equal(movementResult.success, true);
+  const delta = runtime.getDeltasForClient(session, snapshot.revision)[0];
+
+  assert.equal(delta.upserts.self.x, player.x);
+  assert.equal("equipment" in delta.upserts.self, false);
+});
+
+test("online clients cannot mint items through the local inventory insertion action", async () => {
+  const worldMapsByZ = await loadServerWorldMaps();
+  const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });
+  const session = {};
+  const connection = runtime.connectClient(session, { accountId: "security", characterId: "item-mint" });
+  session.playerUid = connection.playerUid;
+  const player = runtime.getPlayer(connection.playerUid);
+  const backpack = createItemInstance("bag", 1);
+  player.equipment.backpack = backpack;
+
+  const result = runtime.dispatchAction(
+    session,
+    createInsertItemsAction(backpack.uid, [{ itemId: "goldCoin", quantity: 100 }]),
+  );
+
+  assert.equal(result.success, false);
+  assert.equal(backpack.content.every((item) => item == null), true);
+});
+
 test("concurrent players cannot both move the same authoritative world item", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ });
@@ -1314,6 +1387,7 @@ test("monster combat death creates a corpse and resets the player to the saved s
   runtime.update(serverTime);
   const delta = runtime.getDeltasForClient(session, snapshot.revision).at(-1);
   const deathEvent = delta.events.find((event) => event.type === "player-died");
+  const attackEvent = delta.events.find((event) => event.type === "monster-attack-resolved");
   const corpse = runtime.getWorldEntities().worldItems.get(deathEvent.corpseUid);
 
   assert.equal(player.hp, player.maxHp);
@@ -1325,6 +1399,14 @@ test("monster combat death creates a corpse and resets the player to the saved s
   assert.equal(corpse.deathInfo.killer.entityType, "monster");
   assert.equal(corpse.deathInfo.killer.monsterId, monster.monsterId);
   assert.equal(player.equipment.backpack, null);
+  assert.equal(attackEvent.didDie, true);
+  assert.deepEqual(attackEvent.targetRenderSnapshot, {
+    uid: player.uid,
+    x: deathEvent.deathPosition.x,
+    y: deathEvent.deathPosition.y,
+    z: deathEvent.deathPosition.z,
+  });
+  assert.equal(attackEvent.attackerRenderSnapshot.x, monster.x);
 });
 
 test("the authoritative runtime executes a Tiled floor transition", async () => {
@@ -1519,6 +1601,8 @@ test("monster damage is calculated and replicated by the authoritative runtime",
   player.z = monster.z;
   const snapshot = runtime.createSnapshotForClient(session);
   const hpBefore = monster.hp;
+  monster.renderX = monster.x + 20 * TILE_SIZE;
+  monster.renderY = monster.y + 20 * TILE_SIZE;
 
   serverTime += 1000;
   runtime.update(serverTime);
@@ -1535,6 +1619,11 @@ test("monster damage is calculated and replicated by the authoritative runtime",
     deltas[0].events.some((event) => event.type === "monster-damage-resolved"),
     true,
   );
+  const attackEvent = deltas[0].events.find((event) => event.type === "player-attack-resolved");
+  assert.equal(attackEvent.targetRenderSnapshot.x, monster.x);
+  assert.equal(attackEvent.targetRenderSnapshot.y, monster.y);
+  assert.equal("renderX" in attackEvent.targetRenderSnapshot, false);
+  assert.equal(attackEvent.attackerRenderSnapshot.x, player.x);
 });
 
 test("combat events do not leak to a client on another floor", async () => {

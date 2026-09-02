@@ -37,7 +37,7 @@ test("a dangerous field applies decreasing damage over time", () => {
   const { player, system, damageTicks } = createFieldSystemFixture();
   assert.equal(system.applyFieldAtEntity(player, "player", 1000), true);
 
-  for (let now = 3000; now <= 13000; now += 2000) {
+  for (let now = 1000; now <= 11000; now += 2000) {
     system.update(now);
   }
 
@@ -49,7 +49,7 @@ test("a dangerous field applies decreasing damage over time", () => {
 test("the second field stage is weaker and the last stage is harmless", () => {
   const weaker = createFieldSystemFixture({ decayStage: 1 });
   assert.equal(weaker.system.applyFieldAtEntity(weaker.player, "player", 0), true);
-  weaker.system.update(2000);
+  weaker.system.update(0);
   assert.equal(weaker.damageTicks[0].damage, 6);
 
   const harmless = createFieldSystemFixture({ decayStage: 2 });

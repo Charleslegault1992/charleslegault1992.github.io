@@ -42,6 +42,21 @@ test("an insertion fills an existing stack before creating another stack", () =>
   assert.equal(bag.content[1].quantity, 30);
 });
 
+test("an insertion is rejected when the runtime does not authorize item creation", () => {
+  const dispatcher = createDispatcher();
+  const bag = createItemInstance("bag", 1);
+  const action = createInsertItemsAction(bag.uid, [{ itemId: "goldCoin", quantity: 100 }]);
+
+  const result = dispatcher.dispatch(action, {
+    canInsertItems: () => false,
+    findContainerByUid: () => bag,
+    getRemainingCapacity: () => Number.MAX_SAFE_INTEGER,
+  });
+
+  assert.equal(result.reason, INVENTORY_ACTION_REASON.invalidRequest);
+  assert.equal(bag.content.every((item) => item == null), true);
+});
+
 test("a capacity rejection leaves the container unchanged", () => {
   const dispatcher = createDispatcher();
   const bag = createItemInstance("bag", 1);

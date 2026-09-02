@@ -5,7 +5,13 @@ import { createClientReplicationStore, getPlayerReconciliation } from "../src/ne
 
 const snapshot = {
   revision: 4,
-  self: { uid: "player:one", x: 64, y: 64, z: 0 },
+  self: {
+    uid: "player:one",
+    x: 64,
+    y: 64,
+    z: 0,
+    equipment: { backpack: { uid: 10, itemId: "bag", quantity: 1, content: [] } },
+  },
   entities: { players: [], monsters: [], npcs: [], worldItems: [], groundEffects: [] },
   chunks: [{ key: "0:0:0", z: 0 }],
 };
@@ -24,6 +30,7 @@ test("the client store applies ordered deltas and rejects a revision gap", () =>
     true,
   );
   assert.equal(store.getSelf().x, 128);
+  assert.equal(store.getSelf().equipment.backpack.uid, 10);
   assert.equal(store.applyDelta({ baseRevision: 7, revision: 8 }).reason, "revision-gap");
 });
 

@@ -7940,19 +7940,21 @@ const consumePlayerWeaponAmmunition = () => {
   return true;
 };
 
-const playPlayerWeaponProjectile = (target) => {
-  const weaponCombatData = getEquippedWeaponCombatData();
-  if (!weaponCombatData?.projectileItemId || !target) {
+const playPlayerWeaponProjectile = (event) => {
+  if (!event?.projectileItemId || !event.attackerRenderSnapshot || !event.targetRenderSnapshot) {
     return false;
   }
   const projectileParts = getItemRenderData({
-    itemId: weaponCombatData.projectileItemId,
+    itemId: event.projectileItemId,
     quantity: 1,
   });
   const projectilePart = projectileParts[0];
-  const playerRenderPosition = getItemUseTargetRenderPosition(playerState);
-  const targetRenderPosition = getItemUseTargetRenderPosition(target);
-  if (!projectilePart || !playerRenderPosition || !targetRenderPosition) {
+  const attacker = getPlayerEntityByUid(event.playerUid) ?? event.attackerRenderSnapshot;
+  const liveTarget = findMonsterByUid(event.monsterUid) ?? getPlayerEntityByUid(event.targetPlayerUid);
+  const target = event.didDie ? event.targetRenderSnapshot : (liveTarget ?? event.targetRenderSnapshot);
+  const attackerPosition = getItemUseTargetRenderPosition(attacker);
+  const targetPosition = getItemUseTargetRenderPosition(target);
+  if (!projectilePart || !attackerPosition || !targetPosition) {
     return false;
   }
 
@@ -7961,10 +7963,10 @@ const playPlayerWeaponProjectile = (target) => {
     sourceY: projectilePart.sourceY,
     sourceWidth: projectilePart.sourceWidth,
     sourceHeight: projectilePart.sourceHeight,
-    startX: playerRenderPosition.x + TILE_SIZE / 2,
-    startY: playerRenderPosition.y + TILE_SIZE / 2,
-    targetX: targetRenderPosition.x + TILE_SIZE / 2,
-    targetY: targetRenderPosition.y + TILE_SIZE / 2,
+    startX: attackerPosition.x + TILE_SIZE / 2,
+    startY: attackerPosition.y + TILE_SIZE / 2,
+    targetX: targetPosition.x + TILE_SIZE / 2,
+    targetY: targetPosition.y + TILE_SIZE / 2,
     displaySize: 48,
     rotationOffset: Math.PI / 4,
     speedPixelsPerSecond: 1000,
@@ -8184,7 +8186,7 @@ const applyDamageToMonster = (monster, attackResult, now) => {
 
 /* ---------- COMBAT JOUEUR - ATTAQUE ET MISE A JOUR ---------- */
 
-const playPlayerAttackResultSfx = (attackResult) => {
+const playPlayerAttackResultSfx = (attackResult, weaponType = getEquippedWeaponCombatData()?.weaponType ?? "fist") => {
   if (!attackResult?.didHit) {
     return false;
   }
@@ -8198,7 +8200,6 @@ const playPlayerAttackResultSfx = (attackResult) => {
     return false;
   }
 
-  const weaponType = getEquippedWeaponCombatData()?.weaponType ?? "fist";
   const attackSfxByWeaponType = {
     bow: GAME_SFX.arrowAttack,
     sword: GAME_SFX.swordSlice,
@@ -8228,6 +8229,13 @@ const attackMonster = (monster, now) => {
   const attackResult = calculatePlayerAttackResult(monster);
   const skillKey = getPlayerAttackSkillKey();
   applySkillExperienceFromAttack(attackResult, skillKey, now);
+  const weaponCombatData = getEquippedWeaponCombatData();
+  const attackerRenderSnapshot = {
+    uid: playerState.uid,
+    x: playerState.renderX,
+    y: playerState.renderY,
+    z: playerState.z,
+  };
   const targetRenderSnapshot = {
     x: monster.x,
     y: monster.y,
@@ -8247,8 +8255,12 @@ const attackMonster = (monster, now) => {
     events: [
       {
         type: "player-attack-resolved",
+        playerUid: playerState.uid,
         monsterUid: monster.uid,
         attackResult,
+        weaponType: weaponCombatData?.weaponType ?? "fist",
+        projectileItemId: weaponCombatData?.projectileItemId ?? null,
+        attackerRenderSnapshot,
         targetRenderSnapshot,
       },
       ...(damageResult?.events ?? []),
@@ -9234,9 +9246,10 @@ const playRuneCombatEffect = (event, target) => {
   if (event.attackKind !== "rune" || !event.damageType) {
     return false;
   }
-  const attacker = getPlayerEntityByUid(event.playerUid);
+  const attacker = getPlayerEntityByUid(event.playerUid) ?? event.attackerRenderSnapshot;
+  const resolvedTarget = target ?? event.targetRenderSnapshot;
   const attackerPosition = getItemUseTargetRenderPosition(attacker);
-  const targetPosition = getItemUseTargetRenderPosition(target);
+  const targetPosition = getItemUseTargetRenderPosition(resolvedTarget);
   if (!attackerPosition || !targetPosition) {
     return false;
   }
@@ -9267,48 +9280,54 @@ const handlePlayerAttackResolvedEffect = (event) => {
   if (event.playerUid === playerState.uid) {
     presentSkillProgression(event.skillProgression);
   }
-  playPlayerWeaponProjectile(event.targetRenderSnapshot);
+  playPlayerWeaponProjectile(event);
   const monster = findMonsterByUid(event.monsterUid);
   playAttackResolutionEffect(event, monster ?? event.targetRenderSnapshot);
   if (event.attackResult?.finalDamage <= 0 && monster) {
     showFloatingTextAboveMonster(monster, event.attackResult.text, event.attackResult.textType);
   }
-  playPlayerAttackResultSfx(event.attackResult);
+  playPlayerAttackResultSfx(event.attackResult, event.weaponType);
 };
 
 const handlePlayerPvpAttackResolvedEffect = (event) => {
   if (event.playerUid === playerState.uid) {
     presentSkillProgression(event.skillProgression);
   }
-  playPlayerWeaponProjectile(event.targetRenderSnapshot);
-  const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
-  if (targetPlayer) {
-    playAttackResolutionEffect(event, targetPlayer);
+  playPlayerWeaponProjectile(event);
+  const liveTargetPlayer = playersByUid.get(event.targetPlayerUid) ?? null;
+  const effectTarget = event.didDie ? event.targetRenderSnapshot : (liveTargetPlayer ?? event.targetRenderSnapshot);
+  if (effectTarget) {
+    playAttackResolutionEffect(event, effectTarget);
     showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
       event.attackResult?.textType ?? "damage",
-      targetPlayer,
+      effectTarget,
     );
-    updateRemotePlayerVisual(targetPlayer);
+    if (liveTargetPlayer) {
+      updateRemotePlayerVisual(liveTargetPlayer);
+    }
   }
   const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
   if (groundEffect) {
     renderGroundEffect(groundEffect);
   }
-  playPlayerAttackResultSfx(event.attackResult);
+  playPlayerAttackResultSfx(event.attackResult, event.weaponType);
   syncMobileTargetHud();
 };
 
 const handlePlayerPvpRuneResolvedEffect = (event) => {
-  const targetPlayer = playersByUid.get(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
-  if (targetPlayer) {
-    playRuneCombatEffect(event, targetPlayer);
+  const liveTargetPlayer = playersByUid.get(event.targetPlayerUid) ?? null;
+  const effectTarget = event.didDie ? event.targetRenderSnapshot : (liveTargetPlayer ?? event.targetRenderSnapshot);
+  if (effectTarget) {
+    playRuneCombatEffect(event, effectTarget);
     showFloatingTextAbovePlayer(
       event.attackResult?.finalDamage > 0 ? event.attackResult.finalDamage : event.attackResult?.text,
       event.attackResult?.textType ?? "fire",
-      targetPlayer,
+      effectTarget,
     );
-    updateRemotePlayerVisual(targetPlayer);
+    if (liveTargetPlayer) {
+      updateRemotePlayerVisual(liveTargetPlayer);
+    }
   }
   const groundEffect = groundEffectsByUid.get(event.groundEffectUid) ?? null;
   if (groundEffect) {
@@ -9342,7 +9361,7 @@ const handleMonsterAttackResolvedEffect = (event) => {
   if (!attackResult) {
     return;
   }
-  playAttackResolutionEffect(event, playerState);
+  playAttackResolutionEffect(event, event.didDie ? event.targetRenderSnapshot : playerState);
   presentSkillProgression(event.skillProgression);
 
   const monster = findMonsterByUid(event.monsterUid);
@@ -9381,12 +9400,13 @@ const handleMonsterDamageResolvedEffect = (event) => {
     addLogMessage(getGameUiText("damageDealt")(event.damageApplied, localizedMonsterData.name), "combat");
   }
   const liveMonster = findMonsterByUid(event.monsterUid);
+  const effectTarget = liveMonster ?? event.targetRenderSnapshot;
   if (event.attackKind === "fieldTick") {
-    playCombatEffectAtTarget(event.damageType, "statusTick", liveMonster ?? event.targetRenderSnapshot);
+    playCombatEffectAtTarget(event.damageType, "statusTick", effectTarget);
   } else {
-    playRuneCombatEffect(event, liveMonster ?? event.targetRenderSnapshot);
+    playRuneCombatEffect(event, effectTarget);
   }
-  showFloatingTextAboveMonster(liveMonster ?? event.targetRenderSnapshot, event.damageApplied, event.textType);
+  showFloatingTextAboveMonster(effectTarget, event.damageApplied, event.textType);
 
   if (!event.didDie) {
     const monster = findMonsterByUid(event.monsterUid);
@@ -9424,7 +9444,9 @@ const handleMonsterDamageResolvedEffect = (event) => {
 
 const handleFieldDamageResolvedEffect = (event) => {
   const targetPlayer = getPlayerEntityByUid(event.targetPlayerUid ?? event.playerUid);
-  const target = targetPlayer ?? { x: event.x, y: event.y, z: event.z };
+  const target = event.didDie
+    ? event.targetRenderSnapshot
+    : (targetPlayer ?? event.targetRenderSnapshot ?? { x: event.x, y: event.y, z: event.z });
   playCombatEffectAtTarget(event.damageType, "statusTick", target);
   if ((event.targetPlayerUid ?? event.playerUid) === playerState.uid) {
     showFloatingTextAbovePlayer(event.damageApplied, event.damageType);
@@ -9432,15 +9454,30 @@ const handleFieldDamageResolvedEffect = (event) => {
   }
 };
 
-const handlePlayerPvpFieldResolvedEffect = (event) => {
-  const targetPlayer = getPlayerEntityByUid(event.targetPlayerUid) ?? event.targetRenderSnapshot ?? null;
-  if (!targetPlayer) {
+const handlePlayerRegenerationResolvedEffect = (event) => {
+  if (event.playerUid !== playerState.uid) {
     return;
   }
-  playCombatEffectAtTarget(event.damageType, "statusTick", targetPlayer);
-  showFloatingTextAbovePlayer(event.attackResult?.finalDamage ?? 0, event.damageType, targetPlayer);
-  updateRemotePlayerVisual(targetPlayer);
-  if (targetPlayer.uid === playerState.uid) {
+  if (event.healthRestored > 0) {
+    showFloatingTextAbovePlayer(`+${event.healthRestored}`, "heal");
+  }
+  if (event.manaRestored > 0) {
+    showFloatingTextAbovePlayer(`+${event.manaRestored}`, "mana");
+  }
+};
+
+const handlePlayerPvpFieldResolvedEffect = (event) => {
+  const liveTargetPlayer = getPlayerEntityByUid(event.targetPlayerUid);
+  const effectTarget = event.didDie ? event.targetRenderSnapshot : (liveTargetPlayer ?? event.targetRenderSnapshot);
+  if (!effectTarget) {
+    return;
+  }
+  playCombatEffectAtTarget(event.damageType, "statusTick", effectTarget);
+  showFloatingTextAbovePlayer(event.attackResult?.finalDamage ?? 0, event.damageType, effectTarget);
+  if (liveTargetPlayer) {
+    updateRemotePlayerVisual(liveTargetPlayer);
+  }
+  if (event.targetPlayerUid === playerState.uid) {
     refreshPlayerVitalsUi();
   }
 };
@@ -9510,6 +9547,19 @@ gameSimulation = createGameSimulation({
     executeAttackMonster: (monster, payload) => attackMonster(monster, payload.requestedAt),
     executeAttackPlayer: (targetPlayer) => {
       const attackResult = calculatePlayerAttackResult(targetPlayer);
+      const weaponCombatData = getEquippedWeaponCombatData();
+      const attackerRenderSnapshot = {
+        uid: playerState.uid,
+        x: playerState.renderX,
+        y: playerState.renderY,
+        z: playerState.z,
+      };
+      const targetRenderSnapshot = {
+        uid: targetPlayer.uid,
+        x: targetPlayer.renderX,
+        y: targetPlayer.renderY,
+        z: targetPlayer.z,
+      };
       if (attackResult.finalDamage > 0) {
         applyDamageToPlayer(targetPlayer, attackResult.finalDamage);
       }
@@ -9522,7 +9572,10 @@ gameSimulation = createGameSimulation({
             playerUid: playerState.uid,
             targetPlayerUid: targetPlayer.uid,
             attackResult,
-            targetRenderSnapshot: structuredClone(targetPlayer),
+            weaponType: weaponCombatData?.weaponType ?? "fist",
+            projectileItemId: weaponCombatData?.projectileItemId ?? null,
+            attackerRenderSnapshot,
+            targetRenderSnapshot,
           },
         ],
       };
@@ -9574,6 +9627,7 @@ gameActionEffectRouter = createGameActionEffectRouter({
   "player-pvp-attack-resolved": handlePlayerPvpAttackResolvedEffect,
   "player-pvp-rune-resolved": handlePlayerPvpRuneResolvedEffect,
   "player-pvp-field-resolved": handlePlayerPvpFieldResolvedEffect,
+  "player-regeneration-resolved": handlePlayerRegenerationResolvedEffect,
   "player-died": handleServerPlayerDeathEffect,
   "player-pvp-state-changed": (event) => {
     if (event.playerUid === playerState.uid && event.pvp) {
