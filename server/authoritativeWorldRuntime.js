@@ -595,6 +595,8 @@ export const createAuthoritativeWorldRuntime = ({
 
     monsters: worldEntities.monsters,
 
+    worldItems: worldEntities.worldItems,
+
     findAvailablePlayerSpawn: (spawnMarker) => {
       const worldMap = worldMapsByZ.get(spawnMarker?.z);
 
@@ -615,12 +617,18 @@ export const createAuthoritativeWorldRuntime = ({
 
     const removedMonsterUids = raidResult?.removedMonsterUids ?? [];
 
+    const spawnedWorldItems = raidResult?.spawnedWorldItems ?? [];
+
+    const removedWorldItemUids = raidResult?.removedWorldItemUids ?? [];
+
     const events = raidResult?.events ?? [];
 
     if (
       changedPlayers.length === 0 &&
       spawnedMonsters.length === 0 &&
       removedMonsterUids.length === 0 &&
+      spawnedWorldItems.length === 0 &&
+      removedWorldItemUids.length === 0 &&
       events.length === 0
     ) {
       return false;
@@ -633,10 +641,14 @@ export const createAuthoritativeWorldRuntime = ({
         players: changedPlayers.map(serializePlayerPublicState).filter(Boolean),
 
         monsters: spawnedMonsters.map(serializeMonsterState).filter(Boolean),
+
+        worldItems: spawnedWorldItems.map(serializeWorldItem).filter(Boolean),
       },
 
       removals: {
         monsters: removedMonsterUids,
+
+        worldItems: removedWorldItemUids,
       },
 
       events,

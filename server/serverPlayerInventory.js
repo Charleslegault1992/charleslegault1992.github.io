@@ -191,14 +191,36 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
   };
 
   const canPlaceWorldItem = (_source, _item, destination) => {
+    const destinationItems = getWorldItemsAt(destination.x, destination.y, destination.z);
+
+    /*
+     * Un raidChest ne peut pas être enterré
+     * sous un paquet d'items.
+     */
+    if (destinationItems.some((worldItem) => getItemData(worldItem.itemId)?.blocksWorldItemPlacement === true)) {
+      return false;
+    }
+
     if (!isNear(player, destination, WORLD_ITEM_THROW_RANGE)) {
       return false;
     }
+
     const worldMap = worldMapsByZ.get(player.z);
+
     return hasLineOfSightBetweenTiles(
       worldMap,
-      { col: player.x / TILE_SIZE, row: player.y / TILE_SIZE },
-      { col: destination.x / TILE_SIZE, row: destination.y / TILE_SIZE },
+
+      {
+        col: player.x / TILE_SIZE,
+
+        row: player.y / TILE_SIZE,
+      },
+
+      {
+        col: destination.x / TILE_SIZE,
+
+        row: destination.y / TILE_SIZE,
+      },
     );
   };
 
@@ -239,6 +261,15 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
 
   const executeMove = (request) => {
     const changedWorldContainerUids = new Set();
+
+    const sourceItem = locationController.getItem(request?.source);
+
+    if (request?.source?.locationType === "worldItem" && getItemData(sourceItem?.itemId)?.movable === false) {
+      return {
+        success: false,
+        reason: "move-rejected",
+      };
+    }
 
     for (const location of [request?.source, request?.destination]) {
       if (location?.locationType !== "containerSlot") {

@@ -221,6 +221,46 @@ export const itemsDatabase = {
       ],
     },
   },
+  raidChest: {
+    itemId: "raidChest",
+
+    name: "Raid Chest",
+
+    desc: "A chest containing the spoils of a completed raid.",
+
+    type: "container",
+
+    suffix: "a",
+
+    weight: 100,
+
+    stackable: false,
+
+    blockMovement: false,
+
+    container: true,
+
+    capacity: 8,
+
+    movable: false,
+
+    blocksWorldItemPlacement: true,
+
+    render: {
+      atlas: "items",
+
+      parts: [
+        {
+          atlasCol: 9,
+          atlasRow: 2,
+
+          offsetX: 0,
+          offsetY: 0,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
   healthPotion: {
     itemId: "healthPotion",
     name: "Health Potion",

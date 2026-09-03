@@ -6306,12 +6306,15 @@ const handleItemUiMouseMove = (e) => {
     return;
   }
   const item = getDragSourceItem(dragState.pendingSourceLocation);
+  const itemData = getItemData(item?.itemId);
   if (
     !item ||
-    (dragState.pendingSourceLocation.locationType === "worldItem" && !isWorldItemAvailableForInteraction(item))
+    (dragState.pendingSourceLocation.locationType === "worldItem" &&
+      (!isWorldItemAvailableForInteraction(item) || itemData?.movable === false))
   ) {
     resetDragState();
     resetDragStatePending();
+
     return;
   }
   startItemDrag(dragState.pendingSourceLocation);
@@ -8977,9 +8980,17 @@ inventoryMoveService = createInventoryMoveService({
   getItemTotalWeight,
   canEquipItem: canPlaceItemInEquipmentSlot,
   canInteractWithWorldItem: (_source, item) => {
+    /*
+     * Interdit de déplacer la ROOT du coffre.
+     */
+    if (getItemData(item?.itemId)?.movable === false) {
+      return false;
+    }
+
     if (!isNearPlayer(item, 1)) {
       return false;
     }
+
     return isWorldItemAvailableForInteraction(item) ? true : INVENTORY_ACTION_REASON.notTopOfStack;
   },
   canAccessLocation: (location) => {

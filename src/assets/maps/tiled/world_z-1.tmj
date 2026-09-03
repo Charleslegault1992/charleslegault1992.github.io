@@ -1549,11 +1549,7 @@
         {
          "firstgid":208,
          "source":"..\/..\/tilesets\/collision.tsj"
-        }, 
-        {
-         "firstgid":209,
-         "source":"..\/..\/tilesets\/player.tsj"
-        }, 
+        },
         {
          "firstgid":209,
          "source":"..\/..\/tilesets\/cavewall.tsj"
