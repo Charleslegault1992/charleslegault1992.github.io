@@ -123,7 +123,10 @@ export const getItemRenderData = (item) => {
 
     return {
       ...part,
+
       textureKey: renderConfig.atlas ?? "items",
+      selectionMode: renderConfig.selectionMode ?? "sprite",
+
       ...getAtlasSource(atlasCol, part.atlasRow, spriteSize, {
         cellSize: atlasCellSize,
         padding: atlasPadding,

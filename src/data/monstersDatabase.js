@@ -190,49 +190,31 @@ export const monstersDatabase = {
     loot: [
       {
         itemId: "goldCoin",
-        chance: 100,
-        minQuantity: 15,
-        maxQuantity: 25,
+        chance: 90,
+        minQuantity: 3,
+        maxQuantity: 9,
       },
       {
-        itemId: "woodenShield",
+        itemId: "poisonRune",
         chance: 20,
         minQuantity: 1,
         maxQuantity: 1,
       },
       {
         itemId: "wornBoots",
-        chance: 20,
+        chance: 8,
         minQuantity: 1,
         maxQuantity: 1,
       },
       {
-        itemId: "leatherArmor",
-        chance: 20,
-        minQuantity: 1,
-        maxQuantity: 1,
-      },
-      {
-        itemId: "wandererHood",
-        chance: 20,
-        minQuantity: 1,
-        maxQuantity: 1,
-      },
-      {
-        itemId: "poisonRune",
-        chance: 40,
+        itemId: "stoneAxe",
+        chance: 5,
         minQuantity: 1,
         maxQuantity: 1,
       },
       {
         itemId: "poisonFieldRune",
-        chance: 10,
-        minQuantity: 1,
-        maxQuantity: 1,
-      },
-      {
-        itemId: "shortSword",
-        chance: 5,
+        chance: 3,
         minQuantity: 1,
         maxQuantity: 1,
       },
@@ -285,6 +267,8 @@ export const monstersDatabase = {
     spriteSize: 192,
 
     corpseItemId: "forestGuardianBossCorpse",
+    corpseOffsetX: 0,
+    corpseOffsetY: -SPRITE_SIZE,
     bloodEffectId: "greenBlood",
 
     combat: {
@@ -299,8 +283,50 @@ export const monstersDatabase = {
       {
         itemId: "goldCoin",
         chance: 100,
-        minQuantity: 20,
-        maxQuantity: 40,
+        minQuantity: 15,
+        maxQuantity: 25,
+      },
+      {
+        itemId: "woodenShield",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "leatherArmor",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "wandererHood",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "poisonRune",
+        chance: 40,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "poisonFieldRune",
+        chance: 10,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "shortSword",
+        chance: 5,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "wornHatchet",
+        chance: 15,
+        minQuantity: 1,
+        maxQuantity: 1,
       },
     ],
   },
@@ -352,6 +378,8 @@ export const monstersDatabase = {
     spriteSize: 192,
 
     corpseItemId: "corruptedRootBossCorpse",
+    corpseOffsetX: 0,
+    corpseOffsetY: -SPRITE_SIZE,
     bloodEffectId: "blood",
 
     combat: {

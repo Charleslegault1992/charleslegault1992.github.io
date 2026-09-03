@@ -1637,16 +1637,21 @@ const createMonsterSelectionGraphic = (x, y, width, height) => {
 export const upsertPixiMonsterVisual = ({
   uid,
   textureKey = "monsters",
+
   sourceX,
   sourceY,
   sourceWidth,
   sourceHeight,
+
   width,
   height,
+
   x,
   y,
   zIndex,
+
   selected = false,
+
   selectionOffsetX = 0,
   selectionOffsetY = 0,
   selectionWidth = width,
@@ -1657,42 +1662,95 @@ export const upsertPixiMonsterVisual = ({
   }
 
   const texture = getEntityFrameTexture(textureKey, sourceX, sourceY, sourceWidth, sourceHeight);
+
   if (!texture) {
     return false;
   }
 
   let refs = monsterVisualsByUid.get(uid);
+
   if (!refs) {
     const container = new Container();
+
     const sprite = new Sprite(texture);
-    const selection = createMonsterSelectionGraphic(
-      selectionOffsetX,
-      selectionOffsetY,
-      selectionWidth,
-      selectionHeight,
-    );
+
+    const selection = new Graphics();
+    selection.visible = false;
 
     container.label = `monster:${uid}`;
+
     container.addChild(sprite);
     container.addChild(selection);
+
     entityContainer.addChild(container);
-    refs = { container, sprite, selection };
+
+    refs = {
+      container,
+      sprite,
+      selection,
+
+      frameKey: null,
+      selectionKey: null,
+    };
+
     monsterVisualsByUid.set(uid, refs);
   }
 
-  refs.sprite.texture = texture;
-  refs.sprite.width = width;
-  refs.sprite.height = height;
+  /*
+   * Texture / frame.
+   *
+   * Inclure textureKey est important :
+   * monsters et bossMonsters peuvent avoir les memes
+   * coordonnees source sans etre la meme image.
+   */
+  const frameKey = `${textureKey}:${sourceX}:${sourceY}:${sourceWidth}:${sourceHeight}:${width}:${height}`;
 
-  refs.selection.clear();
-  refs.selection
-    .rect(selectionOffsetX, selectionOffsetY, selectionWidth, selectionHeight)
-    .stroke({ color: 0xff0000, width: 4 });
+  if (refs.frameKey !== frameKey) {
+    refs.sprite.texture = texture;
+    refs.sprite.width = width;
+    refs.sprite.height = height;
 
-  refs.selection.visible = selected;
-  refs.container.x = x;
-  refs.container.y = y;
-  refs.container.zIndex = zIndex;
+    refs.frameKey = frameKey;
+  }
+
+  /*
+   * Zone rouge independante du sprite.
+   *
+   * Normal monster :
+   * 64x64 a 0,0
+   *
+   * Boss :
+   * 64x64 a 64,128
+   *
+   * On ne reconstruit le Graphics que si sa geometrie change.
+   */
+  const selectionKey = `${selectionOffsetX}:${selectionOffsetY}:${selectionWidth}:${selectionHeight}`;
+
+  if (refs.selectionKey !== selectionKey) {
+    refs.selection.clear();
+
+    refs.selection.rect(selectionOffsetX, selectionOffsetY, selectionWidth, selectionHeight).stroke({
+      color: 0xff0000,
+      width: 4,
+    });
+
+    refs.selectionKey = selectionKey;
+  }
+
+  refs.selection.visible = selected === true;
+
+  if (refs.container.x !== x) {
+    refs.container.x = x;
+  }
+
+  if (refs.container.y !== y) {
+    refs.container.y = y;
+  }
+
+  if (refs.container.zIndex !== zIndex) {
+    refs.container.zIndex = zIndex;
+  }
+
   return true;
 };
 
@@ -1750,16 +1808,41 @@ const createWorldItemSelectionContainer = () => {
   const selectionContainer = new Container();
   selectionContainer.label = "selection-outline";
   selectionContainer.visible = false;
-  selectionContainer.alpha = 0.5;
-  selectionContainer.filters = [worldItemSelectionFilter];
+
+  /*
+   * Selection normale :
+   * contour de la forme du sprite.
+   */
+  const spriteSelectionContainer = new Container();
+  spriteSelectionContainer.alpha = 0.5;
+  spriteSelectionContainer.filters = [worldItemSelectionFilter];
 
   const outlineSprites = ITEM_SELECTION_OUTLINE_OFFSETS.map(() => {
     const sprite = new Sprite();
-    selectionContainer.addChild(sprite);
+    spriteSelectionContainer.addChild(sprite);
     return sprite;
   });
 
-  return { selectionContainer, outlineSprites };
+  /*
+   * Selection logique :
+   * utilisee par les gros corps 3x3 qui ne possedent
+   * qu'une seule case logique.
+   */
+  const logicalTileSelection = new Graphics().rect(0, 0, TILE_SIZE, TILE_SIZE).stroke({
+    color: 0xff0000,
+    width: 3,
+  });
+
+  logicalTileSelection.visible = false;
+
+  selectionContainer.addChild(spriteSelectionContainer, logicalTileSelection);
+
+  return {
+    selectionContainer,
+    spriteSelectionContainer,
+    logicalTileSelection,
+    outlineSprites,
+  };
 };
 
 export const upsertPixiWorldItemVisual = ({ uid, parts, x, y, zIndex }) => {
@@ -1780,11 +1863,20 @@ export const upsertPixiWorldItemVisual = ({ uid, parts, x, y, zIndex }) => {
   let refs = worldItemVisualsByUid.get(uid);
   if (!refs) {
     const container = new Container();
-    const { selectionContainer, outlineSprites } = createWorldItemSelectionContainer();
+    const { selectionContainer, spriteSelectionContainer, logicalTileSelection, outlineSprites } =
+      createWorldItemSelectionContainer();
     container.label = `world-item:${uid}`;
     container.addChild(selectionContainer);
     entityContainer.addChild(container);
-    refs = { container, selectionContainer, outlineSprites, sprites: [], selected: false };
+    refs = {
+      container,
+      selectionContainer,
+      spriteSelectionContainer,
+      logicalTileSelection,
+      outlineSprites,
+      sprites: [],
+      selected: false,
+    };
     worldItemVisualsByUid.set(uid, refs);
   }
 
@@ -1818,13 +1910,36 @@ export const upsertPixiWorldItemVisual = ({ uid, parts, x, y, zIndex }) => {
   }
 
   const logicalPart = parts[0];
-  const logicalTexture = refs.sprites[0].texture;
-  for (let index = 0; index < refs.outlineSprites.length; index++) {
-    const outlineSprite = refs.outlineSprites[index];
-    const [offsetX, offsetY] = ITEM_SELECTION_OUTLINE_OFFSETS[index];
-    outlineSprite.texture = logicalTexture;
-    outlineSprite.x = logicalPart.offsetX + offsetX;
-    outlineSprite.y = logicalPart.offsetY + offsetY;
+  const selectionMode = logicalPart.selectionMode ?? "sprite";
+
+  if (selectionMode === "logicalTile") {
+    /*
+     * Important :
+     *
+     * Le sprite du corpse commence a -64,-64,
+     * mais sa vraie case logique commence a 0,0.
+     *
+     * Donc le rectangle reste exactement sur item.x/item.y.
+     */
+    refs.spriteSelectionContainer.visible = false;
+    refs.logicalTileSelection.visible = true;
+
+    refs.logicalTileSelection.x = 0;
+    refs.logicalTileSelection.y = 0;
+  } else {
+    refs.spriteSelectionContainer.visible = true;
+    refs.logicalTileSelection.visible = false;
+
+    const logicalTexture = refs.sprites[0].texture;
+
+    for (let index = 0; index < refs.outlineSprites.length; index++) {
+      const outlineSprite = refs.outlineSprites[index];
+      const [offsetX, offsetY] = ITEM_SELECTION_OUTLINE_OFFSETS[index];
+
+      outlineSprite.texture = logicalTexture;
+      outlineSprite.x = logicalPart.offsetX + offsetX;
+      outlineSprite.y = logicalPart.offsetY + offsetY;
+    }
   }
 
   refs.selectionContainer.visible = refs.selected;

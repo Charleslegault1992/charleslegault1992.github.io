@@ -7404,33 +7404,60 @@ const renderMonsters = (monstersList) => {
 
 const updateMonsterSprite = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
+
+  if (!monsterData) {
+    return false;
+  }
+
   const col = monsterData.atlasCol + monster.walkFrame;
   const row = monsterData.atlasRow + getDirectionRow(monster.direction);
 
-  const source = getAtlasSource(col, row, monsterData.spriteSize, {
-    cellSize: monsterData.atlasCellSize,
-    padding: monsterData.atlasPadding,
-  });
+  const source = getAtlasSource(
+    col,
+    row,
+    monsterData.spriteSize,
+    {
+      cellSize: monsterData.atlasCellSize,
+      padding: monsterData.atlasPadding,
+    },
+  );
 
   const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
 
-  upsertPixiMonsterVisual({
+  return upsertPixiMonsterVisual({
     uid: monster.uid,
+
     textureKey: monsterData.atlas ?? "monsters",
+
     sourceX: source.sourceX,
     sourceY: source.sourceY,
     sourceWidth: source.sourceWidth,
     sourceHeight: source.sourceHeight,
+
     width: monsterData.drawWidth,
     height: monsterData.drawHeight,
+
     x: monster.renderX + monsterData.drawOffsetX,
-    y: monster.renderY + monsterData.drawOffsetY - surfaceOffsetY,
-    zIndex: getWorldRenderZIndex(getEntityRenderSortY(monster), WORLD_RENDER_LAYER_CREATURE),
+    y:
+      monster.renderY +
+      monsterData.drawOffsetY -
+      surfaceOffsetY,
+
+    zIndex: getWorldRenderZIndex(
+      getEntityRenderSortY(monster),
+      WORLD_RENDER_LAYER_CREATURE,
+    ),
+
     selected: monster.uid === combatTargetState.monsterUid,
+
     selectionOffsetX: monsterData.selectionOffsetX ?? 0,
     selectionOffsetY: monsterData.selectionOffsetY ?? 0,
-    selectionWidth: monsterData.selectionWidth ?? monsterData.drawWidth,
-    selectionHeight: monsterData.selectionHeight ?? monsterData.drawHeight,
+    selectionWidth:
+      monsterData.selectionWidth ??
+      monsterData.drawWidth,
+    selectionHeight:
+      monsterData.selectionHeight ??
+      monsterData.drawHeight,
   });
 };
 
@@ -7590,14 +7617,20 @@ const createMonsterCorpse = (monster) => {
   if (!monsterData || !monsterData.corpseItemId) {
     return null;
   }
+
   const lootContent = generateMonsterLoot(monsterData);
-  const corpse = createGroundItem(monsterData.corpseItemId, 1, monster.x, monster.y, monster.z, lootContent);
+
+  const corpseX = monster.x + (monsterData.corpseOffsetX ?? 0);
+  const corpseY = monster.y + (monsterData.corpseOffsetY ?? 0);
+
+  const corpse = createGroundItem(monsterData.corpseItemId, 1, corpseX, corpseY, monster.z, lootContent);
+
   if (!corpse || !addWorldItemToState(corpse)) {
     return null;
   }
+
   return { corpse, lootContent };
 };
-
 const clearSelectedMonsterIfNeeded = (monster) => {
   if (!monster || combatTargetState.monsterUid === null) {
     return;
@@ -8637,7 +8670,6 @@ boiteJeux.addEventListener("contextmenu", (e) => {
     return;
   }
 });
-
 
 boiteJeux.addEventListener("mousedown", (e) => {
   e.preventDefault();

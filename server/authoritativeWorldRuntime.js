@@ -941,15 +941,10 @@ export const createAuthoritativeWorldRuntime = ({
         randomInt,
         createItem: (itemId, quantity) => createItemInstance(itemId, quantity, [], itemOptions),
       });
-      corpse = createGroundItem(
-        monsterData?.corpseItemId,
-        1,
-        monster.x,
-        monster.y,
-        monster.z,
-        lootContent,
-        itemOptions,
-      );
+      const corpseX = monster.x + (monsterData?.corpseOffsetX ?? 0);
+      const corpseY = monster.y + (monsterData?.corpseOffsetY ?? 0);
+
+      corpse = createGroundItem(monsterData?.corpseItemId, 1, corpseX, corpseY, monster.z, lootContent, itemOptions);
       setCorpseDeathInfo(
         corpse,
         getMonsterDeathIdentity(monster),
