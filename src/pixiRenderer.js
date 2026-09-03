@@ -3157,45 +3157,47 @@ export const hidePixiRaidPortalVisual = () => {
     return false;
   }
 
-  raidPortalVisual.baseRoot.destroy({ children: true });
-  raidPortalVisual.topRoot.destroy({ children: true });
+  for (const rowRoot of raidPortalVisual.rowRoots ?? []) {
+    rowRoot.destroy({ children: true });
+  }
+
   raidPortalVisual = null;
 
   return true;
 };
 
 export const showPixiRaidPortalVisual = async ({ centerCol, centerRow, z, currentZ }) => {
-  if (
-    !entityContainer ||
-    !topContainer ||
-    !Number.isInteger(centerCol) ||
-    !Number.isInteger(centerRow) ||
-    !Number.isInteger(z)
-  ) {
+  if (!entityContainer || !Number.isInteger(centerCol) || !Number.isInteger(centerRow) || !Number.isInteger(z)) {
     return false;
   }
 
   const visualKey = `${z}:${centerCol}:${centerRow}`;
 
   if (raidPortalVisual?.key === visualKey) {
-    raidPortalVisual.baseRoot.visible = z === currentZ;
-    raidPortalVisual.topRoot.visible = z === currentZ;
+    for (const rowRoot of raidPortalVisual.rowRoots) {
+      rowRoot.visible = z === currentZ;
+    }
+
     return true;
   }
 
   hidePixiRaidPortalVisual();
+
   const visualGeneration = raidPortalVisualGeneration;
 
   raidPortalTexturesPromise ??= Assets.load(RAID_PORTAL_TEXTURE_URL).then((atlasTexture) => {
     if (!atlasTexture) {
       return null;
     }
+
     const textures = [];
+
     for (let rowOffset = 0; rowOffset < RAID_PORTAL_SIZE; rowOffset++) {
       for (let colOffset = 0; colOffset < RAID_PORTAL_SIZE; colOffset++) {
         textures.push(
           new Texture({
             source: atlasTexture.source,
+
             frame: new Rectangle(
               (RAID_PORTAL_START_COL + colOffset) * TILE_SIZE,
               (RAID_PORTAL_START_ROW + rowOffset) * TILE_SIZE,
@@ -3206,55 +3208,76 @@ export const showPixiRaidPortalVisual = async ({ centerCol, centerRow, z, curren
         );
       }
     }
+
     return textures;
   });
+
   const portalTextures = await raidPortalTexturesPromise;
 
-  if (!portalTextures || !entityContainer || !topContainer || visualGeneration !== raidPortalVisualGeneration) {
+  if (!portalTextures || !entityContainer || visualGeneration !== raidPortalVisualGeneration) {
     return false;
   }
 
-  const baseRoot = new Container();
-  const topRoot = new Container();
+  /*
+   * Le marker raid_exit_portal est la case CENTRALE.
+   *
+   * Le portail 3x3 commence donc :
+   *
+   * col = centerCol - 1
+   * row = centerRow - 1
+   *
+   * IMPORTANT :
+   *
+   * Chaque rangee est rendue exactement comme une rangee
+   * de WALL.
+   *
+   * Donc une creature sur cette meme rangee passe DEVANT.
+   */
+  const startCol = centerCol - 1;
+  const startRow = centerRow - 1;
 
-  baseRoot.label = "raid-portal-base";
-  baseRoot.eventMode = "none";
-  topRoot.label = "raid-portal-top";
-  topRoot.eventMode = "none";
+  const rowRoots = [];
 
   for (let rowOffset = 0; rowOffset < RAID_PORTAL_SIZE; rowOffset++) {
+    const worldRow = startRow + rowOffset;
+
+    const rowRoot = new Container();
+
+    rowRoot.label = `raid-portal-row-${rowOffset}`;
+    rowRoot.eventMode = "none";
+
+    rowRoot.x = startCol * TILE_SIZE;
+    rowRoot.y = worldRow * TILE_SIZE;
+
+    /*
+     * Meme principe qu'un wall :
+     *
+     * PORTAL = layer juste en dessous des creatures
+     * de cette rangee.
+     */
+    rowRoot.zIndex = getWorldRenderZIndex(worldRow * TILE_SIZE, WORLD_RENDER_LAYER_CREATURE - 1);
+
+    rowRoot.visible = z === currentZ;
+
     for (let colOffset = 0; colOffset < RAID_PORTAL_SIZE; colOffset++) {
-      const sprite = new Sprite(portalTextures[rowOffset * RAID_PORTAL_SIZE + colOffset]);
+      const textureIndex = rowOffset * RAID_PORTAL_SIZE + colOffset;
+
+      const sprite = new Sprite(portalTextures[textureIndex]);
 
       sprite.x = colOffset * TILE_SIZE;
-      sprite.y = rowOffset * TILE_SIZE;
+      sprite.y = 0;
 
-      const isTopTile = colOffset === 1 && (rowOffset === 1 || rowOffset === 2);
-      (isTopTile ? topRoot : baseRoot).addChild(sprite);
+      rowRoot.addChild(sprite);
     }
+
+    entityContainer.addChild(rowRoot);
+
+    rowRoots.push(rowRoot);
   }
-
-  /*
-   * raid_exit_portal représente la case CENTRALE.
-   * Donc le sprite commence une case en haut/gauche.
-   */
-  baseRoot.x = (centerCol - 1) * TILE_SIZE;
-  baseRoot.y = (centerRow - 1) * TILE_SIZE;
-  topRoot.x = baseRoot.x;
-  topRoot.y = baseRoot.y;
-
-  baseRoot.zIndex = getWorldRenderZIndex((centerRow + 1) * TILE_SIZE, WORLD_RENDER_LAYER_CREATURE - 1);
-
-  baseRoot.visible = z === currentZ;
-  topRoot.visible = z === currentZ;
-
-  entityContainer.addChild(baseRoot);
-  topContainer.addChild(topRoot);
 
   raidPortalVisual = {
     key: visualKey,
-    baseRoot,
-    topRoot,
+    rowRoots,
   };
 
   return true;
