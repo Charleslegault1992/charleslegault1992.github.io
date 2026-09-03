@@ -6815,7 +6815,7 @@
                         {
                          "name":"monsterId",
                          "type":"string",
-                         "value":"scorpion"
+                         "value":"forestGuardianBoss"
                         }, 
                         {
                          "name":"raidId",

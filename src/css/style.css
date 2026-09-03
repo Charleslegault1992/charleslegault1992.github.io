@@ -2769,6 +2769,7 @@ body.item-drag-active * {
 .monster {
   position: absolute;
   overflow: visible;
+  pointer-events: none;
 }
 
 .npc {

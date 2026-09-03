@@ -238,4 +238,137 @@ export const monstersDatabase = {
       },
     ],
   },
+  forestGuardianBoss: {
+    monsterId: "forestGuardianBoss",
+    name: "Forest Guardian",
+    desc: "An ancient living tree.",
+    suffix: "a",
+
+    maxHp: 140,
+    experience: 160,
+
+    moveCooldown: 260,
+    pathRefreshCooldown: 600,
+
+    atlas: "bossMonsters",
+    atlasCol: 0,
+    atlasRow: 0,
+    atlasCellSize: 192,
+    atlasPadding: 0,
+
+    drawWidth: 192,
+    drawHeight: 192,
+    drawOffsetX: -64,
+    drawOffsetY: -128,
+
+    selectionOffsetX: 64,
+    selectionOffsetY: 128,
+    selectionWidth: 64,
+    selectionHeight: 64,
+
+    interactionHitboxes: [
+      {
+        offsetX: 64,
+        offsetY: 64,
+        width: 64,
+        height: 64,
+      },
+      {
+        offsetX: 64,
+        offsetY: 128,
+        width: 64,
+        height: 64,
+      },
+    ],
+
+    animationFrames: 3,
+    spriteSize: 192,
+
+    corpseItemId: "forestGuardianBossCorpse",
+    bloodEffectId: "greenBlood",
+
+    combat: {
+      attack: 17,
+      armor: 5,
+      defense: 6,
+      blockChance: 17,
+      hitChance: 85,
+    },
+
+    loot: [
+      {
+        itemId: "goldCoin",
+        chance: 100,
+        minQuantity: 20,
+        maxQuantity: 40,
+      },
+    ],
+  },
+
+  corruptedRootBoss: {
+    monsterId: "corruptedRootBoss",
+    name: "Corrupted Root",
+    desc: "A twisted beast of bark and shadow.",
+    suffix: "a",
+
+    maxHp: 280,
+    experience: 320,
+
+    moveCooldown: 240,
+    pathRefreshCooldown: 600,
+
+    atlas: "bossMonsters",
+    atlasCol: 3,
+    atlasRow: 0,
+    atlasCellSize: 192,
+    atlasPadding: 0,
+
+    drawWidth: 192,
+    drawHeight: 192,
+    drawOffsetX: -64,
+    drawOffsetY: -128,
+
+    selectionOffsetX: 64,
+    selectionOffsetY: 128,
+    selectionWidth: 64,
+    selectionHeight: 64,
+
+    interactionHitboxes: [
+      {
+        offsetX: 64,
+        offsetY: 64,
+        width: 64,
+        height: 64,
+      },
+      {
+        offsetX: 64,
+        offsetY: 128,
+        width: 64,
+        height: 64,
+      },
+    ],
+
+    animationFrames: 3,
+    spriteSize: 192,
+
+    corpseItemId: "corruptedRootBossCorpse",
+    bloodEffectId: "blood",
+
+    combat: {
+      attack: 34,
+      armor: 10,
+      defense: 12,
+      blockChance: 34,
+      hitChance: 90,
+    },
+
+    loot: [
+      {
+        itemId: "goldCoin",
+        chance: 100,
+        minQuantity: 40,
+        maxQuantity: 80,
+      },
+    ],
+  },
 };

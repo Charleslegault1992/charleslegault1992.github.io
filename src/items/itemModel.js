@@ -30,12 +30,12 @@ export const isValidWorldItem = (item) => {
   const itemData = getItemData(item?.itemId);
   return Boolean(
     itemData &&
-      Number.isInteger(item.uid) &&
-      Number.isInteger(item.x) &&
-      Number.isInteger(item.y) &&
-      Number.isInteger(item.z) &&
-      Number.isInteger(item.quantity) &&
-      item.quantity > 0,
+    Number.isInteger(item.uid) &&
+    Number.isInteger(item.x) &&
+    Number.isInteger(item.y) &&
+    Number.isInteger(item.z) &&
+    Number.isInteger(item.quantity) &&
+    item.quantity > 0,
   );
 };
 
@@ -95,21 +95,39 @@ export const getItemRenderData = (item) => {
   if (!itemData) {
     return [];
   }
+
+  const renderConfig = itemData.render ?? {};
+  const defaultSpriteSize = renderConfig.spriteSize ?? SPRITE_SIZE;
+  const defaultAtlasCellSize = renderConfig.atlasCellSize;
+  const defaultAtlasPadding = renderConfig.atlasPadding;
+
   return getItemRenderParts(item.itemId).map((part) => {
     let atlasCol = part.atlasCol;
+
     const torchAtlasCol = getTorchAtlasCol(item);
     if (Number.isInteger(torchAtlasCol)) {
       atlasCol = torchAtlasCol;
     }
+
     if (itemData.stackable && itemData.stackAtlasVariants !== false) {
       atlasCol += getStackableAtlasColOffset(item.quantity);
     }
-    if (item.decayStage) {
+
+    if (Number.isInteger(item.decayStage)) {
       atlasCol += item.decayStage;
     }
+
+    const spriteSize = part.spriteSize ?? defaultSpriteSize;
+    const atlasCellSize = part.atlasCellSize ?? defaultAtlasCellSize;
+    const atlasPadding = part.atlasPadding ?? defaultAtlasPadding;
+
     return {
       ...part,
-      ...getAtlasSource(atlasCol, part.atlasRow, SPRITE_SIZE),
+      textureKey: renderConfig.atlas ?? "items",
+      ...getAtlasSource(atlasCol, part.atlasRow, spriteSize, {
+        cellSize: atlasCellSize,
+        padding: atlasPadding,
+      }),
     };
   });
 };
@@ -121,10 +139,10 @@ export const getItemSurfaceHeight = (item) => {
 export const isValidItemRenderPart = (part) => {
   return Boolean(
     part &&
-      Number.isInteger(part.atlasCol) &&
-      Number.isInteger(part.atlasRow) &&
-      Number.isInteger(part.offsetX) &&
-      Number.isInteger(part.offsetY) &&
-      Number.isInteger(part.zOffset),
+    Number.isInteger(part.atlasCol) &&
+    Number.isInteger(part.atlasRow) &&
+    Number.isInteger(part.offsetX) &&
+    Number.isInteger(part.offsetY) &&
+    Number.isInteger(part.zOffset),
   );
 };

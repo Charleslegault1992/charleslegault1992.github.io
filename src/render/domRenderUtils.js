@@ -10,6 +10,12 @@ export const getAtlasPath = (atlasName) => {
   if (atlasName === "monsters") {
     return new URL("../assets/images/monstres/monsters-sheet.png", import.meta.url).href;
   }
+  if (atlasName === "bossMonsters") {
+    return new URL("../assets/images/monstres/boss-sheet.png", import.meta.url).href;
+  }
+  if (atlasName === "bossCorpses") {
+    return new URL("../assets/images/items/boss-corpse-sheet.png", import.meta.url).href;
+  }
   console.error(`atlasName: ${atlasName} n'existe pas`);
   return undefined;
 };

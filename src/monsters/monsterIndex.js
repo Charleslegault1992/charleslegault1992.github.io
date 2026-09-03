@@ -1,10 +1,7 @@
-import { MONSTER_AI_CHUNK_RADIUS } from "../core/gameConstants.js";
+import { MONSTER_AI_CHUNK_RADIUS, TILE_SIZE } from "../core/gameConstants.js";
+import { monstersDatabase } from "../data/monstersDatabase.js";
 import { playerState } from "../state/playerState.js";
-import {
-  monstersByUid,
-  monsterUidByTileKey,
-  monsterUidsByChunkKey,
-} from "../state/worldState.js";
+import { monstersByUid, monsterUidByTileKey, monsterUidsByChunkKey } from "../state/worldState.js";
 import { getChunkPositionFromWorldPosition } from "../world/worldCoordinates.js";
 import { getWorldTileStackKey } from "../world/worldItemStacks.js";
 
@@ -167,6 +164,67 @@ export const findMonsterAtPosition = (x, y, z = playerState.z) => {
   }
   const monsterUid = monsterUidByTileKey.get(tileKey);
   return monsterUid === undefined ? null : (monstersByUid.get(monsterUid) ?? null);
+};
+
+export const findTargetableMonsterAtPosition = (x, y, z = playerState.z) => {
+  /*
+   * Cas normal :
+   * la case cliquee est directement la case logique du monstre.
+   */
+  const directMonster = findMonsterAtPosition(x, y, z);
+  if (directMonster) {
+    return directMonster;
+  }
+
+  /*
+   * Boss 3x3 :
+   *
+   * La case logique du boss est la case milieu-bas.
+   *
+   * [ ][ ][ ]
+   * [ ][X][ ] <- cette case doit aussi pouvoir cibler le boss
+   * [ ][X][ ] <- vraie case logique / anchor
+   *
+   * Donc, si on clique la case du dessus, on regarde
+   * s'il existe un monstre une tuile plus bas.
+   */
+  const monsterBelow = findMonsterAtPosition(x, y + TILE_SIZE, z);
+  if (!monsterBelow) {
+    return null;
+  }
+
+  const monsterData = monstersDatabase[monsterBelow.monsterId];
+  if (!monsterData || !Array.isArray(monsterData.interactionHitboxes)) {
+    return null;
+  }
+
+  /*
+   * Position du carre clique dans le rectangle visuel du monstre.
+   *
+   * Boss:
+   * drawOffsetX = -64
+   * drawOffsetY = -128
+   *
+   * Pour la case milieu-milieu :
+   * localX = 64
+   * localY = 64
+   */
+  const visualX = monsterBelow.x + (monsterData.drawOffsetX ?? 0);
+  const visualY = monsterBelow.y + (monsterData.drawOffsetY ?? 0);
+
+  const localX = x - visualX;
+  const localY = y - visualY;
+
+  const canTarget = monsterData.interactionHitboxes.some((hitbox) => {
+    return (
+      localX >= hitbox.offsetX &&
+      localX < hitbox.offsetX + hitbox.width &&
+      localY >= hitbox.offsetY &&
+      localY < hitbox.offsetY + hitbox.height
+    );
+  });
+
+  return canTarget ? monsterBelow : null;
 };
 
 export const removeMonsterFromState = (monsterUid) => {

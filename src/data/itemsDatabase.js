@@ -221,6 +221,78 @@ export const itemsDatabase = {
       ],
     },
   },
+  forestGuardianBossCorpse: {
+    itemId: "forestGuardianBossCorpse",
+    name: "Forest Guardian Corpse",
+    desc: "The remains of a fallen Forest Guardian.",
+    type: "corpse",
+    suffix: "a",
+
+    weight: 500,
+    stackable: false,
+    blockMovement: false,
+
+    container: true,
+    capacity: 16,
+
+    decayType: "monster",
+
+    render: {
+      atlas: "bossCorpses",
+      spriteSize: 192,
+      atlasCellSize: 192,
+      atlasPadding: 0,
+
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 0,
+
+          // La position logique de l'item est la case CENTRALE du 3x3.
+          offsetX: -64,
+          offsetY: -64,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+
+  corruptedRootBossCorpse: {
+    itemId: "corruptedRootBossCorpse",
+    name: "Corrupted Root Corpse",
+    desc: "The remains of a fallen Corrupted Root.",
+    type: "corpse",
+    suffix: "a",
+
+    weight: 500,
+    stackable: false,
+    blockMovement: false,
+
+    container: true,
+    capacity: 16,
+
+    decayType: "monster",
+
+    render: {
+      atlas: "bossCorpses",
+      spriteSize: 192,
+      atlasCellSize: 192,
+      atlasPadding: 0,
+
+      parts: [
+        {
+          atlasCol: 0,
+          atlasRow: 0,
+
+          // Temporairement le même set de corpse.
+          offsetX: -64,
+          offsetY: -64,
+          zOffset: 0,
+        },
+      ],
+    },
+  },
+
   raidChest: {
     itemId: "raidChest",
 

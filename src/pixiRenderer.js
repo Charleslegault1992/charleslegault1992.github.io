@@ -1269,6 +1269,7 @@ export const loadPixiWorldEntityTextures = async ({
   itemTextureUrl = null,
   monsterTextureUrl = null,
   npcTextureUrlsById = {},
+  additionalTextureUrlsByKey = {},
 }) => {
   if (!(worldEntityTextureByKey instanceof Map)) {
     return false;
@@ -1301,6 +1302,15 @@ export const loadPixiWorldEntityTextures = async ({
       return false;
     }
     textureUrlsByKey.set(`npc:${npcId}`, textureUrl);
+  }
+  for (const [textureKey, textureUrl] of Object.entries(additionalTextureUrlsByKey)) {
+    if (typeof textureKey !== "string" || textureKey === "") {
+      return false;
+    }
+    if (typeof textureUrl !== "string" || textureUrl === "") {
+      return false;
+    }
+    textureUrlsByKey.set(textureKey, textureUrl);
   }
   const effectTextureEntry = Object.entries(effectImageUrlModulesByPath).find(([path]) =>
     path.endsWith(`/${EFFECT_ATLAS_FILE_NAME}`),
@@ -1617,15 +1627,16 @@ export const clearPixiNpcVisuals = () => {
   }
 };
 
-const createMonsterSelectionGraphic = (width, height) => {
+const createMonsterSelectionGraphic = (x, y, width, height) => {
   const selection = new Graphics();
-  selection.rect(0, 0, width, height).stroke({ color: 0xff0000, width: 4 });
+  selection.rect(x, y, width, height).stroke({ color: 0xff0000, width: 4 });
   selection.visible = false;
   return selection;
 };
 
 export const upsertPixiMonsterVisual = ({
   uid,
+  textureKey = "monsters",
   sourceX,
   sourceY,
   sourceWidth,
@@ -1636,12 +1647,16 @@ export const upsertPixiMonsterVisual = ({
   y,
   zIndex,
   selected = false,
+  selectionOffsetX = 0,
+  selectionOffsetY = 0,
+  selectionWidth = width,
+  selectionHeight = height,
 }) => {
   if (!entityContainer || !(monsterVisualsByUid instanceof Map) || !Number.isInteger(uid)) {
     return false;
   }
 
-  const texture = getEntityFrameTexture("monsters", sourceX, sourceY, sourceWidth, sourceHeight);
+  const texture = getEntityFrameTexture(textureKey, sourceX, sourceY, sourceWidth, sourceHeight);
   if (!texture) {
     return false;
   }
@@ -1650,7 +1665,13 @@ export const upsertPixiMonsterVisual = ({
   if (!refs) {
     const container = new Container();
     const sprite = new Sprite(texture);
-    const selection = createMonsterSelectionGraphic(width, height);
+    const selection = createMonsterSelectionGraphic(
+      selectionOffsetX,
+      selectionOffsetY,
+      selectionWidth,
+      selectionHeight,
+    );
+
     container.label = `monster:${uid}`;
     container.addChild(sprite);
     container.addChild(selection);
@@ -1662,6 +1683,12 @@ export const upsertPixiMonsterVisual = ({
   refs.sprite.texture = texture;
   refs.sprite.width = width;
   refs.sprite.height = height;
+
+  refs.selection.clear();
+  refs.selection
+    .rect(selectionOffsetX, selectionOffsetY, selectionWidth, selectionHeight)
+    .stroke({ color: 0xff0000, width: 4 });
+
   refs.selection.visible = selected;
   refs.container.x = x;
   refs.container.y = y;
@@ -1772,7 +1799,13 @@ export const upsertPixiWorldItemVisual = ({ uid, parts, x, y, zIndex }) => {
 
   for (let index = 0; index < parts.length; index++) {
     const part = parts[index];
-    const texture = getEntityFrameTexture("items", part.sourceX, part.sourceY, part.sourceWidth, part.sourceHeight);
+    const texture = getEntityFrameTexture(
+      part.textureKey ?? "items",
+      part.sourceX,
+      part.sourceY,
+      part.sourceWidth,
+      part.sourceHeight,
+    );
     if (!texture) {
       return false;
     }

@@ -233,6 +233,7 @@ import { createNpcConversationSystem } from "./npcs/npcConversationSystem.js";
 import {
   addMonsterToState,
   findMonsterAtPosition,
+  findTargetableMonsterAtPosition,
   getActiveMonstersAroundPlayer,
   getMonstersInChunkRadius,
   isMonsterAtPosition,
@@ -1201,7 +1202,7 @@ const createWorldItemHitbox = (item) => {
       return;
     }
 
-    const monster = findMonsterAtPosition(item.x, item.y);
+    const monster = findTargetableMonsterAtPosition(item.x, item.y);
     if (monster) {
       selectMonster(monster);
       return;
@@ -6323,7 +6324,7 @@ const getPointerTargetFromEvent = (e) => {
   if (pointerInsideMap) {
     interactable = findInteractableAtTile(currentWorldMap, col, row);
     tile = { row, col, x, y };
-    monster = findMonsterAtPosition(x, y);
+    monster = findTargetableMonsterAtPosition(x, y);
     npc = findNpcAtClientPosition(e.clientX, e.clientY) ?? findNpcAtPosition(x, y);
     player = getTopPlayerAtTile([playerState, ...playersByUid.values()], x, y, playerState.z);
   }
@@ -7383,15 +7384,6 @@ const renderMonsters = (monstersList) => {
     hpRed.style.setProperty("--hp-color", getHpColor(monster.hp, monsterData.maxHp));
     div.setAttribute("data-monster-uid", monster.uid);
     hpRed.setAttribute("data-monster-uid", monster.uid);
-    div.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (shouldBlockContextMenuAction()) {
-        return;
-      }
-
-      selectMonster(monster);
-    });
     const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
     div.style.left = `${monster.x - camera.x + monsterData.drawOffsetX}px`;
     div.style.top = `${monster.y - camera.y + monsterData.drawOffsetY - surfaceOffsetY}px`;
@@ -7414,10 +7406,17 @@ const updateMonsterSprite = (monster) => {
   const monsterData = getMonsterData(monster.monsterId);
   const col = monsterData.atlasCol + monster.walkFrame;
   const row = monsterData.atlasRow + getDirectionRow(monster.direction);
-  const source = getAtlasSource(col, row, monsterData.spriteSize);
+
+  const source = getAtlasSource(col, row, monsterData.spriteSize, {
+    cellSize: monsterData.atlasCellSize,
+    padding: monsterData.atlasPadding,
+  });
+
   const surfaceOffsetY = getEntitySurfaceOffsetY(monster);
+
   upsertPixiMonsterVisual({
     uid: monster.uid,
+    textureKey: monsterData.atlas ?? "monsters",
     sourceX: source.sourceX,
     sourceY: source.sourceY,
     sourceWidth: source.sourceWidth,
@@ -7428,6 +7427,30 @@ const updateMonsterSprite = (monster) => {
     y: monster.renderY + monsterData.drawOffsetY - surfaceOffsetY,
     zIndex: getWorldRenderZIndex(getEntityRenderSortY(monster), WORLD_RENDER_LAYER_CREATURE),
     selected: monster.uid === combatTargetState.monsterUid,
+    selectionOffsetX: monsterData.selectionOffsetX ?? 0,
+    selectionOffsetY: monsterData.selectionOffsetY ?? 0,
+    selectionWidth: monsterData.selectionWidth ?? monsterData.drawWidth,
+    selectionHeight: monsterData.selectionHeight ?? monsterData.drawHeight,
+  });
+};
+
+const isPointerInsideMonsterInteractionZone = (event, element, monsterData) => {
+  const hitboxes = monsterData?.interactionHitboxes;
+  if (!Array.isArray(hitboxes) || hitboxes.length === 0) {
+    return true;
+  }
+
+  const rect = element.getBoundingClientRect();
+  const localX = event.clientX - rect.left;
+  const localY = event.clientY - rect.top;
+
+  return hitboxes.some((hitbox) => {
+    return (
+      localX >= hitbox.offsetX &&
+      localX < hitbox.offsetX + hitbox.width &&
+      localY >= hitbox.offsetY &&
+      localY < hitbox.offsetY + hitbox.height
+    );
   });
 };
 
@@ -8581,27 +8604,41 @@ const handlePlayerNavigationClick = (e) => {
 boiteJeux.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
+
   if (!gameRuntimeState.isStarted || characterSelectorUiState.isOpen) {
     return;
   }
+
   if (shouldBlockContextMenuAction()) {
     return;
   }
+
   const target = getPointerTargetFromEvent(e);
+
   if (target?.player && target.player.uid !== playerState.uid) {
     selectRemotePlayer(target.player);
     return;
   }
+
+  if (target?.monster) {
+    selectMonster(target.monster);
+    return;
+  }
+
   if (handleNpcGreetingFromPointerTarget(target)) {
     return;
   }
+
   if (handleInteractableContextMenu(target)) {
     return;
   }
+
   if (handleTransitionContextMenu(target)) {
     return;
   }
 });
+
+
 boiteJeux.addEventListener("mousedown", (e) => {
   e.preventDefault();
   blurActiveTextInput();
@@ -10140,6 +10177,10 @@ const preloadGameShell = () => {
       itemTextureUrl: getAtlasPath("items"),
       monsterTextureUrl: getAtlasPath("monsters"),
       npcTextureUrlsById: getNpcTextureUrlsById(),
+      additionalTextureUrlsByKey: {
+        bossMonsters: getAtlasPath("bossMonsters"),
+        bossCorpses: getAtlasPath("bossCorpses"),
+      },
     });
     if (!didLoadSharedTextures) {
       throw new Error("Shared world textures could not be loaded.");
