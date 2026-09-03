@@ -4,10 +4,12 @@ import test from "node:test";
 import { TILE_SIZE } from "../src/core/gameConstants.js";
 import { getDoorData, getDoorVariantData } from "../src/data/doorsDatabase.js";
 import {
+  findInteractableAtTile,
   findProtectionZoneAtTile,
   findTransitionAtTile,
   isPlayerNearTiledObject,
 } from "../src/world/tiledWorldObjects.js";
+import { getWorldLayerGidAtTile } from "../src/world/worldCoordinates.js";
 import { applyPlayerWorldTransitionState } from "../src/world/worldTransitions.js";
 import { loadServerWorldMaps } from "../server/loadServerWorldMaps.js";
 import { getDoorInteriorPushTile, getDoorTiles, initializeDoorsFromWorldMaps } from "../src/world/doorModel.js";
@@ -21,6 +23,15 @@ test("Tiled world objects are found by their logical tile", async () => {
   assert.equal(transition.properties.transitionType, "ropeDown");
   assert.equal(isPlayerNearTiledObject({ x: 13 * TILE_SIZE, y: 16 * TILE_SIZE, z: 0 }, transition, 1), true);
   assert.equal(isPlayerNearTiledObject({ x: 10 * TILE_SIZE, y: 16 * TILE_SIZE, z: 0 }, transition, 1), false);
+});
+
+test("the spider cave reward chest keeps its visual on its interactable tile", async () => {
+  const worldMap = (await loadServerWorldMaps()).get(-1);
+  const chest = worldMap.interactablesById.get("tiro_cave_spider");
+
+  assert.ok(chest);
+  assert.equal(findInteractableAtTile(worldMap, chest.col, chest.row), chest);
+  assert.ok(getWorldLayerGidAtTile(worldMap, "objects", chest.col, chest.row) > 0);
 });
 
 test("world transition state is independent from Pixi and the DOM", async () => {
