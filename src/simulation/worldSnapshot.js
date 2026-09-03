@@ -17,9 +17,7 @@ const getPlayerPublicLightState = (player) => {
   const equippedLight = player?.equipment?.ammo;
   const equippedLightData = equippedLight?.isLit === true ? getItemData(equippedLight.itemId)?.lightSource : null;
   const fuelStage = equippedLightData ? getTorchFuelStage(equippedLight) : null;
-  const equippedRadius = Number.isInteger(fuelStage)
-    ? (equippedLightData.radiusByStage?.[fuelStage] ?? 0)
-    : 0;
+  const equippedRadius = Number.isInteger(fuelStage) ? (equippedLightData.radiusByStage?.[fuelStage] ?? 0) : 0;
   const spellRadius = Number.isFinite(player?.spellEffects?.light?.radius) ? player.spellEffects.light.radius : 0;
   return {
     equippedRadius: Math.max(equippedRadius, 0),
@@ -126,6 +124,7 @@ export const serializePlayerPrivateState = (player) => {
     progress: cloneOrNull(player.progress),
     pvp: cloneOrNull(player.pvp),
     equipment,
+    raid: cloneOrNull(player.raid),
   };
 };
 
@@ -255,9 +254,7 @@ export const createWorldSnapshot = ({
   if (!self) {
     return null;
   }
-  self.combatLogoutExpiresAt = Number.isFinite(selfCombatLogoutExpiresAt)
-    ? Math.max(0, selfCombatLogoutExpiresAt)
-    : 0;
+  self.combatLogoutExpiresAt = Number.isFinite(selfCombatLogoutExpiresAt) ? Math.max(0, selfCombatLogoutExpiresAt) : 0;
   return {
     revision,
     serverTime,

@@ -4646,3 +4646,32 @@ body.item-drag-active * {
 }
 
 /* #endregion  ----- MOBILE - CONTROLES ET PANNEAUX ----- */
+
+.raid-countdown-overlay {
+  position: fixed;
+
+  inset: 0;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+
+  z-index: 100000;
+
+  font-size: clamp(96px, 18vw, 240px);
+
+  font-weight: 900;
+
+  color: white;
+
+  text-shadow:
+    0 4px 18px black,
+    0 0 28px rgba(255, 255, 255, 0.35);
+}
+
+.raid-countdown-overlay[hidden] {
+  display: none;
+}

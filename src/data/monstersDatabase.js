@@ -152,4 +152,90 @@ export const monstersDatabase = {
       { itemId: "ham", chance: 20, minQuantity: 1, maxQuantity: 1 },
     ],
   },
+  scorpion: {
+    monsterId: "scorpion",
+    name: "Scorpion",
+    desc: "A dangerous venomous scorpion.",
+    suffix: "a",
+
+    maxHp: 70,
+    experience: 105,
+
+    moveCooldown: 240,
+    pathRefreshCooldown: 800,
+
+    atlas: "monsters",
+    atlasCol: 3,
+    atlasRow: 0,
+
+    drawWidth: SPRITE_SIZE,
+    drawHeight: SPRITE_SIZE,
+    drawOffsetX: 0,
+    drawOffsetY: 0,
+
+    animationFrames: 3,
+    spriteSize: SPRITE_SIZE,
+
+    corpseItemId: "scorpionCorpse",
+    bloodEffectId: "greenBlood",
+
+    combat: {
+      attack: 11,
+      armor: 3,
+      defense: 4,
+      blockChance: 11,
+      hitChance: 80,
+    },
+
+    loot: [
+      {
+        itemId: "goldCoin",
+        chance: 100,
+        minQuantity: 15,
+        maxQuantity: 25,
+      },
+      {
+        itemId: "woodenShield",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "wornBoots",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "leatherArmor",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "wandererHood",
+        chance: 20,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "poisonRune",
+        chance: 40,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "poisonFieldRune",
+        chance: 10,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+      {
+        itemId: "shortSword",
+        chance: 5,
+        minQuantity: 1,
+        maxQuantity: 1,
+      },
+    ],
+  },
 };

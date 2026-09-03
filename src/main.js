@@ -32,6 +32,8 @@ import {
   upsertPixiNpcVisual,
   upsertPixiRemotePlayerAppearance,
   upsertPixiWorldItemVisual,
+  showPixiRaidPortalVisual,
+  hidePixiRaidPortalVisual,
 } from "./pixiRendererFacade.js";
 import { startClientUpdateMonitor } from "./update/clientUpdateController.js";
 import { loadWorldMaps } from "./worldLoader.js";
@@ -54,7 +56,12 @@ import {
   startGameMusic,
   stopGameMusic,
   unlockGameAudio,
+  startRaidMusic,
+  resumeGameMusicAfterRaid,
 } from "./audioManager.js";
+import { clearDynamicCollisionOwner, setDynamicCollisionOwnerTiles } from "./world/dynamicWorldCollision.js";
+
+import { getRaidPortalCollisionTiles } from "./raids/raidModel.js";
 import { spellsDatabase } from "./spellDatabase.js";
 import { createPlayerSpellSystem } from "./spells/playerSpellSystem.js";
 import {
@@ -124,10 +131,7 @@ import { applyDamageToMonsterHealth } from "./combat/monsterHealth.js";
 import { canInitiatePlayerPvpAttack } from "./combat/playerPvpState.js";
 import { applyPlayerDeathState } from "./player/playerDeath.js";
 import { getPlayerMoveCooldown, getPlayerMovementTiming } from "./player/playerMovementTiming.js";
-import {
-  getActivePlayerStatusIndicators,
-  PLAYER_STATUS_INDICATOR,
-} from "./player/playerStatusIndicators.js";
+import { getActivePlayerStatusIndicators, PLAYER_STATUS_INDICATOR } from "./player/playerStatusIndicators.js";
 import {
   getPlayerTileStackRenderOffset,
   getPlayerTileStackRenderOffsets,
@@ -520,6 +524,118 @@ const gameAccountSession =
   REMOTE_GAME_SERVER_URL !== "" && REMOTE_GAME_AUTH_TOKEN === ""
     ? createGameAccountSession({ apiBaseUrl: REMOTE_GAME_API_URL })
     : null;
+
+const RAID_PORTAL_COLLISION_OWNER_ID = "raid:client:portal";
+
+let raidCountdownOverlay = null;
+
+const getRaidCountdownOverlay = () => {
+  if (raidCountdownOverlay) {
+    return raidCountdownOverlay;
+  }
+
+  raidCountdownOverlay = document.createElement("div");
+
+  raidCountdownOverlay.className = "raid-countdown-overlay";
+
+  raidCountdownOverlay.hidden = true;
+
+  document.body.appendChild(raidCountdownOverlay);
+
+  return raidCountdownOverlay;
+};
+
+const clearClientRaidPortalCollision = () => {
+  for (const worldMap of pixiWorldRenderState.worldMapsByZ?.values?.() ?? []) {
+    clearDynamicCollisionOwner(worldMap, RAID_PORTAL_COLLISION_OWNER_ID);
+  }
+};
+
+const syncRaidPresentation = () => {
+  const raid = playerState.raid;
+
+  /* ================================================ */
+  /* COUNTDOWN                                        */
+  /* ================================================ */
+
+  const overlay = getRaidCountdownOverlay();
+
+  if (raid?.phase === "countdown" && Number.isInteger(raid.countdown) && raid.countdown > 0) {
+    overlay.textContent = String(raid.countdown);
+
+    overlay.hidden = false;
+  } else {
+    overlay.textContent = "";
+
+    overlay.hidden = true;
+  }
+
+  /* ================================================ */
+  /* MUSIQUE                                          */
+  /* ================================================ */
+
+  const raidMusicActive = ["countdown", "monsters", "boss"].includes(raid?.phase);
+
+  if (raidMusicActive) {
+    /*
+     * raid.mp3
+     * boucle automatiquement.
+     */
+    startRaidMusic();
+  } else {
+    /*
+     * Dès que le boss meurt :
+     *
+     * phase = completed
+     *
+     * donc musique normale.
+     */
+    resumeGameMusicAfterRaid();
+  }
+
+  /* ================================================ */
+  /* COLLISION PORTAIL CLIENT                         */
+  /* ================================================ */
+
+  clearClientRaidPortalCollision();
+
+  /* ================================================ */
+  /* PORTAIL                                          */
+  /* ================================================ */
+
+  if (raid?.portal?.active === true) {
+    const worldMap = pixiWorldRenderState.worldMapsByZ?.get(raid.portal.z);
+
+    if (worldMap) {
+      /*
+       * Même collision côté client
+       * que côté serveur.
+       *
+       * Important pour la prédiction
+       * de mouvement.
+       */
+      setDynamicCollisionOwnerTiles(
+        worldMap,
+
+        RAID_PORTAL_COLLISION_OWNER_ID,
+
+        getRaidPortalCollisionTiles(raid.portal),
+      );
+    }
+
+    void showPixiRaidPortalVisual({
+      centerCol: raid.portal.col,
+
+      centerRow: raid.portal.row,
+
+      z: raid.portal.z,
+
+      currentZ: playerState.z,
+    });
+  } else {
+    hidePixiRaidPortalVisual();
+  }
+};
 
 //#endregion  -----  BASE - CONFIGURATION ET ETAT GLOBAL  -----
 
@@ -4521,7 +4637,10 @@ const updatePlayerSkillLevel = (skillKey) => {
     return;
   }
   const currentSkillLevel = playerState.skills[skillKey].level;
-  const skillLevelByExperience = getSkillLevelFromExperience(playerState.skills[skillKey].experience, currentSkillLevel);
+  const skillLevelByExperience = getSkillLevelFromExperience(
+    playerState.skills[skillKey].experience,
+    currentSkillLevel,
+  );
   if (playerState.skills[skillKey].level < skillLevelByExperience) {
     addSkillLevelUpFeedback(skillKey, skillLevelByExperience);
   }
@@ -4756,9 +4875,8 @@ const syncMobilePlayerHud = () => {
   }
   mobilePlayerName.textContent = playerState.name;
   const mobileLevelText = getGameUiText("mobileLevel");
-  mobilePlayerLevel.textContent = typeof mobileLevelText === "function"
-    ? mobileLevelText(playerState.level)
-    : String(playerState.level);
+  mobilePlayerLevel.textContent =
+    typeof mobileLevelText === "function" ? mobileLevelText(playerState.level) : String(playerState.level);
   setMobileHudProgress(mobilePlayerHealthFill, mobilePlayerHealthValue, playerState.hp, playerState.maxHp);
   setMobileHudProgress(mobilePlayerManaFill, mobilePlayerManaValue, playerState.mana, playerState.maxMana);
   setMobileHudProgress(mobilePlayerSanityFill, mobilePlayerSanityValue, playerState.sanity, playerState.maxSanity);
@@ -5416,12 +5534,7 @@ const ensurePixiLightingCapacity = (requiredCount) => {
 };
 
 const appendPixiTorchLight = (screenX, screenY, radius, torchCount) => {
-  if (
-    screenX + radius < 0 ||
-    screenX - radius > GAME_WIDTH ||
-    screenY + radius < 0 ||
-    screenY - radius > GAME_HEIGHT
-  ) {
+  if (screenX + radius < 0 || screenX - radius > GAME_WIDTH || screenY + radius < 0 || screenY - radius > GAME_HEIGHT) {
     return torchCount;
   }
   ensurePixiLightingCapacity(torchCount + 1);
@@ -7189,7 +7302,7 @@ const renderMonsters = (monstersList) => {
     if (!isMonsterInsideVisibleChunkRange(monster) || monsterElementsByUid.has(monster.uid)) {
       continue;
     }
-   
+
     const div = document.createElement("div");
     const monsterData = getMonsterData(monster.monsterId);
     div.classList.add("monster");
@@ -9054,11 +9167,13 @@ const executeSimulationItemUse = (item, useData, payload) => {
   }
 
   if (useData.action === "healRune") {
-    const targetPlayer = payload.target?.targetType === "player"
-      ? (playersByUid.get(payload.target.playerUid) ?? (payload.target.playerUid === playerState.uid ? playerState : null))
-      : payload.target?.targetType === "self"
-        ? playerState
-        : null;
+    const targetPlayer =
+      payload.target?.targetType === "player"
+        ? (playersByUid.get(payload.target.playerUid) ??
+          (payload.target.playerUid === playerState.uid ? playerState : null))
+        : payload.target?.targetType === "self"
+          ? playerState
+          : null;
     if (!isPlayerValidHealingRuneTarget(targetPlayer, useData)) {
       return { success: false, reason: targetPlayer?.hp >= targetPlayer?.maxHp ? "fullHealth" : "target-out-of-range" };
     }
@@ -9082,31 +9197,35 @@ const executeSimulationItemUse = (item, useData, payload) => {
         hp: targetPlayer.hp,
         restoredAmount,
       },
-      events: [{
-        type: "item-use-resolved",
-        action: "healRune",
-        itemUid: item.uid,
-        targetPlayerUid: targetPlayer.uid,
-        restoredAmount,
-        floatingTextType: "heal",
-        cooldownGroup,
-        sfx: GAME_SFX.runeUse,
-      }],
+      events: [
+        {
+          type: "item-use-resolved",
+          action: "healRune",
+          itemUid: item.uid,
+          targetPlayerUid: targetPlayer.uid,
+          restoredAmount,
+          floatingTextType: "heal",
+          cooldownGroup,
+          sfx: GAME_SFX.runeUse,
+        },
+      ],
     };
   }
 
   if (useData.action === "attackRune") {
     const targetType = payload.target?.targetType;
-    const targetEntity = targetType === "monster"
-      ? monstersByUid.get(payload.target.monsterUid) ?? null
-      : targetType === "player"
-        ? playersByUid.get(payload.target.playerUid) ?? null
-        : null;
-    const isValidTarget = targetType === "monster"
-      ? isMonsterValidRuneTarget(targetEntity, useData)
-      : targetType === "player"
-        ? isPlayerValidRuneTarget(targetEntity, useData, payload.requestedAt)
-        : false;
+    const targetEntity =
+      targetType === "monster"
+        ? (monstersByUid.get(payload.target.monsterUid) ?? null)
+        : targetType === "player"
+          ? (playersByUid.get(payload.target.playerUid) ?? null)
+          : null;
+    const isValidTarget =
+      targetType === "monster"
+        ? isMonsterValidRuneTarget(targetEntity, useData)
+        : targetType === "player"
+          ? isPlayerValidRuneTarget(targetEntity, useData, payload.requestedAt)
+          : false;
     if (!isValidTarget) {
       return { success: false, reason: "target-out-of-range" };
     }
@@ -9154,9 +9273,7 @@ const executeSimulationItemUse = (item, useData, payload) => {
       changes: {
         itemUid: item.uid,
         charges: item.charges ?? 0,
-        ...(targetType === "monster"
-          ? { monsterUid: targetEntity.uid }
-          : { targetPlayerUid: targetEntity.uid }),
+        ...(targetType === "monster" ? { monsterUid: targetEntity.uid } : { targetPlayerUid: targetEntity.uid }),
         finalDamage: attackResult.finalDamage,
       },
       events: [
@@ -9205,16 +9322,18 @@ const executeSimulationItemUse = (item, useData, payload) => {
     return {
       success: true,
       changes: { itemUid: item.uid, charges: item.charges ?? 0, groundEffectUid: field.uid },
-      events: [{
-        type: "item-use-resolved",
-        action: "createField",
-        itemUid: item.uid,
-        groundEffectUid: field.uid,
-        damageType: getGroundEffectData(useData.groundEffectId)?.damageType,
-        x: field.x,
-        y: field.y,
-        z: field.z,
-      }],
+      events: [
+        {
+          type: "item-use-resolved",
+          action: "createField",
+          itemUid: item.uid,
+          groundEffectUid: field.uid,
+          damageType: getGroundEffectData(useData.groundEffectId)?.damageType,
+          x: field.x,
+          y: field.y,
+          z: field.z,
+        },
+      ],
     };
   }
 
@@ -9521,9 +9640,10 @@ const handleItemUseResolvedEffect = (event) => {
   refreshAllByUid(event.itemUid);
   refreshInventoryUi();
   if (event.restoredAmount > 0 && event.floatingTextType) {
-    const targetPlayer = event.targetPlayerUid === playerState.uid
-      ? playerState
-      : playersByUid.get(event.targetPlayerUid) ?? playerState;
+    const targetPlayer =
+      event.targetPlayerUid === playerState.uid
+        ? playerState
+        : (playersByUid.get(event.targetPlayerUid) ?? playerState);
     showFloatingTextAbovePlayer(event.restoredAmount, event.floatingTextType, targetPlayer);
     if (targetPlayer !== playerState) {
       updateRemotePlayerVisual(targetPlayer);
@@ -9787,6 +9907,9 @@ const synchronizeRemoteWorldRender = (event) => {
   }
   if (didSelfChange) {
     synchronizeRemoteSelfUi(isSnapshot, event?.payload?.serverTime);
+
+    syncRaidPresentation();
+
     updatePixiVisibleChunksAroundPlayer();
   }
   const isItemInteractionInProgress =
@@ -9987,10 +10110,7 @@ const loadSelectedPlayerTextures = async () => {
 };
 
 const initializeGameSession = async () => {
-  const [, sessionResult] = await Promise.all([
-    loadSelectedPlayerTextures(),
-    initializeRemoteGameSession(),
-  ]);
+  const [, sessionResult] = await Promise.all([loadSelectedPlayerTextures(), initializeRemoteGameSession()]);
   return sessionResult;
 };
 
@@ -10049,7 +10169,10 @@ clientBootstrap = createClientBootstrap({
   },
   onStarted: () => {
     preloadGameSfx();
+
     startGameMusic();
+
+    syncRaidPresentation();
     if (!gameRuntimeState.isRemoteSession) {
       startCharacterAutosave();
     }

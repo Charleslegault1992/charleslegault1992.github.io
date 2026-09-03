@@ -47,6 +47,14 @@ export const upsertPixiRemotePlayerAppearance = async (...args) => {
   const renderer = await loadPixiRenderer();
   return renderer.upsertPixiRemotePlayerAppearance(...args);
 };
+
+export const showPixiRaidPortalVisual = async (...args) => {
+  const renderer = await loadPixiRenderer();
+  return renderer.showPixiRaidPortalVisual(...args);
+};
+
+export const hidePixiRaidPortalVisual = (...args) => callPixiRenderer("hidePixiRaidPortalVisual", args, false);
+
 export const updatePixiRemotePlayerVisual = (...args) => callPixiRenderer("updatePixiRemotePlayerVisual", args, false);
 export const removePixiRemotePlayerVisual = (...args) => callPixiRenderer("removePixiRemotePlayerVisual", args, false);
 export const clearPixiRemotePlayerVisuals = (...args) => callPixiRenderer("clearPixiRemotePlayerVisuals", args);

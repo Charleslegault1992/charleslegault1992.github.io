@@ -68,6 +68,7 @@ export const createPlayerState = () => ({
   experience: 0,
   classId: "noClass",
   gold: 0,
+  raid: null,
   bank: {
     goldBalance: 0,
   },

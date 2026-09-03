@@ -98,9 +98,15 @@ export const npcsDatabase = {
         weapons: { labels: { en: "Weapons", fr: "Armes" }, keywords: ["weapon", "weapons", "arme", "armes"] },
         helmets: { labels: { en: "Helmets", fr: "Casques" }, keywords: ["helmet", "helmets", "casque", "casques"] },
         armor: { labels: { en: "Armor", fr: "Armures" }, keywords: ["armor", "armors", "armure", "armures"] },
-        legs: { labels: { en: "Legs", fr: "Pantalons" }, keywords: ["legs", "pants", "leggings", "pantalon", "pantalons"] },
+        legs: {
+          labels: { en: "Legs", fr: "Pantalons" },
+          keywords: ["legs", "pants", "leggings", "pantalon", "pantalons"],
+        },
         boots: { labels: { en: "Boots", fr: "Bottes" }, keywords: ["boot", "boots", "botte", "bottes"] },
-        shields: { labels: { en: "Shields", fr: "Boucliers" }, keywords: ["shield", "shields", "bouclier", "boucliers"] },
+        shields: {
+          labels: { en: "Shields", fr: "Boucliers" },
+          keywords: ["shield", "shields", "bouclier", "boucliers"],
+        },
         containers: {
           labels: { en: "Containers", fr: "Contenants" },
           keywords: ["container", "containers", "contenant", "contenants"],
@@ -115,9 +121,19 @@ export const npcsDatabase = {
         sword: { category: "weapons", buyPrice: null, sellPrice: 25, keywords: ["sword", "epee"] },
         wandererHood: { category: "helmets", buyPrice: 20, sellPrice: 7, keywords: ["wanderer hood", "capuchon"] },
         leatherArmor: { category: "armor", buyPrice: 80, sellPrice: 28, keywords: ["leather armor", "armure cuir"] },
-        wandererPants: { category: "legs", buyPrice: 25, sellPrice: 8, keywords: ["wanderer pants", "pantalon voyageur"] },
+        wandererPants: {
+          category: "legs",
+          buyPrice: 25,
+          sellPrice: 8,
+          keywords: ["wanderer pants", "pantalon voyageur"],
+        },
         wornBoots: { category: "boots", buyPrice: 20, sellPrice: 7, keywords: ["worn boots", "bottes usees"] },
-        woodenShield: { category: "shields", buyPrice: 60, sellPrice: 20, keywords: ["wooden shield", "bouclier bois"] },
+        woodenShield: {
+          category: "shields",
+          buyPrice: 60,
+          sellPrice: 20,
+          keywords: ["wooden shield", "bouclier bois"],
+        },
         bag: { category: "containers", buyPrice: 10, sellPrice: 3, keywords: ["bag", "bags", "sac", "sacs"] },
       },
     },
@@ -210,12 +226,14 @@ export const npcsDatabase = {
         job: "I teach spells to adventurers.",
         help: "Ask me about spells, or ask me for healing.",
         spells: "I can teach: {spellList}.",
-        confirmLearn: "Do you want to learn the {spellName} for {price} gold? It requires magic level {requiredMagicLevel}.",
+        confirmLearn:
+          "Do you want to learn the {spellName} for {price} gold? It requires magic level {requiredMagicLevel}.",
         confirmRequired: "Say yes to learn it or no to cancel.",
         cancelled: "Very well. No lesson today.",
-        learned: "You have learned the {spellName}. You can cast it by saying \"{incantation}\".",
+        learned: 'You have learned the {spellName}. You can cast it by saying "{incantation}".',
         alreadyLearned: "You already know that spell.",
-        magicLevelRequired: "You need magic level {requiredMagicLevel} to learn the {spellName}. Your magic level is {currentMagicLevel}.",
+        magicLevelRequired:
+          "You need magic level {requiredMagicLevel} to learn the {spellName}. Your magic level is {currentMagicLevel}.",
         notEnoughGold: "Come back with {price} gold and I will teach you.",
         unavailable: "I cannot teach that spell.",
         unknown: "Ask me about spells or ask me for healing.",
@@ -231,12 +249,14 @@ export const npcsDatabase = {
         job: "J'enseigne des sorts aux aventuriers.",
         help: "Demande-moi mes sorts, ou demande-moi un sort de soin.",
         spells: "Je peux t'apprendre: {spellList}.",
-        confirmLearn: "Veux-tu apprendre le {spellName} pour {price} pieces d'or? Il demande le niveau de magie {requiredMagicLevel}.",
+        confirmLearn:
+          "Veux-tu apprendre le {spellName} pour {price} pieces d'or? Il demande le niveau de magie {requiredMagicLevel}.",
         confirmRequired: "Dis oui pour apprendre le sort ou non pour annuler.",
         cancelled: "Comme tu veux. Pas de cours aujourd'hui.",
-        learned: "Tu connais maintenant le {spellName}. Tu peux le lancer en disant \"{incantation}\".",
+        learned: 'Tu connais maintenant le {spellName}. Tu peux le lancer en disant "{incantation}".',
         alreadyLearned: "Tu connais deja ce sort-la.",
-        magicLevelRequired: "Il te faut le niveau de magie {requiredMagicLevel} pour apprendre le {spellName}. Ton niveau de magie est {currentMagicLevel}.",
+        magicLevelRequired:
+          "Il te faut le niveau de magie {requiredMagicLevel} pour apprendre le {spellName}. Ton niveau de magie est {currentMagicLevel}.",
         notEnoughGold: "Reviens avec {price} pieces d'or et je vais te l'apprendre.",
         unavailable: "Je ne peux pas t'enseigner ce sort-la.",
         unknown: "Demande-moi mes sorts ou demande-moi un sort de soin.",
@@ -332,7 +352,7 @@ export const npcsDatabase = {
       intervalMaxMs: 26000,
       moveCooldownMs: 350,
     },
-    service: { type: "raidTravel" },
+    service: { type: "raidTravel", raidId: "raid_01" },
     dialogue: {
       en: {
         greeting: "Ahoy, {playerName}! I organize trips to raid islands. The islands are still organizing themselves.",
@@ -345,18 +365,50 @@ export const npcsDatabase = {
         farewell: "See you soon, {playerName}. Try not to get seasick on dry land.",
         rudeDeparture: "Leaving without saying bye? Fine. More emergency snacks for me.",
         timeoutFarewell: "Radio silence? I will assume the tide carried the conversation away.",
+        confirmRaid: "The raid is ready. Do you want to leave now?",
+
+        confirmationSuggestions: ["yes", "no"],
+
+        raidStarted: "All aboard. Good luck in there.",
+
+        raidInProgress: "That raid is already underway. Wait for the current expedition to finish.",
+
+        raidFull: "That expedition is full right now.",
+
+        raidUnavailable: "I cannot launch that raid right now.",
+
+        confirmRequired: "Say yes to leave or no to stay here.",
+
+        cancelled: "No problem. The boat can wait.",
       },
       fr: {
-        greeting: "Ahoy, {playerName}! J'organise les voyages vers les iles de raids. Les iles essaient encore de s'organiser elles-memes.",
+        greeting:
+          "Ahoy, {playerName}! J'organise les voyages vers les iles de raids. Les iles essaient encore de s'organiser elles-memes.",
         greetingSuggestions: ["Raids", "Job", "Bye"],
         name: "Jenny, future capitaine de plusieurs expeditions vraiment pas louches.",
         job: "Je vais transporter les groupes vers les iles de raids aussitot que les cartographes finissent de s'obstiner.",
         help: "Demande-moi les raids. Pour l'instant, apporte de la patience au lieu de tes bagages.",
-        raids: "Les voyages de raids arrivent bientot. Le bateau est pret; la realite a juste oublie de construire l'ile.",
+        raids:
+          "Les voyages de raids arrivent bientot. Le bateau est pret; la realite a juste oublie de construire l'ile.",
         unknown: "Demande-moi les raids ou les voyages.",
         farewell: "A bientot, {playerName}. Essaie de pas avoir le mal de mer sur la terre ferme.",
         rudeDeparture: "Partir sans dire bye? Parfait. Plus de snacks d'urgence pour moi.",
         timeoutFarewell: "Silence radio? Je vais dire que la maree a emporte la conversation.",
+        confirmRaid: "Le raid est pret. Tu veux partir maintenant?",
+
+        confirmationSuggestions: ["oui", "non"],
+
+        raidStarted: "Tout le monde a bord. Bonne chance la-bas.",
+
+        raidInProgress: "Ce raid est deja en cours. Attends que l'expedition actuelle finisse.",
+
+        raidFull: "Cette expedition est pleine pour le moment.",
+
+        raidUnavailable: "Je peux pas lancer ce raid maintenant.",
+
+        confirmRequired: "Dis oui pour partir ou non pour rester ici.",
+
+        cancelled: "Pas de trouble. Le bateau peut attendre.",
       },
     },
   },
@@ -388,10 +440,30 @@ export const npcsDatabase = {
         apple: { category: "food", buyPrice: 3, sellPrice: null, keywords: ["apple", "apples", "pomme", "pommes"] },
         cheese: { category: "food", buyPrice: 6, sellPrice: null, keywords: ["cheese", "fromage", "fromages"] },
         bread: { category: "food", buyPrice: 7, sellPrice: null, keywords: ["bread", "pain", "pains"] },
-        watermelon: { category: "food", buyPrice: 5, sellPrice: null, keywords: ["watermelon", "melon", "melon d'eau"] },
-        carrot: { category: "food", buyPrice: 4, sellPrice: null, keywords: ["carrot", "carrots", "carotte", "carottes"] },
-        sausage: { category: "food", buyPrice: 6, sellPrice: null, keywords: ["sausage", "sausages", "saucisse", "saucisses"] },
-        banana: { category: "food", buyPrice: 4, sellPrice: null, keywords: ["banana", "bananas", "banane", "bananes"] },
+        watermelon: {
+          category: "food",
+          buyPrice: 5,
+          sellPrice: null,
+          keywords: ["watermelon", "melon", "melon d'eau"],
+        },
+        carrot: {
+          category: "food",
+          buyPrice: 4,
+          sellPrice: null,
+          keywords: ["carrot", "carrots", "carotte", "carottes"],
+        },
+        sausage: {
+          category: "food",
+          buyPrice: 6,
+          sellPrice: null,
+          keywords: ["sausage", "sausages", "saucisse", "saucisses"],
+        },
+        banana: {
+          category: "food",
+          buyPrice: 4,
+          sellPrice: null,
+          keywords: ["banana", "bananas", "banane", "bananes"],
+        },
       },
     },
     dialogue: {
@@ -423,7 +495,8 @@ export const npcsDatabase = {
         timeoutFarewell: "No answer? I will assume you are chewing. Bye!",
       },
       fr: {
-        greeting: "Salut, {playerName}! T'as faim? Je vends de la bouffe, pas des conseils de vie. La bouffe est plus fiable.",
+        greeting:
+          "Salut, {playerName}! T'as faim? Je vends de la bouffe, pas des conseils de vie. La bouffe est plus fiable.",
         greetingSuggestions: ["Achat", "Job", "Bye"],
         confirmationSuggestions: ["oui", "non"],
         name: "Amanda. Fournisseuse de snacks pis protectrice contre les drames de faim.",

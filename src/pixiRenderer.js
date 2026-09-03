@@ -18,6 +18,7 @@ import {
   CHUNK_SIZE_TILES,
   PLAYER_APPEARANCE_LAYER_ORDER,
   TILE_SIZE,
+  WORLD_RENDER_LAYER_CREATURE,
 } from "./core/gameConstants.js";
 import { getTileRenderDataFromGid } from "./tiledGidResolver.js";
 import { getPixiRendererPreference, getRequestedPixiRenderer } from "./render/pixiRendererPreference.js";
@@ -96,6 +97,13 @@ const LIGHT_SUN_STOPS = [
   [1, 255, 236, 167, 0.012],
 ];
 const ROOF_FADE_DURATION_MS = 180;
+const RAID_PORTAL_TEXTURE_URL = new URL("./assets/tilesets/outsideItem.png", import.meta.url).href;
+
+const RAID_PORTAL_START_COL = 40;
+const RAID_PORTAL_START_ROW = 8;
+const RAID_PORTAL_SIZE = 3;
+
+let raidPortalVisual = null;
 //#endregion  -----  CONFIG  -----
 
 /* ==================================================== */
@@ -892,12 +900,7 @@ const getRoofIdAtWorldTile = (worldMap, col, row) => {
   for (const area of worldMap?.roofAreas ?? []) {
     const widthTiles = Math.max(1, Math.ceil(area.width / TILE_SIZE));
     const heightTiles = Math.max(1, Math.ceil(area.height / TILE_SIZE));
-    if (
-      col >= area.col &&
-      col < area.col + widthTiles &&
-      row >= area.row &&
-      row < area.row + heightTiles
-    ) {
+    if (col >= area.col && col < area.col + widthTiles && row >= area.row && row < area.row + heightTiles) {
       return area.properties?.roofId ?? null;
     }
   }
@@ -1040,8 +1043,7 @@ const drawMinimapTile = (context, tilesets, gid, x, y) => {
     return false;
   }
 
-  const hasTransform =
-    tileRenderData.flipHorizontal || tileRenderData.flipVertical || tileRenderData.flipDiagonal;
+  const hasTransform = tileRenderData.flipHorizontal || tileRenderData.flipVertical || tileRenderData.flipDiagonal;
   if (hasTransform) {
     context.save();
     context.translate(x + MINIMAP_CACHE_CELL_SIZE / 2, y + MINIMAP_CACHE_CELL_SIZE / 2);
@@ -1298,13 +1300,16 @@ export const loadPixiWorldEntityTextures = async ({
     }
     textureUrlsByKey.set(`npc:${npcId}`, textureUrl);
   }
-  const effectTextureEntry = Object.entries(effectImageUrlModulesByPath).find(([path]) => path.endsWith(`/${EFFECT_ATLAS_FILE_NAME}`));
+  const effectTextureEntry = Object.entries(effectImageUrlModulesByPath).find(([path]) =>
+    path.endsWith(`/${EFFECT_ATLAS_FILE_NAME}`),
+  );
   if (effectTextureEntry) {
     textureUrlsByKey.set("effects", effectTextureEntry[1]);
   }
 
-  const unloadedEntries = [...textureUrlsByKey.entries()]
-    .filter(([textureKey]) => !worldEntityTextureByKey.has(textureKey));
+  const unloadedEntries = [...textureUrlsByKey.entries()].filter(
+    ([textureKey]) => !worldEntityTextureByKey.has(textureKey),
+  );
   const textures = await Promise.all(unloadedEntries.map(([, textureUrl]) => Assets.load(textureUrl)));
   unloadedEntries.forEach(([textureKey], index) => worldEntityTextureByKey.set(textureKey, textures[index]));
 
@@ -2166,9 +2171,10 @@ export const playPixiCombatEffect = ({
   refs.targetY = targetY;
   refs.distanceX = targetX - startX;
   refs.distanceY = targetY - startY;
-  refs.travelDurationMs = variant === "projectile"
-    ? Math.max(100, Math.min((Math.hypot(refs.distanceX, refs.distanceY) / speedPixelsPerSecond) * 1000, 600))
-    : 0;
+  refs.travelDurationMs =
+    variant === "projectile"
+      ? Math.max(100, Math.min((Math.hypot(refs.distanceX, refs.distanceY) / speedPixelsPerSecond) * 1000, 600))
+      : 0;
   refs.sprite.x = startX;
   refs.sprite.y = startY;
   setCombatEffectFrame(refs, 0);
@@ -2539,10 +2545,7 @@ const getVisibleChunkGridPositions = (centerChunkX, centerChunkY, radiusChunks) 
 };
 
 const getVisibleChunkKeys = (worldMap, chunkGridPositions) => {
-  if (
-    !(worldMap?.chunksByKey instanceof Map) ||
-    !Array.isArray(chunkGridPositions)
-  ) {
+  if (!(worldMap?.chunksByKey instanceof Map) || !Array.isArray(chunkGridPositions)) {
     return new Set();
   }
 
@@ -2995,5 +2998,83 @@ export const renderPixiVisibleWorldChunks = async (
   removeHiddenVerticalFallbackChunks(new Set(fallbackPlansByKey.keys()));
   addVisibleVerticalFallbackChunks(fallbackPlansByKey);
   addVisibleChunkContainers(worldMap, visibleChunkKeys);
+};
+
+export const hidePixiRaidPortalVisual = () => {
+  if (!raidPortalVisual) {
+    return false;
+  }
+
+  raidPortalVisual.root.destroy({ children: true });
+  raidPortalVisual = null;
+
+  return true;
+};
+
+export const showPixiRaidPortalVisual = async ({ centerCol, centerRow, z, currentZ }) => {
+  if (!entityContainer || !Number.isInteger(centerCol) || !Number.isInteger(centerRow) || !Number.isInteger(z)) {
+    return false;
+  }
+
+  const visualKey = `${z}:${centerCol}:${centerRow}`;
+
+  if (raidPortalVisual?.key === visualKey) {
+    raidPortalVisual.root.visible = z === currentZ;
+    return true;
+  }
+
+  hidePixiRaidPortalVisual();
+
+  const atlasTexture = await Assets.load(RAID_PORTAL_TEXTURE_URL);
+
+  if (!atlasTexture || !entityContainer) {
+    return false;
+  }
+
+  const root = new Container();
+
+  root.label = "raid-portal";
+  root.eventMode = "none";
+
+  for (let rowOffset = 0; rowOffset < RAID_PORTAL_SIZE; rowOffset++) {
+    for (let colOffset = 0; colOffset < RAID_PORTAL_SIZE; colOffset++) {
+      const texture = new Texture({
+        source: atlasTexture.source,
+        frame: new Rectangle(
+          (RAID_PORTAL_START_COL + colOffset) * TILE_SIZE,
+          (RAID_PORTAL_START_ROW + rowOffset) * TILE_SIZE,
+          TILE_SIZE,
+          TILE_SIZE,
+        ),
+      });
+
+      const sprite = new Sprite(texture);
+
+      sprite.x = colOffset * TILE_SIZE;
+      sprite.y = rowOffset * TILE_SIZE;
+
+      root.addChild(sprite);
+    }
+  }
+
+  /*
+   * raid_exit_portal représente la case CENTRALE.
+   * Donc le sprite commence une case en haut/gauche.
+   */
+  root.x = (centerCol - 1) * TILE_SIZE;
+  root.y = (centerRow - 1) * TILE_SIZE;
+
+  root.zIndex = getWorldRenderZIndex((centerRow + 1) * TILE_SIZE, WORLD_RENDER_LAYER_CREATURE - 1);
+
+  root.visible = z === currentZ;
+
+  entityContainer.addChild(root);
+
+  raidPortalVisual = {
+    key: visualKey,
+    root,
+  };
+
+  return true;
 };
 //#endregion  -----  PIXI - RENDU MAP  -----

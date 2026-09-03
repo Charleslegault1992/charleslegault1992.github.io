@@ -19,6 +19,7 @@ export const TILED_OBJECT_LAYER_NAMES = Object.freeze([
   "spawns",
   "npcs",
   "zones",
+  "raid_markers",
 ]);
 
 export const createTiledLayerCollections = (layerNames) => {

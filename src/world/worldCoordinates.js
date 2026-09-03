@@ -1,5 +1,6 @@
 import { CHUNK_SIZE_TILES, TILE_SIZE } from "../core/gameConstants.js";
 import { getBlockingDoorAtTile } from "./doorModel.js";
+import { isDynamicWorldCollisionAtTile } from "./dynamicWorldCollision.js";
 
 export const getChunkPositionFromWorldPosition = (x, y) => {
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
@@ -61,6 +62,7 @@ export const isTiledCollisionAtTile = (worldMap, col, row) => {
 export const isWorldCollisionAtTile = (worldMap, col, row) => {
   return (
     isTiledCollisionAtTile(worldMap, col, row) ||
+    isDynamicWorldCollisionAtTile(worldMap, col, row) ||
     Boolean(getBlockingDoorAtTile(worldMap?.doorsByUid, worldMap?.doorUidByTileKey, worldMap?.z, col, row))
   );
 };

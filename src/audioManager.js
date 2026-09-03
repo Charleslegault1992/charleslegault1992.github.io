@@ -32,7 +32,11 @@ export const GAME_SFX = Object.freeze({
   questDone: "QuestDone",
 });
 
-const musicUrls = Object.values(musicUrlModulesByPath);
+const musicEntries = Object.entries(musicUrlModulesByPath);
+
+const raidMusicUrl = musicEntries.find(([path]) => path.endsWith("/raid.mp3"))?.[1] ?? null;
+
+const musicUrls = musicEntries.filter(([path]) => !path.endsWith("/raid.mp3")).map(([, url]) => url);
 const sfxUrlsById = new Map();
 
 for (const [path, url] of Object.entries(sfxUrlModulesByPath)) {
@@ -48,6 +52,7 @@ const audioState = {
   sfxGain: null,
   sfxBuffersById: new Map(),
   sfxLoadPromisesById: new Map(),
+  musicMode: "normal",
   musicElement: null,
   currentMusicUrl: null,
   musicRequested: false,
@@ -80,7 +85,9 @@ const getMusicElement = () => {
   musicElement.preload = "metadata";
   musicElement.volume = audioState.musicVolume;
   musicElement.addEventListener("ended", () => {
-    playNextMusicTrack();
+    if (audioState.musicMode === "normal") {
+      playNextMusicTrack();
+    }
   });
   audioState.musicElement = musicElement;
   return musicElement;
@@ -107,6 +114,8 @@ const playNextMusicTrack = async () => {
   }
   const musicElement = getMusicElement();
   audioState.currentMusicUrl = nextMusicUrl;
+  audioState.musicMode = "normal";
+  musicElement.loop = false;
   musicElement.src = nextMusicUrl;
   musicElement.volume = audioState.musicVolume;
   try {
@@ -250,6 +259,60 @@ export const setGameAudioSettings = ({ musicEnabled, sfxEnabled, musicVolume, sf
   if (audioState.sfxGain) {
     audioState.sfxGain.gain.value = audioState.sfxVolume;
   }
+};
+
+export const startRaidMusic = () => {
+  audioState.musicRequested = true;
+
+  if (!raidMusicUrl) {
+    return false;
+  }
+
+  const musicElement = getMusicElement();
+
+  if (audioState.musicMode === "raid" && audioState.currentMusicUrl === raidMusicUrl) {
+    return true;
+  }
+
+  audioState.musicMode = "raid";
+  audioState.currentMusicUrl = raidMusicUrl;
+
+  musicElement.pause();
+  musicElement.src = raidMusicUrl;
+  musicElement.currentTime = 0;
+  musicElement.loop = true;
+  musicElement.volume = audioState.musicVolume;
+
+  if (!audioState.musicEnabled || audioState.musicVolume <= 0) {
+    return true;
+  }
+
+  musicElement.play().catch(() => {});
+
+  return true;
+};
+
+export const resumeGameMusicAfterRaid = () => {
+  if (audioState.musicMode !== "raid") {
+    return true;
+  }
+
+  const musicElement = getMusicElement();
+
+  musicElement.pause();
+  musicElement.currentTime = 0;
+  musicElement.loop = false;
+
+  audioState.musicMode = "normal";
+  audioState.currentMusicUrl = null;
+
+  if (!audioState.musicRequested || !audioState.musicEnabled || audioState.musicVolume <= 0) {
+    return true;
+  }
+
+  playNextMusicTrack();
+
+  return true;
 };
 
 document.addEventListener("pointerdown", unlockGameAudio, { passive: true });

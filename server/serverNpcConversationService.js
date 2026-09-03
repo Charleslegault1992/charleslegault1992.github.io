@@ -23,11 +23,12 @@ import { startPlayerRegenerationTimers } from "../src/player/playerRegeneration.
 
 const DAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
-const normalize = (text) => String(text ?? "")
-  .normalize("NFD")
-  .replace(/\p{Diacritic}/gu, "")
-  .trim()
-  .toLocaleLowerCase();
+const normalize = (text) =>
+  String(text ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLocaleLowerCase();
 
 const getWords = (text) => new Set(normalize(text).match(/[a-z]+/g) ?? []);
 const hasAnyWord = (words, choices) => choices.some((choice) => words.has(choice));
@@ -48,13 +49,13 @@ const isInTalkRange = (player, npc) => {
   return distance <= NPC_DIALOGUE_CONFIG.talkRange;
 };
 
-export const createServerNpcConversationService = ({ npcs, playersByUid, getInventory }) => {
+export const createServerNpcConversationService = ({ npcs, playersByUid, getInventory, startRaid = null }) => {
   const statesByNpcUid = new Map();
 
   const getPlayerItemName = (player, itemId, quantity = 1) =>
     getLocalizedItemNameForLanguage(itemId, quantity, player?.language);
   const getPlayerSpellName = (player, spell) =>
-    player?.language === "fr" ? spell?.nameFr ?? spell?.name : spell?.name;
+    player?.language === "fr" ? (spell?.nameFr ?? spell?.name) : spell?.name;
   const getPlayerClassName = (player, classId) => {
     const classData = playerClassesDatabase[classId];
     return classData
@@ -65,13 +66,15 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     (npcData.service?.classIds ?? []).map((classId) => getPlayerClassName(player, classId));
   const findClassIdForSpeech = (player, npcData, text) => {
     const normalizedText = normalize(text);
-    return (npcData.service?.classIds ?? []).find((classId) => {
-      const classData = playerClassesDatabase[classId];
-      const localizedName = getPlayerClassName(player, classId);
-      return [classId, classData?.name, localizedName]
-        .filter(Boolean)
-        .some((candidate) => normalizedText.includes(normalize(candidate)));
-    }) ?? null;
+    return (
+      (npcData.service?.classIds ?? []).find((classId) => {
+        const classData = playerClassesDatabase[classId];
+        const localizedName = getPlayerClassName(player, classId);
+        return [classId, classData?.name, localizedName]
+          .filter(Boolean)
+          .some((candidate) => normalizedText.includes(normalize(candidate)));
+      }) ?? null
+    );
   };
   const getPlayerMagicLevel = (player) => player?.skills?.magic?.level ?? 0;
   const getSpellTeacherOfferList = (player, npcData) =>
@@ -129,7 +132,9 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
   const getShopOfferSuggestions = (npcData, player, categoryId, tradeType) => {
     const priceField = tradeType === "sell" ? "sellPrice" : "buyPrice";
     return Object.entries(npcData.service?.offers ?? {})
-      .filter(([, offer]) => offer.category === categoryId && Number.isInteger(offer[priceField]) && offer[priceField] > 0)
+      .filter(
+        ([, offer]) => offer.category === categoryId && Number.isInteger(offer[priceField]) && offer[priceField] > 0,
+      )
       .map(([itemId]) => getPlayerItemName(player, itemId))
       .filter(Boolean);
   };
@@ -195,6 +200,48 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     if (!pending) {
       return createReply(npc, player, dialogue.cancelled ?? "Cancelled.");
     }
+    if (pending.type === "start-raid") {
+      const raidResult =
+        typeof startRaid === "function"
+          ? startRaid(player, pending.raidId)
+          : {
+              success: false,
+              reason: "raid-system-unavailable",
+            };
+
+      state.pendingAction = null;
+
+      if (!raidResult?.success) {
+        const message =
+          raidResult?.reason === "raid-in-progress"
+            ? dialogue.raidInProgress
+            : raidResult?.reason === "raid-full"
+              ? dialogue.raidFull
+              : dialogue.raidUnavailable;
+
+        return createReply(npc, player, message ?? dialogue.unavailable ?? dialogue.cancelled);
+      }
+
+      const reply = createReply(npc, player, dialogue.raidStarted, [], raidResult.events ?? []);
+
+      reply.changes = {
+        ...reply.changes,
+
+        ...(raidResult.changes ?? {}),
+
+        conversationActive: false,
+      };
+
+      const npcSpokeEvent = reply.events.find((event) => event.type === "npc-spoke");
+
+      if (npcSpokeEvent) {
+        npcSpokeEvent.conversationActive = false;
+      }
+
+      release(npc, state, state.lastInteractionAt);
+
+      return reply;
+    }
     if (pending.type === "change-class") {
       const classData = playerClassesDatabase[pending.classId];
       if (!classData || !(npcsDatabase[npc.npcId]?.service?.classIds ?? []).includes(pending.classId)) {
@@ -234,11 +281,15 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       const currentMagicLevel = getPlayerMagicLevel(player);
       if (currentMagicLevel < spell.requiredMagicLevel) {
         state.pendingAction = null;
-        return createReply(npc, player, format(dialogue.magicLevelRequired, player, {
-          spellName: getPlayerSpellName(player, spell),
-          requiredMagicLevel: spell.requiredMagicLevel,
-          currentMagicLevel,
-        }));
+        return createReply(
+          npc,
+          player,
+          format(dialogue.magicLevelRequired, player, {
+            spellName: getPlayerSpellName(player, spell),
+            requiredMagicLevel: spell.requiredMagicLevel,
+            currentMagicLevel,
+          }),
+        );
       }
     }
 
@@ -248,9 +299,12 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         state.pendingAction = null;
         return createReply(npc, player, dialogue.notEnoughGold ?? "You do not have enough gold.");
       }
-      const transaction = pending.type === "buy-item"
-        ? inventory.insertItems(player.equipment.backpack?.uid, [{ itemId: pending.itemId, quantity: pending.quantity }])
-        : { success: true };
+      const transaction =
+        pending.type === "buy-item"
+          ? inventory.insertItems(player.equipment.backpack?.uid, [
+              { itemId: pending.itemId, quantity: pending.quantity },
+            ])
+          : { success: true };
       if (!transaction.success) {
         rollbackPlayerCurrencyValuePlan(paymentPlan);
         inventory.refreshWeight();
@@ -260,16 +314,17 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
       if (pending.type === "learn-spell" && !player.spellbook.learnedSpellIds.includes(pending.spellId)) {
         player.spellbook.learnedSpellIds.push(pending.spellId);
       }
-      completedText = pending.type === "learn-spell"
-        ? format(dialogue.learned, player, {
-            spellName: getPlayerSpellName(player, spellsDatabase[pending.spellId]),
-            incantation: spellsDatabase[pending.spellId].incantation,
-          })
-        : format(dialogue.bought, player, {
-            quantity: pending.quantity,
-            itemName: getPlayerItemName(player, pending.itemId, pending.quantity),
-            price: pending.price,
-          });
+      completedText =
+        pending.type === "learn-spell"
+          ? format(dialogue.learned, player, {
+              spellName: getPlayerSpellName(player, spellsDatabase[pending.spellId]),
+              incantation: spellsDatabase[pending.spellId].incantation,
+            })
+          : format(dialogue.bought, player, {
+              quantity: pending.quantity,
+              itemName: getPlayerItemName(player, pending.itemId, pending.quantity),
+              price: pending.price,
+            });
       transactionSucceeded = true;
     } else if (pending.type === "sell-item") {
       const removalPlan = createPlayerBackpackItemRemovalPlan(player, pending.itemId, pending.quantity);
@@ -397,9 +452,14 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
 
     if (isGreeting) {
       state.activeMenu = null;
-      return createReply(npc, player, format(dialogue.greeting, player, {
-        bankBalance: player.bank.goldBalance,
-      }), dialogue.greetingSuggestions);
+      return createReply(
+        npc,
+        player,
+        format(dialogue.greeting, player, {
+          bankBalance: player.bank.goldBalance,
+        }),
+        dialogue.greetingSuggestions,
+      );
     }
     if (hasAnyWord(words, ["bye", "goodbye", "aurevoir"])) {
       const reply = createReply(npc, player, format(dialogue.farewell, player));
@@ -492,10 +552,7 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
 
     if (npcData.service?.type === "itemShop") {
       const offerEntry = Object.entries(npcData.service.offers).find(([itemId, offer]) => {
-        const itemNames = [
-          getPlayerItemName(player, itemId),
-          getPlayerItemName(player, itemId, 2),
-        ];
+        const itemNames = [getPlayerItemName(player, itemId), getPlayerItemName(player, itemId, 2)];
         return [...(offer.keywords ?? []), ...itemNames]
           .filter(Boolean)
           .some((keyword) => normalize(text).includes(normalize(keyword)));
@@ -571,11 +628,15 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
         }
         const currentMagicLevel = getPlayerMagicLevel(player);
         if (currentMagicLevel < spell.requiredMagicLevel) {
-          return createReply(npc, player, format(dialogue.magicLevelRequired, player, {
-            spellName: getPlayerSpellName(player, spell),
-            requiredMagicLevel: spell.requiredMagicLevel,
-            currentMagicLevel,
-          }));
+          return createReply(
+            npc,
+            player,
+            format(dialogue.magicLevelRequired, player, {
+              spellName: getPlayerSpellName(player, spell),
+              requiredMagicLevel: spell.requiredMagicLevel,
+              currentMagicLevel,
+            }),
+          );
         }
         state.pendingAction = { type: "learn-spell", spellId, price: spell.learnPrice };
         return createReply(
@@ -603,10 +664,14 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
     if (npcData.service?.type === "banker") {
       if (hasAnyWord(words, ["balance", "solde"])) {
-        return createReply(npc, player, format(dialogue.balance, player, {
-          bankBalance: player.bank.goldBalance,
-          cashBalance: getPlayerGoldAmount(player),
-        }));
+        return createReply(
+          npc,
+          player,
+          format(dialogue.balance, player, {
+            bankBalance: player.bank.goldBalance,
+            cashBalance: getPlayerGoldAmount(player),
+          }),
+        );
       }
       const amountMatch = normalize(text).match(/\b(\d+)\b/);
       const requestedAmount = Number(amountMatch?.[1] ?? 0);
@@ -616,7 +681,12 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           return createReply(npc, player, dialogue.depositPrompt, dialogue.depositSuggestions);
         }
         state.pendingAction = { type: "deposit", amount };
-        return createReply(npc, player, format(dialogue.confirmDeposit, player, { amount }), dialogue.confirmationSuggestions);
+        return createReply(
+          npc,
+          player,
+          format(dialogue.confirmDeposit, player, { amount }),
+          dialogue.confirmationSuggestions,
+        );
       }
       if (hasAnyWord(words, ["withdraw", "withdrawal", "retrait", "retirer", "retire"])) {
         const amount = hasAnyWord(words, ["all", "tout"]) ? getPlayerBankGoldAmount(player) : requestedAmount;
@@ -624,18 +694,31 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           return createReply(npc, player, dialogue.withdrawPrompt, dialogue.withdrawSuggestions);
         }
         state.pendingAction = { type: "withdraw", amount };
-        return createReply(npc, player, format(dialogue.confirmWithdraw, player, { amount }), dialogue.confirmationSuggestions);
+        return createReply(
+          npc,
+          player,
+          format(dialogue.confirmWithdraw, player, { amount }),
+          dialogue.confirmationSuggestions,
+        );
       }
       if (hasAnyWord(words, ["exchange", "echange", "changer", "change"])) {
         const normalizedText = normalize(text);
         const recipe = npcData.service.exchangeRecipes.find((candidate) => {
-          const sourceWords = candidate.sourceItemId === "goldCoin"
-            ? ["gold", "or"]
-            : candidate.sourceItemId === "azureCoin" ? ["platinum", "platine", "azure"] : ["crystal", "cristal"];
-          const outputWords = candidate.outputItemId === "goldCoin"
-            ? ["gold", "or"]
-            : candidate.outputItemId === "azureCoin" ? ["platinum", "platine", "azure"] : ["crystal", "cristal"];
-          const sourceIndex = Math.min(...sourceWords.map((word) => normalizedText.indexOf(word)).filter((index) => index >= 0));
+          const sourceWords =
+            candidate.sourceItemId === "goldCoin"
+              ? ["gold", "or"]
+              : candidate.sourceItemId === "azureCoin"
+                ? ["platinum", "platine", "azure"]
+                : ["crystal", "cristal"];
+          const outputWords =
+            candidate.outputItemId === "goldCoin"
+              ? ["gold", "or"]
+              : candidate.outputItemId === "azureCoin"
+                ? ["platinum", "platine", "azure"]
+                : ["crystal", "cristal"];
+          const sourceIndex = Math.min(
+            ...sourceWords.map((word) => normalizedText.indexOf(word)).filter((index) => index >= 0),
+          );
           const outputIndex = Math.max(...outputWords.map((word) => normalizedText.lastIndexOf(word)));
           return Number.isFinite(sourceIndex) && sourceIndex >= 0 && outputIndex > sourceIndex;
         });
@@ -643,12 +726,17 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
           return createReply(npc, player, dialogue.exchangePrompt, dialogue.exchangeSuggestions);
         }
         state.pendingAction = { type: "exchange", ...recipe };
-        return createReply(npc, player, format(dialogue.confirmExchange, player, {
-          sourceQuantity: recipe.sourceQuantity,
-          sourceName: getPlayerItemName(player, recipe.sourceItemId, recipe.sourceQuantity),
-          outputQuantity: recipe.outputQuantity,
-          outputName: getPlayerItemName(player, recipe.outputItemId, recipe.outputQuantity),
-        }), dialogue.confirmationSuggestions);
+        return createReply(
+          npc,
+          player,
+          format(dialogue.confirmExchange, player, {
+            sourceQuantity: recipe.sourceQuantity,
+            sourceName: getPlayerItemName(player, recipe.sourceItemId, recipe.sourceQuantity),
+            outputQuantity: recipe.outputQuantity,
+            outputName: getPlayerItemName(player, recipe.outputItemId, recipe.outputQuantity),
+          }),
+          dialogue.confirmationSuggestions,
+        );
       }
     }
     if (npcData.service?.type === "classMaster") {
@@ -698,7 +786,17 @@ export const createServerNpcConversationService = ({ npcs, playersByUid, getInve
     }
     if (npcData.service?.type === "raidTravel") {
       if (hasAnyWord(words, ["raid", "raids", "travel", "voyage", "voyages", "ile", "iles"])) {
-        return createReply(npc, player, dialogue.raids, dialogue.greetingSuggestions);
+        if (typeof startRaid !== "function") {
+          return createReply(npc, player, dialogue.raids, dialogue.greetingSuggestions);
+        }
+
+        state.pendingAction = {
+          type: "start-raid",
+
+          raidId: npcData.service.raidId ?? "raid_01",
+        };
+
+        return createReply(npc, player, dialogue.confirmRaid, dialogue.confirmationSuggestions);
       }
     }
     if (hasAnyWord(words, ["name", "nom"])) {

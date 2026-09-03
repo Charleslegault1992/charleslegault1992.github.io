@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-
+import { createServerRaidSystem } from "./serverRaidSystem.js";
 import { createGameSimulation } from "../src/simulation/gameSimulation.js";
 import { createWorldChangeJournal } from "../src/simulation/worldChangeJournal.js";
 import {
@@ -188,6 +188,7 @@ export const createAuthoritativeWorldRuntime = ({
   let nextWorldDecayAt = 0;
   let nextAutosaveSweepAt = Number.POSITIVE_INFINITY;
   let fieldEffectSystem = null;
+  let raidSystem = null;
 
   for (const worldMap of worldMapsByZ.values()) {
     for (const chunk of worldMap.chunksByKey.values()) {
@@ -209,9 +210,34 @@ export const createAuthoritativeWorldRuntime = ({
 
   const executePlayerWorldTransition = (player, transition) => {
     const result = applyPlayerWorldTransitionState(player, transition, worldMapsByZ);
-    if (result.success) {
-      recordPlayerTileEntry(player);
+
+    if (!result.success) {
+      return result;
     }
+
+    recordPlayerTileEntry(player);
+
+    /*
+     * Si la transition utilisée est
+     * le portail de sortie du raid,
+     * le joueur quitte officiellement le raid.
+     */
+    if (transition?.properties?.raidExit === true) {
+      const raidLeaveResult = raidSystem?.leaveRaid(player, "portal");
+
+      if (raidLeaveResult?.success) {
+        result.changes = {
+          ...(result.changes ?? {}),
+
+          raidId: raidLeaveResult.changes?.raidId ?? null,
+
+          leftRaid: true,
+        };
+
+        result.events = [...(result.events ?? []), ...(raidLeaveResult.events ?? [])];
+      }
+    }
+
     return result;
   };
 
@@ -455,8 +481,16 @@ export const createAuthoritativeWorldRuntime = ({
   };
   const npcConversationService = createServerNpcConversationService({
     npcs: worldEntities.npcs,
+
     playersByUid,
+
     getInventory: (playerUid) => inventoriesByPlayerUid.get(playerUid) ?? null,
+
+    startRaid: (player, raidId) =>
+      raidSystem?.startRaid(player, raidId, currentServerTime) ?? {
+        success: false,
+        reason: "raid-system-unavailable",
+      },
   });
   const npcMovement = createServerNpcMovement({
     worldMapsByZ,
@@ -552,6 +586,63 @@ export const createAuthoritativeWorldRuntime = ({
           !worldEntities.npcs.getAt(position.x, position.y, worldMap.z),
       ) ?? null
     );
+  };
+
+  raidSystem = createServerRaidSystem({
+    worldMapsByZ,
+
+    playersByUid,
+
+    monsters: worldEntities.monsters,
+
+    findAvailablePlayerSpawn: (spawnMarker) => {
+      const worldMap = worldMapsByZ.get(spawnMarker?.z);
+
+      if (!worldMap) {
+        return null;
+      }
+
+      return findAvailableSpawnPosition(worldMap, spawnMarker);
+    },
+
+    recordPlayerTileEntry,
+  });
+
+  const publishRaidUpdateResult = (raidResult) => {
+    const changedPlayers = raidResult?.changedPlayers ?? [];
+
+    const spawnedMonsters = raidResult?.spawnedMonsters ?? [];
+
+    const removedMonsterUids = raidResult?.removedMonsterUids ?? [];
+
+    const events = raidResult?.events ?? [];
+
+    if (
+      changedPlayers.length === 0 &&
+      spawnedMonsters.length === 0 &&
+      removedMonsterUids.length === 0 &&
+      events.length === 0
+    ) {
+      return false;
+    }
+
+    journal.record({
+      serverTime: currentServerTime,
+
+      upserts: {
+        players: changedPlayers.map(serializePlayerPublicState).filter(Boolean),
+
+        monsters: spawnedMonsters.map(serializeMonsterState).filter(Boolean),
+      },
+
+      removals: {
+        monsters: removedMonsterUids,
+      },
+
+      events,
+    });
+
+    return true;
   };
 
   const isPlayerDestinationAvailable = (movingPlayer, payload) => {
@@ -793,16 +884,19 @@ export const createAuthoritativeWorldRuntime = ({
       return [];
     }
     let remainingExperience = totalExperience;
-    return contributors.map(({ player: contributor, damage }, index) => {
-      const experience = index === contributors.length - 1
-        ? remainingExperience
-        : Math.floor(totalExperience * damage / totalDamage);
-      remainingExperience -= experience;
-      contributor.experience += experience;
-      const levelProgression = experience > 0 ? applyPlayerLevelProgression(contributor) : null;
-      markPlayerPersistenceDirty(contributor.uid);
-      return { playerUid: contributor.uid, experience, levelProgression };
-    }).filter(({ experience }) => experience > 0);
+    return contributors
+      .map(({ player: contributor, damage }, index) => {
+        const experience =
+          index === contributors.length - 1
+            ? remainingExperience
+            : Math.floor((totalExperience * damage) / totalDamage);
+        remainingExperience -= experience;
+        contributor.experience += experience;
+        const levelProgression = experience > 0 ? applyPlayerLevelProgression(contributor) : null;
+        markPlayerPersistenceDirty(contributor.uid);
+        return { playerUid: contributor.uid, experience, levelProgression };
+      })
+      .filter(({ experience }) => experience > 0);
   };
 
   const resolvePlayerDamageToMonster = (player, monster, attackResult, initialEvents = [], deathSource = null) => {
@@ -874,6 +968,7 @@ export const createAuthoritativeWorldRuntime = ({
         y: targetRenderSnapshot.y,
         z: targetRenderSnapshot.z,
       }));
+      raidSystem?.notifyMonsterDeath(monster);
       worldEntities.respawnSystem.decreaseAliveCount(monster);
       worldEntities.respawnSystem.schedule(monster.spawnId, currentServerTime);
       worldEntities.monsters.remove(monster.uid);
@@ -963,6 +1058,7 @@ export const createAuthoritativeWorldRuntime = ({
 
   const resolvePlayerDeath = (target, deathSource) => {
     const deathPosition = { x: target.x, y: target.y, z: target.z };
+    raidSystem?.leaveRaid(target, "death");
     const backpack = target.equipment.backpack;
     if (backpack) {
       target.equipment.backpack = null;
@@ -1381,7 +1477,20 @@ export const createAuthoritativeWorldRuntime = ({
         executeSplitItemStack: inventory.splitItemStack,
         executeWorldTransition: (transition) => executePlayerWorldTransition(player, transition),
         findAutomaticWorldTransition: (movingPlayer) => {
+          /*
+           * Le portail de raid est prioritaire.
+           */
+          const raidTransition = raidSystem?.findAutomaticExitTransition(movingPlayer) ?? null;
+
+          if (raidTransition) {
+            return raidTransition;
+          }
+
+          /*
+           * Sinon transition Tiled normale.
+           */
           const worldMap = worldMapsByZ.get(movingPlayer.z);
+
           return findTransitionAtTile(worldMap, movingPlayer.x / TILE_SIZE, movingPlayer.y / TILE_SIZE);
         },
         findWorldTransition: (payload) => {
@@ -1809,7 +1918,53 @@ export const createAuthoritativeWorldRuntime = ({
 
     return connectionResult;
   };
+  const createPlayerPersistenceSnapshot = (player) => {
+    const snapshot = serializePlayerPrivateState(player);
 
+    if (!snapshot) {
+      return null;
+    }
+
+    /*
+     * L'état runtime d'un raid
+     * ne doit jamais survivre à un restart.
+     */
+    snapshot.raid = null;
+
+    /*
+     * Si le joueur est actuellement dans
+     * un raid, la position sauvegardée est
+     * celle de SORTIE du raid.
+     *
+     * Le joueur reste physiquement dans
+     * le raid en RAM.
+     *
+     * C'est seulement la sauvegarde DB
+     * qui pointe vers le bateau.
+     */
+    const raidExitTransition = raidSystem?.getPlayerExitTransition(player);
+
+    if (raidExitTransition) {
+      const targetCol = raidExitTransition.properties?.targetCol;
+
+      const targetRow = raidExitTransition.properties?.targetRow;
+
+      const targetZ = raidExitTransition.properties?.targetZ;
+
+      if (Number.isInteger(targetCol) && Number.isInteger(targetRow) && Number.isInteger(targetZ)) {
+        snapshot.x = targetCol * TILE_SIZE;
+
+        snapshot.y = targetRow * TILE_SIZE;
+
+        snapshot.z = targetZ;
+
+        snapshot.oldX = snapshot.x;
+        snapshot.oldY = snapshot.y;
+      }
+    }
+
+    return snapshot;
+  };
   const enqueuePlayerPersistence = (playerUid, { waitForCompletion = false, force = false } = {}) => {
     const player = playersByUid.get(playerUid);
 
@@ -1841,7 +1996,7 @@ export const createAuthoritativeWorldRuntime = ({
       playerUid,
       persistenceSession,
 
-      snapshot: serializePlayerPrivateState(player),
+      snapshot: createPlayerPersistenceSnapshot(player),
 
       revision,
       savedAt: currentServerTime,
@@ -1927,9 +2082,13 @@ export const createAuthoritativeWorldRuntime = ({
   };
 
   const finalizePlayerRemoval = (playerUid) => {
-    if (!playersByUid.has(playerUid)) {
+    const player = playersByUid.get(playerUid);
+
+    if (!player) {
       return false;
     }
+
+    raidSystem?.leaveRaid(player, "disconnect");
 
     playersByUid.delete(playerUid);
     connectedPlayerUids.delete(playerUid);
@@ -2459,6 +2618,7 @@ export const createAuthoritativeWorldRuntime = ({
         for (const player of fieldEffectResult.changedPlayers) {
           markPlayerPersistenceDirty(player.uid);
         }
+
         const removedMonsterUids = fieldEffectResult.events
           .filter((event) => event.type === "monster-damage-resolved" && event.didDie)
           .map((event) => event.monsterUid);
@@ -2484,6 +2644,7 @@ export const createAuthoritativeWorldRuntime = ({
           events: fieldEffectResult.events,
         });
       }
+      publishRaidUpdateResult(raidSystem.update(currentServerTime));
       const regeneratedPlayers = [];
       for (const player of playersByUid.values()) {
         const classData = playerClassesDatabase[player.classId] ?? playerClassesDatabase.noClass;

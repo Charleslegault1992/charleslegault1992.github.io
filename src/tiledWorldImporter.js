@@ -207,6 +207,7 @@ const importTiledObjectLayerObjects = (worldMap, tiledLayer) => {
     }
     const cleanTiledObject = {
       tiledObjectId: tiledObject.id,
+      name: typeof tiledObject.name === "string" ? tiledObject.name : "",
       z: worldMap.z,
       col,
       row,
@@ -235,7 +236,11 @@ const importTiledObjectLayerObjects = (worldMap, tiledLayer) => {
 
     if (layerName === "interactables" || layerName === "doors") {
       const interactableId = cleanTiledObject.properties.interactableId;
-      if (typeof interactableId === "string" && interactableId !== "" && !worldMap.interactablesById.has(interactableId)) {
+      if (
+        typeof interactableId === "string" &&
+        interactableId !== "" &&
+        !worldMap.interactablesById.has(interactableId)
+      ) {
         worldMap.interactablesById.set(interactableId, cleanTiledObject);
       }
     }
