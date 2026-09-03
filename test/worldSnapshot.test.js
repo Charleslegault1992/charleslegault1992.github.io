@@ -93,3 +93,16 @@ test("public player snapshots expose compact light state without exposing equipm
   assert.equal(publicState.light.spellRadius, 340);
   assert.equal("equipment" in publicState, false);
 });
+
+test("raid state is private to the owning player's snapshot", () => {
+  const raid = { raidId: "raid_01", phase: "countdown", countdown: 2, chest: null, portal: null };
+  const snapshot = createWorldSnapshot({
+    revision: 1,
+    serverTime: 1000,
+    selfPlayer: { ...player, raid },
+    players: [{ ...player, uid: "player-2", raid }],
+  });
+
+  assert.deepEqual(snapshot.self.raid, raid);
+  assert.equal("raid" in snapshot.entities.players[0], false);
+});

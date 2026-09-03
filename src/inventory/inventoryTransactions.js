@@ -243,7 +243,12 @@ export const getRewardItemsTotalWeight = (rewardItems) => {
 
 export const createContainerInsertionPlan = (containerItem, itemEntries) => {
   const containerData = getItemData(containerItem?.itemId);
-  if (!containerItem?.content || !containerData?.capacity || !Array.isArray(itemEntries)) {
+  if (
+    !containerItem?.content ||
+    !containerData?.capacity ||
+    containerData.acceptsItems === false ||
+    !Array.isArray(itemEntries)
+  ) {
     return { success: false, reason: "container" };
   }
 

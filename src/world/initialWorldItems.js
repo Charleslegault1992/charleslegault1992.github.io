@@ -8,26 +8,6 @@ const INITIAL_WORLD_ITEM_DEFINITIONS = Object.freeze([
   Object.freeze({ uid: -4, itemId: "fireRune", col: 14, row: 10, z: 0 }),
   Object.freeze({ uid: -5, itemId: "smallBox", col: 14, row: 11, z: 0 }),
   Object.freeze({ uid: -6, itemId: "smallBox", col: 15, row: 10, z: 0 }),
-  Object.freeze({
-    uid: -100,
-    itemId: "runeSatchel",
-    col: 15,
-    row: 16,
-    z: -1,
-    contentItemIds: Object.freeze([
-      "fireRune",
-      "iceRune",
-      "energyRune",
-      "poisonRune",
-      "smallHealingRune",
-      "greatHealingRune",
-      "fireFieldRune",
-      "iceFieldRune",
-      "energyFieldRune",
-      "poisonFieldRune",
-      "dissipationRune",
-    ]),
-  }),
 ]);
 
 export const createInitialWorldItems = (z = 0) => {

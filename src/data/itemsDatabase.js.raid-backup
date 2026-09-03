@@ -244,8 +244,6 @@ export const itemsDatabase = {
 
     movable: false,
 
-    acceptsItems: false,
-
     blocksWorldItemPlacement: true,
 
     render: {

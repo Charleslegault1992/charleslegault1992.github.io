@@ -336,7 +336,7 @@ export const npcsDatabase = {
   jenny: {
     npcId: "jenny",
     name: "Jenny",
-    desc: "A raid travel coordinator with nowhere to sail yet.",
+    desc: "A raid expedition coordinator.",
     suffix: "a",
     textureUrl: new URL("../assets/images/npc/Jenny.png", import.meta.url).href,
     drawWidth: SPRITE_SIZE,
@@ -355,12 +355,12 @@ export const npcsDatabase = {
     service: { type: "raidTravel", raidId: "raid_01" },
     dialogue: {
       en: {
-        greeting: "Ahoy, {playerName}! I organize trips to raid islands. The islands are still organizing themselves.",
+        greeting: "Ahoy, {playerName}! I organize trips to raid islands. Courage is mandatory; sea legs are negotiable.",
         greetingSuggestions: ["Raids", "Job", "Bye"],
         name: "Jenny, future captain of several extremely questionable expeditions.",
-        job: "I will take groups to raid islands as soon as the cartographers finish arguing.",
-        help: "Ask me about raids. For now, bring patience instead of luggage.",
-        raids: "Raid travel is coming soon. The boat is ready; reality forgot to build the island.",
+        job: "I take groups to raid islands and bring back whoever remembers where the portal is.",
+        help: "Ask me about raids when you are ready for monsters, treasure and questionable travel insurance.",
+        raids: "The raid boat is ready. Want to join the next expedition?",
         unknown: "Ask me about raids or travel.",
         farewell: "See you soon, {playerName}. Try not to get seasick on dry land.",
         rudeDeparture: "Leaving without saying bye? Fine. More emergency snacks for me.",
@@ -383,13 +383,12 @@ export const npcsDatabase = {
       },
       fr: {
         greeting:
-          "Ahoy, {playerName}! J'organise les voyages vers les iles de raids. Les iles essaient encore de s'organiser elles-memes.",
+          "Ahoy, {playerName}! J'organise les voyages vers les iles de raids. Le courage est obligatoire; le pied marin, on s'arrangera.",
         greetingSuggestions: ["Raids", "Job", "Bye"],
         name: "Jenny, future capitaine de plusieurs expeditions vraiment pas louches.",
-        job: "Je vais transporter les groupes vers les iles de raids aussitot que les cartographes finissent de s'obstiner.",
-        help: "Demande-moi les raids. Pour l'instant, apporte de la patience au lieu de tes bagages.",
-        raids:
-          "Les voyages de raids arrivent bientot. Le bateau est pret; la realite a juste oublie de construire l'ile.",
+        job: "J'amene les groupes sur les iles de raids et je ramene ceux qui retrouvent le portail.",
+        help: "Demande-moi les raids quand tu es pret pour des monstres, du tresor et une assurance voyage douteuse.",
+        raids: "Le bateau du raid est pret. Tu veux joindre la prochaine expedition?",
         unknown: "Demande-moi les raids ou les voyages.",
         farewell: "A bientot, {playerName}. Essaie de pas avoir le mal de mer sur la terre ferme.",
         rudeDeparture: "Partir sans dire bye? Parfait. Plus de snacks d'urgence pour moi.",

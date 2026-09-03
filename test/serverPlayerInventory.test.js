@@ -48,3 +48,42 @@ test("distant nested world items cannot be moved or split through stale location
   assert.equal(innerBag.content[0], gold);
   assert.equal(gold.quantity, 10);
 });
+
+test("server inventory rejects moving, filling or covering a raid chest", () => {
+  const rewardGold = createItemInstance("goldCoin", 20);
+  const raidChest = createGroundItem("raidChest", 1, 0, 0, 0, [rewardGold]);
+  const apple = createItemInstance("apple", 1);
+  const backpack = createItemInstance("bag", 1, [apple]);
+  const worldItems = createSpatialEntityStore({ stackOrderField: "tileStackOrder" });
+  worldItems.add(raidChest);
+  const player = {
+    x: 0,
+    y: 0,
+    z: 0,
+    capacity: 1000,
+    carriedWeight: 0,
+    equipment: { backpack },
+  };
+  const inventory = createServerPlayerInventory({ player, worldMapsByZ: new Map(), worldItems });
+
+  const rootMove = inventory.executeMove({
+    source: { locationType: "worldItem", itemUid: raidChest.uid },
+    destination: { locationType: "equipmentSlot", equipmentSlotName: "backpack" },
+    itemUid: raidChest.uid,
+  });
+  assert.equal(rootMove.success, false);
+  assert.equal(rootMove.reason, "move-rejected");
+
+  const dropOverChest = inventory.executeMove({
+    source: { locationType: "containerSlot", parentContainerUid: backpack.uid, slotIndex: 0 },
+    destination: { locationType: "worldTile", x: 0, y: 0, z: 0 },
+    itemUid: apple.uid,
+  });
+  assert.equal(dropOverChest.success, false);
+  assert.equal(dropOverChest.reason, "invalid-destination");
+  assert.equal(backpack.content[0], apple);
+
+  const insertion = inventory.insertItems(raidChest.uid, [createItemInstance("healthPotion", 1)]);
+  assert.equal(insertion.success, false);
+  assert.equal(raidChest.content.length, 1);
+});

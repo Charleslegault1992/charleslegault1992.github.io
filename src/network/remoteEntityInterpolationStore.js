@@ -7,6 +7,11 @@ export const REMOTE_INTERPOLATED_ENTITY_TYPES = new Set(REMOTE_INTERPOLATED_TYPE
 export const REMOTE_INTERPOLATION_IGNORED_FIELDS = new Set([
   "renderX",
   "renderY",
+  "renderFromX",
+  "renderFromY",
+  "renderToX",
+  "renderToY",
+  "renderSortY",
   "oldX",
   "oldY",
   "moveStartTime",
@@ -206,6 +211,11 @@ const createTimelineRenderState = (snapshot, renderServerTime, mode = "movement-
   return {
     renderX: snapshot.oldX + (snapshot.x - snapshot.oldX) * progress,
     renderY: snapshot.oldY + (snapshot.y - snapshot.oldY) * progress,
+    renderFromX: snapshot.oldX,
+    renderFromY: snapshot.oldY,
+    renderToX: snapshot.x,
+    renderToY: snapshot.y,
+    renderSortY: progress < 1 ? Math.min(snapshot.oldY, snapshot.y) : snapshot.y,
     z: snapshot.z,
     direction: snapshot.direction,
     walkFrame: snapshot.walkFrame,
@@ -257,6 +267,11 @@ const copySnapshotRenderState = (snapshot, mode = "snap", renderServerTime = nul
   return {
     renderX: snapshot.x,
     renderY: snapshot.y,
+    renderFromX: snapshot.x,
+    renderFromY: snapshot.y,
+    renderToX: snapshot.x,
+    renderToY: snapshot.y,
+    renderSortY: snapshot.y,
     z: snapshot.z,
     direction: snapshot.direction,
     walkFrame: snapshot.walkFrame,
@@ -287,6 +302,11 @@ const interpolateSnapshots = (previousSnapshot, nextSnapshot, renderServerTime, 
   return {
     renderX: previousSnapshot.x + (nextSnapshot.x - previousSnapshot.x) * progress,
     renderY: previousSnapshot.y + (nextSnapshot.y - previousSnapshot.y) * progress,
+    renderFromX: previousSnapshot.x,
+    renderFromY: previousSnapshot.y,
+    renderToX: nextSnapshot.x,
+    renderToY: nextSnapshot.y,
+    renderSortY: progress < 1 ? Math.min(previousSnapshot.y, nextSnapshot.y) : nextSnapshot.y,
     z: nextSnapshot.z,
     direction: nextSnapshot.direction,
     walkFrame: nextSnapshot.walkFrame,
@@ -317,6 +337,11 @@ const extrapolateSnapshots = (previousSnapshot, latestSnapshot, renderServerTime
   return {
     renderX: latestSnapshot.x + (latestSnapshot.x - previousSnapshot.x) * progress,
     renderY: latestSnapshot.y + (latestSnapshot.y - previousSnapshot.y) * progress,
+    renderFromX: latestSnapshot.x,
+    renderFromY: latestSnapshot.y,
+    renderToX: latestSnapshot.x,
+    renderToY: latestSnapshot.y,
+    renderSortY: latestSnapshot.y,
     z: latestSnapshot.z,
     direction: latestSnapshot.direction,
     walkFrame: latestSnapshot.walkFrame,
@@ -538,6 +563,11 @@ export const createRemoteEntityInterpolationStore = (options = {}) => {
 
     entity.renderX = renderState.renderX;
     entity.renderY = renderState.renderY;
+    entity.renderFromX = renderState.renderFromX;
+    entity.renderFromY = renderState.renderFromY;
+    entity.renderToX = renderState.renderToX;
+    entity.renderToY = renderState.renderToY;
+    entity.renderSortY = renderState.renderSortY;
     entity.z = renderState.z;
 
     if (typeof renderState.direction === "string") {

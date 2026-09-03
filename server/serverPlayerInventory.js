@@ -373,7 +373,13 @@ export const createServerPlayerInventory = ({ player, worldMapsByZ, worldItems }
     const container = findContainerByUid(containerUid);
     const insertionWeight = getRewardItemsTotalWeight(itemEntries);
     updatePlayerCarriedWeight(player);
-    if (!container || !Number.isFinite(insertionWeight)) {
+    const worldRoot = container ? findWorldRootContaining(container.uid) : null;
+    if (
+      !container ||
+      !Number.isFinite(insertionWeight) ||
+      getItemData(container.itemId)?.acceptsItems === false ||
+      getItemData(worldRoot?.itemId)?.acceptsItems === false
+    ) {
       return { success: false, reason: "invalid-configuration" };
     }
     if (insertionWeight > getPlayerRemainingCapacity(player)) {

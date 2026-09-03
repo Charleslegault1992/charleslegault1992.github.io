@@ -21,6 +21,14 @@ import { createRaidChestContent } from "./serverRaidLoot.js";
 const COUNTDOWN_SECONDS = 3;
 const COUNTDOWN_STEP_MS = 1000;
 const DEFAULT_MAX_PLAYERS = 4;
+const EMPTY_RAID_UPDATE_RESULT = Object.freeze({
+  changedPlayers: Object.freeze([]),
+  spawnedMonsters: Object.freeze([]),
+  removedMonsterUids: Object.freeze([]),
+  spawnedWorldItems: Object.freeze([]),
+  removedWorldItemUids: Object.freeze([]),
+  events: Object.freeze([]),
+});
 
 const getPortalCollisionOwnerId = (raidId) => {
   return `raid:${raidId}:portal`;
@@ -270,7 +278,7 @@ export const createServerRaidSystem = ({
   const synchronizeRaidPlayers = (state, definition) => {
     const changedPlayers = [];
 
-    for (const playerUid of [...state.participants]) {
+    for (const playerUid of state.participants) {
       const player = playersByUid.get(playerUid);
 
       /*
@@ -818,18 +826,15 @@ export const createServerRaidSystem = ({
       return null;
     }
 
-    /*
-     * Le joueur doit marcher exactement
-     * sur la case CENTRALE du portail.
-     */
+    /* Le marker reste le centre visuel; la transition est sur l'entree au bas. */
     const playerCol = player.x / TILE_SIZE;
 
     const playerRow = player.y / TILE_SIZE;
 
     if (
-      player.z !== definition.portalSpawn.z ||
-      playerCol !== definition.portalSpawn.col ||
-      playerRow !== definition.portalSpawn.row
+      player.z !== definition.portalTransition.z ||
+      playerCol !== definition.portalTransition.col ||
+      playerRow !== definition.portalTransition.row
     ) {
       return null;
     }
@@ -842,20 +847,19 @@ export const createServerRaidSystem = ({
   /* ==================================================== */
 
   const update = (now) => {
+    if (!Number.isFinite(now) || raidStatesById.size === 0) {
+      return EMPTY_RAID_UPDATE_RESULT;
+    }
     const updateResult = createUpdateResult();
 
-    if (!Number.isFinite(now)) {
-      return updateResult;
-    }
-
-    raidLoop: for (const [raidId, state] of [...raidStatesById]) {
+    raidLoop: for (const [raidId, state] of raidStatesById) {
       const definition = getRaidDefinition(raidId);
 
       /*
        * Nettoie les participants qui
        * n'existent plus.
        */
-      for (const playerUid of [...state.participants]) {
+      for (const playerUid of state.participants) {
         if (!playersByUid.has(playerUid)) {
           state.participants.delete(playerUid);
         }
@@ -1031,21 +1035,31 @@ export const createServerRaidSystem = ({
      * Évite plusieurs upserts du même joueur
      * ou du même monstre dans le même tick.
      */
-    updateResult.changedPlayers = [
-      ...new Map(updateResult.changedPlayers.map((player) => [player.uid, player])).values(),
-    ];
+    if (updateResult.changedPlayers.length > 1) {
+      updateResult.changedPlayers = [
+        ...new Map(updateResult.changedPlayers.map((player) => [player.uid, player])).values(),
+      ];
+    }
 
-    updateResult.spawnedMonsters = [
-      ...new Map(updateResult.spawnedMonsters.map((monster) => [monster.uid, monster])).values(),
-    ];
+    if (updateResult.spawnedMonsters.length > 1) {
+      updateResult.spawnedMonsters = [
+        ...new Map(updateResult.spawnedMonsters.map((monster) => [monster.uid, monster])).values(),
+      ];
+    }
 
-    updateResult.removedMonsterUids = [...new Set(updateResult.removedMonsterUids)];
+    if (updateResult.removedMonsterUids.length > 1) {
+      updateResult.removedMonsterUids = [...new Set(updateResult.removedMonsterUids)];
+    }
 
-    updateResult.spawnedWorldItems = [
-      ...new Map(updateResult.spawnedWorldItems.map((item) => [item.uid, item])).values(),
-    ];
+    if (updateResult.spawnedWorldItems.length > 1) {
+      updateResult.spawnedWorldItems = [
+        ...new Map(updateResult.spawnedWorldItems.map((item) => [item.uid, item])).values(),
+      ];
+    }
 
-    updateResult.removedWorldItemUids = [...new Set(updateResult.removedWorldItemUids)];
+    if (updateResult.removedWorldItemUids.length > 1) {
+      updateResult.removedWorldItemUids = [...new Set(updateResult.removedWorldItemUids)];
+    }
 
     return updateResult;
   };

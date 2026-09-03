@@ -124,36 +124,6 @@ export const createInventoryMoveService = ({
     onItemLocationChanged?.(item, destination);
   };
 
-  const containerTreeAcceptsItems = (containerItem) => {
-    const visitedContainerUids = new Set();
-    let currentContainer = containerItem;
-
-    while (currentContainer) {
-      if (
-        visitedContainerUids.has(currentContainer.uid) ||
-        getItemData(currentContainer.itemId)?.acceptsItems === false
-      ) {
-        return false;
-      }
-      visitedContainerUids.add(currentContainer.uid);
-
-      const currentLocation = findItemLocationByUid(currentContainer.uid);
-      if (currentLocation?.locationType !== "containerSlot") {
-        return true;
-      }
-      currentContainer = getParentContainer(currentLocation);
-    }
-
-    return false;
-  };
-
-  const locationAcceptsItems = (location) => {
-    if (location?.locationType !== "containerSlot") {
-      return true;
-    }
-    return containerTreeAcceptsItems(getParentContainer(location));
-  };
-
   const placeWholeItem = (source, destination, item) => {
     const rollbackLocation = createRollbackLocation(source, item);
     const removedItem = removeItem(source);
@@ -221,9 +191,6 @@ export const createInventoryMoveService = ({
   const moveIntoContainerItem = (source, sourceItem, destinationItem) => {
     if (!isOpenableContainerItem(destinationItem)) {
       return null;
-    }
-    if (!containerTreeAcceptsItems(destinationItem)) {
-      return createFailure(INVENTORY_MOVE_REASON.invalidDestination);
     }
     if (sourceItem.uid === destinationItem.uid || containsItemUid(sourceItem, destinationItem.uid)) {
       return createFailure(INVENTORY_MOVE_REASON.invalidDestination);
@@ -306,12 +273,7 @@ export const createInventoryMoveService = ({
     const destinationAcceptsSource =
       destination.locationType === "containerSlot" ||
       (destination.locationType === "equipmentSlot" && canEquipItem(sourceItem, destination.equipmentSlotName));
-    if (
-      !sourceAcceptsDestination ||
-      !destinationAcceptsSource ||
-      !locationAcceptsItems(source) ||
-      !locationAcceptsItems(destination)
-    ) {
+    if (!sourceAcceptsDestination || !destinationAcceptsSource) {
       return createFailure(INVENTORY_MOVE_REASON.moveRejected);
     }
 
@@ -377,9 +339,6 @@ export const createInventoryMoveService = ({
     const destinationItem = getItem(destination);
     const destinationContainer = destination.locationType === "containerSlot" ? getParentContainer(destination) : null;
     if (destination.locationType === "containerSlot" && !isOpenableContainerItem(destinationContainer)) {
-      return createFailure(INVENTORY_MOVE_REASON.invalidDestination);
-    }
-    if (!locationAcceptsItems(destination)) {
       return createFailure(INVENTORY_MOVE_REASON.invalidDestination);
     }
     if (

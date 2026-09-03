@@ -19,24 +19,8 @@ test("the initial online world contains the authored test item stack", () => {
   assert.equal(items.every((item) => item.uid < 0 && item.z === 0), true);
 });
 
-test("the cave contains a runic test bag with every new rune", () => {
-  const items = createInitialWorldItems(-1);
-  const runeSatchel = items.find((item) => item.itemId === "runeSatchel");
-
-  assert.ok(runeSatchel);
-  assert.deepEqual(runeSatchel.content.map((item) => item.itemId), [
-    "fireRune",
-    "iceRune",
-    "energyRune",
-    "poisonRune",
-    "smallHealingRune",
-    "greatHealingRune",
-    "fireFieldRune",
-    "iceFieldRune",
-    "energyFieldRune",
-    "poisonFieldRune",
-    "dissipationRune",
-  ]);
+test("the cave contains no initial test items", () => {
+  assert.deepEqual(createInitialWorldItems(-1), []);
 });
 
 test("every test rune maps to its matching action and atlas icon", () => {

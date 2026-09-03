@@ -24,6 +24,9 @@ export const getDoorLowerRenderZIndex = (doorY, doorHeight) => {
 };
 
 export const getEntityRenderSortY = (entity) => {
+  if (Number.isFinite(entity?.renderSortY)) {
+    return entity.renderSortY;
+  }
   if (!Number.isFinite(entity?.y)) {
     return 0;
   }

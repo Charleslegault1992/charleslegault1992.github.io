@@ -26,6 +26,10 @@ test("stationary entities fall back to their logical row", () => {
   assert.equal(getEntityRenderSortY({ y: 128, renderY: null }), 128);
 });
 
+test("remote entities use the sort row from their displayed interpolation segment", () => {
+  assert.equal(getEntityRenderSortY({ y: 192, renderY: 96, renderSortY: 64 }), 64);
+});
+
 test("the lower door section stays behind a creature on the collision tile", () => {
   const doorY = 128;
   const doorHeight = TILE_SIZE * 2;

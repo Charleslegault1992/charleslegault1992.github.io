@@ -22,10 +22,10 @@ test("village monster strength and corpse decay frames stay ordered", () => {
 
   assert.equal(
     getItemRenderData({ itemId: "frogCorpse", decayStage: 2 })[0].sourceX,
-    14 * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    17 * ATLAS_CELL_SIZE + ATLAS_PADDING,
   );
   assert.equal(
     getItemRenderData({ itemId: "wildBoarCorpse", decayStage: 2 })[0].sourceX,
-    17 * ATLAS_CELL_SIZE + ATLAS_PADDING,
+    21 * ATLAS_CELL_SIZE + ATLAS_PADDING,
   );
 });

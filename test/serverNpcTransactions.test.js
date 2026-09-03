@@ -178,7 +178,7 @@ test("Kev offers every spell and enforces magic level before charging gold", asy
   assert.equal(player.spellbook.learnedSpellIds.includes("purgaVenenum"), true);
 });
 
-test("Dave changes class at level 12 and Jenny keeps raid travel unavailable", async () => {
+test("Dave changes class at level 12 and Jenny starts the authoritative raid", async () => {
   const worldMapsByZ = await loadServerWorldMaps();
   const runtime = createAuthoritativeWorldRuntime({ worldMapsByZ, now: () => 1000 });
   const session = {};
@@ -211,8 +211,26 @@ test("Dave changes class at level 12 and Jenny keeps raid travel unavailable", a
   runtime.update(62000);
   assert.equal(speak(runtime, session, player, "salut").success, true);
   const raids = speak(runtime, session, player, "raids");
-  assert.match(raids.events.find((event) => event.type === "npc-spoke").text, /arrivent bientot/i);
-  assert.equal(player.z, jenny.z);
+  assert.match(raids.events.find((event) => event.type === "npc-spoke").text, /raid est pret/i);
+  const entered = speak(runtime, session, player, "oui");
+  assert.equal(entered.success, true);
+  assert.equal(player.raid.raidId, "raid_01");
+  assert.equal(entered.events.some((event) => event.type === "raid-entered"), true);
+  assert.equal(entered.events.some((event) => event.type === "player-world-transitioned"), true);
+  assert.equal(player.x, -101 * 64);
+  assert.equal(player.y, -51 * 64);
+
+  assert.equal(await runtime.disconnectClient(session), true);
+  assert.equal(runtime.getPlayer(player.uid), player);
+  const reconnectedSession = {};
+  const reconnected = runtime.connectClient(reconnectedSession, {
+    accountId: "services",
+    characterId: "adventurer",
+    language: "fr",
+  });
+  reconnectedSession.playerUid = reconnected.playerUid;
+  assert.equal(reconnected.success, true);
+  assert.equal(runtime.createSnapshotForClient(reconnectedSession).self.raid.raidId, "raid_01");
 });
 
 test("Amanda sells localized food through the authoritative inventory transaction", async () => {

@@ -219,6 +219,11 @@ const initializeReplicatedEntity = (replicatedEntity, interpolationEnabled) => {
 
   nextEntity.renderX = nextEntity.x;
   nextEntity.renderY = nextEntity.y;
+  nextEntity.renderFromX = nextEntity.x;
+  nextEntity.renderFromY = nextEntity.y;
+  nextEntity.renderToX = nextEntity.x;
+  nextEntity.renderToY = nextEntity.y;
+  nextEntity.renderSortY = nextEntity.y;
   nextEntity.oldX = nextEntity.x;
   nextEntity.oldY = nextEntity.y;
 

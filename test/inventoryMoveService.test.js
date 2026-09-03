@@ -98,6 +98,12 @@ const createFixture = () => {
         return nested;
       }
     }
+    for (const worldItem of worldItems.values()) {
+      const nested = findLocationInside(worldItem, uid);
+      if (nested) {
+        return nested;
+      }
+    }
     return null;
   };
   const isCarried = (location) => {
@@ -219,4 +225,50 @@ test("rejects external weight that exceeds player capacity without mutating stat
   assert.deepEqual(result, { success: false, reason: INVENTORY_MOVE_REASON.capacityExceeded });
   assert.equal(fixture.worldItems.get(sword.uid), sword);
   assert.equal(fixture.backpack.content[0], null);
+});
+
+test("reward-only raid chest permits loot withdrawal but rejects every insertion path", () => {
+  const fixture = createFixture();
+  const apple = item(2, "apple");
+  const rewardGold = item(3, "goldCoin", 20);
+  const nestedBag = item(4, "bag", 1, Array(8).fill(null));
+  const raidChest = {
+    ...item(5, "raidChest", 1, [rewardGold, nestedBag, ...Array(6).fill(null)]),
+    x: 64,
+    y: 64,
+    z: 0,
+  };
+  fixture.backpack.content[0] = apple;
+  fixture.worldItems.set(raidChest.uid, raidChest);
+
+  const directSlotResult = fixture.service.execute({
+    source: { locationType: "containerSlot", parentContainerUid: fixture.backpack.uid, slotIndex: 0 },
+    destination: { locationType: "containerSlot", parentContainerUid: raidChest.uid, slotIndex: 2 },
+    itemUid: apple.uid,
+  });
+  assert.deepEqual(directSlotResult, { success: false, reason: INVENTORY_MOVE_REASON.invalidDestination });
+
+  const containerIconResult = fixture.service.execute({
+    source: { locationType: "containerSlot", parentContainerUid: fixture.backpack.uid, slotIndex: 0 },
+    destination: { locationType: "worldItem", itemUid: raidChest.uid },
+    itemUid: apple.uid,
+  });
+  assert.deepEqual(containerIconResult, { success: false, reason: INVENTORY_MOVE_REASON.invalidDestination });
+
+  const nestedResult = fixture.service.execute({
+    source: { locationType: "containerSlot", parentContainerUid: fixture.backpack.uid, slotIndex: 0 },
+    destination: { locationType: "containerSlot", parentContainerUid: nestedBag.uid, slotIndex: 0 },
+    itemUid: apple.uid,
+  });
+  assert.deepEqual(nestedResult, { success: false, reason: INVENTORY_MOVE_REASON.invalidDestination });
+
+  const withdrawalResult = fixture.service.execute({
+    source: { locationType: "containerSlot", parentContainerUid: raidChest.uid, slotIndex: 0 },
+    destination: { locationType: "containerSlot", parentContainerUid: fixture.backpack.uid, slotIndex: 1 },
+    itemUid: rewardGold.uid,
+  });
+  assert.equal(withdrawalResult.success, true);
+  assert.equal(fixture.backpack.content[1], rewardGold);
+  assert.equal(raidChest.content[0], null);
+  assert.equal(fixture.backpack.content[0], apple);
 });

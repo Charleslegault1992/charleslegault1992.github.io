@@ -1229,18 +1229,66 @@ const createWorldItemHitbox = (item) => {
 };
 
 const getWorldItemRenderSortY = (item) => {
-  const isOnPlayerMovementEndpoint =
-    (item?.x === playerState.x && item.y === playerState.y) ||
-    (item?.x === playerState.oldX && item.y === playerState.oldY);
-  if (
-    item?.z === playerState.z &&
-    isOnPlayerMovementEndpoint &&
-    Number.isFinite(playerState.renderY) &&
-    playerState.renderY !== playerState.y
-  ) {
-    return getEntityRenderSortY(playerState);
+  const movementSortY = worldItemMovementSortYByUid.get(item?.uid);
+  if (Number.isFinite(movementSortY)) {
+    return movementSortY;
   }
   return item?.y ?? 0;
+};
+
+const worldItemMovementSortYByUid = new Map();
+
+const addWorldTileStackItemSortOverrides = (x, y, z, renderSortY) => {
+  const tileStack = getWorldTileStack(x, y, z);
+  for (const itemUid of tileStack?.itemUids ?? []) {
+    const currentSortY = worldItemMovementSortYByUid.get(itemUid);
+    if (!Number.isFinite(currentSortY) || renderSortY < currentSortY) {
+      worldItemMovementSortYByUid.set(itemUid, renderSortY);
+    }
+  }
+};
+
+const addMovingEntityItemSortOverrides = (entity) => {
+  if (!entity || entity.z !== playerState.z) {
+    return;
+  }
+
+  const fromX = Number.isFinite(entity.renderFromX) ? entity.renderFromX : entity.oldX;
+  const fromY = Number.isFinite(entity.renderFromY) ? entity.renderFromY : entity.oldY;
+  const toX = Number.isFinite(entity.renderToX) ? entity.renderToX : entity.x;
+  const toY = Number.isFinite(entity.renderToY) ? entity.renderToY : entity.y;
+  if (
+    !Number.isFinite(fromX) ||
+    !Number.isFinite(fromY) ||
+    !Number.isFinite(toX) ||
+    !Number.isFinite(toY) ||
+    !Number.isFinite(entity.renderX) ||
+    !Number.isFinite(entity.renderY) ||
+    (entity.renderX === toX && entity.renderY === toY)
+  ) {
+    return;
+  }
+
+  const renderSortY = getEntityRenderSortY(entity);
+  addWorldTileStackItemSortOverrides(fromX, fromY, entity.z, renderSortY);
+  if (fromX !== toX || fromY !== toY) {
+    addWorldTileStackItemSortOverrides(toX, toY, entity.z, renderSortY);
+  }
+};
+
+const rebuildWorldItemMovementSortOverrides = () => {
+  worldItemMovementSortYByUid.clear();
+  addMovingEntityItemSortOverrides(playerState);
+
+  for (const monsterUid of monsterElementsByUid.keys()) {
+    addMovingEntityItemSortOverrides(monstersByUid.get(monsterUid));
+  }
+  for (const npcUid of npcElementsByUid.keys()) {
+    addMovingEntityItemSortOverrides(npcsByUid.get(npcUid));
+  }
+  for (const remotePlayer of playersByUid.values()) {
+    addMovingEntityItemSortOverrides(remotePlayer);
+  }
 };
 
 const renderGroundItemParts = (item) => {
@@ -1542,6 +1590,16 @@ const isBlockingItemAtPosition = (x, y, z = playerState.z) => {
     const itemData = getItemData(item.itemId);
     return itemData?.blockMovement === true;
   });
+};
+
+const isWorldItemPlacementBlockedAtPosition = (x, y, z = playerState.z) => {
+  const tileStack = getWorldTileStack(x, y, z);
+  return Boolean(
+    tileStack?.itemUids.some((itemUid) => {
+      const item = worldItemsByUid.get(itemUid);
+      return getItemData(item?.itemId)?.blocksWorldItemPlacement === true;
+    }),
+  );
 };
 
 const grantRewardItemsToPlayer = (rewardItems) => {
@@ -7784,6 +7842,11 @@ const snapEntityRenderToLogicalPosition = (entity) => {
 
   entity.renderX = entity.x;
   entity.renderY = entity.y;
+  entity.renderFromX = entity.x;
+  entity.renderFromY = entity.y;
+  entity.renderToX = entity.x;
+  entity.renderToY = entity.y;
+  entity.renderSortY = entity.y;
   entity.oldX = entity.x;
   entity.oldY = entity.y;
   entity.moveStartTime = 0;
@@ -7896,6 +7959,11 @@ const updateEntityRenderPosition = (entity, now, entityType = null) => {
     const distanceY = entity.y - entity.oldY;
     entity.renderX = entity.oldX + distanceX * progress;
     entity.renderY = entity.oldY + distanceY * progress;
+    entity.renderFromX = entity.oldX;
+    entity.renderFromY = entity.oldY;
+    entity.renderToX = entity.x;
+    entity.renderToY = entity.y;
+    entity.renderSortY = progress < 1 ? Math.min(entity.oldY, entity.y) : entity.y;
 
     if (progress >= 1) {
       entity.moveDuration = 0;
@@ -7957,6 +8025,7 @@ const updateRenderCamera = () => {
 };
 
 const updateRenderWorldItems = () => {
+  rebuildWorldItemMovementSortOverrides();
   updateItemPosition();
 };
 
@@ -9000,7 +9069,9 @@ inventoryMoveService = createInventoryMoveService({
     return canAccessItemSource(location);
   },
   canPlaceWorldItem: (_source, _item, destination) =>
-    isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) && hasPlayerLineOfSightToWorldPosition(destination),
+    !isWorldItemPlacementBlockedAtPosition(destination.x, destination.y, destination.z) &&
+    isNearPlayer(destination, WORLD_ITEM_THROW_RANGE) &&
+    hasPlayerLineOfSightToWorldPosition(destination),
   onItemLocationChanged: (item, destination) => {
     if (!isContainerItem(item)) {
       return;

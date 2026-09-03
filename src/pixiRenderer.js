@@ -104,6 +104,8 @@ const RAID_PORTAL_START_ROW = 8;
 const RAID_PORTAL_SIZE = 3;
 
 let raidPortalVisual = null;
+let raidPortalTexturesPromise = null;
+let raidPortalVisualGeneration = 0;
 //#endregion  -----  CONFIG  -----
 
 /* ==================================================== */
@@ -3001,59 +3003,86 @@ export const renderPixiVisibleWorldChunks = async (
 };
 
 export const hidePixiRaidPortalVisual = () => {
+  raidPortalVisualGeneration++;
+
   if (!raidPortalVisual) {
     return false;
   }
 
-  raidPortalVisual.root.destroy({ children: true });
+  raidPortalVisual.baseRoot.destroy({ children: true });
+  raidPortalVisual.topRoot.destroy({ children: true });
   raidPortalVisual = null;
 
   return true;
 };
 
 export const showPixiRaidPortalVisual = async ({ centerCol, centerRow, z, currentZ }) => {
-  if (!entityContainer || !Number.isInteger(centerCol) || !Number.isInteger(centerRow) || !Number.isInteger(z)) {
+  if (
+    !entityContainer ||
+    !topContainer ||
+    !Number.isInteger(centerCol) ||
+    !Number.isInteger(centerRow) ||
+    !Number.isInteger(z)
+  ) {
     return false;
   }
 
   const visualKey = `${z}:${centerCol}:${centerRow}`;
 
   if (raidPortalVisual?.key === visualKey) {
-    raidPortalVisual.root.visible = z === currentZ;
+    raidPortalVisual.baseRoot.visible = z === currentZ;
+    raidPortalVisual.topRoot.visible = z === currentZ;
     return true;
   }
 
   hidePixiRaidPortalVisual();
+  const visualGeneration = raidPortalVisualGeneration;
 
-  const atlasTexture = await Assets.load(RAID_PORTAL_TEXTURE_URL);
+  raidPortalTexturesPromise ??= Assets.load(RAID_PORTAL_TEXTURE_URL).then((atlasTexture) => {
+    if (!atlasTexture) {
+      return null;
+    }
+    const textures = [];
+    for (let rowOffset = 0; rowOffset < RAID_PORTAL_SIZE; rowOffset++) {
+      for (let colOffset = 0; colOffset < RAID_PORTAL_SIZE; colOffset++) {
+        textures.push(
+          new Texture({
+            source: atlasTexture.source,
+            frame: new Rectangle(
+              (RAID_PORTAL_START_COL + colOffset) * TILE_SIZE,
+              (RAID_PORTAL_START_ROW + rowOffset) * TILE_SIZE,
+              TILE_SIZE,
+              TILE_SIZE,
+            ),
+          }),
+        );
+      }
+    }
+    return textures;
+  });
+  const portalTextures = await raidPortalTexturesPromise;
 
-  if (!atlasTexture || !entityContainer) {
+  if (!portalTextures || !entityContainer || !topContainer || visualGeneration !== raidPortalVisualGeneration) {
     return false;
   }
 
-  const root = new Container();
+  const baseRoot = new Container();
+  const topRoot = new Container();
 
-  root.label = "raid-portal";
-  root.eventMode = "none";
+  baseRoot.label = "raid-portal-base";
+  baseRoot.eventMode = "none";
+  topRoot.label = "raid-portal-top";
+  topRoot.eventMode = "none";
 
   for (let rowOffset = 0; rowOffset < RAID_PORTAL_SIZE; rowOffset++) {
     for (let colOffset = 0; colOffset < RAID_PORTAL_SIZE; colOffset++) {
-      const texture = new Texture({
-        source: atlasTexture.source,
-        frame: new Rectangle(
-          (RAID_PORTAL_START_COL + colOffset) * TILE_SIZE,
-          (RAID_PORTAL_START_ROW + rowOffset) * TILE_SIZE,
-          TILE_SIZE,
-          TILE_SIZE,
-        ),
-      });
-
-      const sprite = new Sprite(texture);
+      const sprite = new Sprite(portalTextures[rowOffset * RAID_PORTAL_SIZE + colOffset]);
 
       sprite.x = colOffset * TILE_SIZE;
       sprite.y = rowOffset * TILE_SIZE;
 
-      root.addChild(sprite);
+      const isTopTile = colOffset === 1 && (rowOffset === 1 || rowOffset === 2);
+      (isTopTile ? topRoot : baseRoot).addChild(sprite);
     }
   }
 
@@ -3061,18 +3090,23 @@ export const showPixiRaidPortalVisual = async ({ centerCol, centerRow, z, curren
    * raid_exit_portal représente la case CENTRALE.
    * Donc le sprite commence une case en haut/gauche.
    */
-  root.x = (centerCol - 1) * TILE_SIZE;
-  root.y = (centerRow - 1) * TILE_SIZE;
+  baseRoot.x = (centerCol - 1) * TILE_SIZE;
+  baseRoot.y = (centerRow - 1) * TILE_SIZE;
+  topRoot.x = baseRoot.x;
+  topRoot.y = baseRoot.y;
 
-  root.zIndex = getWorldRenderZIndex((centerRow + 1) * TILE_SIZE, WORLD_RENDER_LAYER_CREATURE - 1);
+  baseRoot.zIndex = getWorldRenderZIndex((centerRow + 1) * TILE_SIZE, WORLD_RENDER_LAYER_CREATURE - 1);
 
-  root.visible = z === currentZ;
+  baseRoot.visible = z === currentZ;
+  topRoot.visible = z === currentZ;
 
-  entityContainer.addChild(root);
+  entityContainer.addChild(baseRoot);
+  topContainer.addChild(topRoot);
 
   raidPortalVisual = {
     key: visualKey,
-    root,
+    baseRoot,
+    topRoot,
   };
 
   return true;

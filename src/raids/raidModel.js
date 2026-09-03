@@ -87,9 +87,9 @@ export const createRaidPortalTransition = (portalMarker) => {
   return {
     z: portalMarker.z,
     col: portalMarker.col,
-    row: portalMarker.row,
+    row: portalMarker.row + 1,
     x: portalMarker.col * TILE_SIZE,
-    y: portalMarker.row * TILE_SIZE,
+    y: (portalMarker.row + 1) * TILE_SIZE,
     width: TILE_SIZE,
     height: TILE_SIZE,
 

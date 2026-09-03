@@ -42,7 +42,32 @@ test("remote interpolation follows the authoritative movement timeline", () => {
 
   assert.equal(renderState.renderX, 48);
   assert.equal(renderState.renderY, 0);
+  assert.equal(renderState.renderFromX, 0);
+  assert.equal(renderState.renderToX, 64);
+  assert.equal(renderState.renderSortY, 0);
   assert.equal(renderState.mode, "movement-timeline");
+});
+
+test("remote interpolation keeps the northern sort row until downward movement finishes", () => {
+  const store = createTestStore();
+  store.recordServerTime(1000, 1000);
+  store.pushSnapshot(
+    "monsters",
+    {
+      uid: 9,
+      x: 64,
+      y: 128,
+      z: 0,
+      oldX: 0,
+      oldY: 64,
+      moveStartTime: 1000,
+      moveDuration: 200,
+    },
+    { serverTime: 1000, sequence: 1 },
+  );
+
+  assert.equal(store.getRenderState("monsters", 9, 1100).renderSortY, 64);
+  assert.equal(store.getRenderState("monsters", 9, 1200).renderSortY, 128);
 });
 
 test("remote interpolation keeps a bounded number of snapshots per entity", () => {

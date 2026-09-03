@@ -579,13 +579,6 @@ export const createAuthoritativeWorldRuntime = ({
         );
       }) ?? null
     );
-    return (
-      validSpawnPositions.find(
-        (position) =>
-          !worldEntities.monsters.getAt(position.x, position.y, worldMap.z) &&
-          !worldEntities.npcs.getAt(position.x, position.y, worldMap.z),
-      ) ?? null
-    );
   };
 
   raidSystem = createServerRaidSystem({
@@ -2186,18 +2179,21 @@ export const createAuthoritativeWorldRuntime = ({
     connectedPlayerUids.delete(playerUid);
 
     const combatExpiresAt = combatLogoutExpiresAtByPlayerUid.get(playerUid) ?? 0;
+    const raidReconnectExpiresAt = player.raid ? currentServerTime + COMBAT_LOGOUT_DURATION_MS : 0;
+    const offlineAvatarExpiresAt = Math.max(combatExpiresAt, raidReconnectExpiresAt);
 
-    if (player.hp > 0 && combatExpiresAt > currentServerTime) {
+    if (player.hp > 0 && offlineAvatarExpiresAt > currentServerTime) {
       /*
-       * Save the disconnect state, but keep
-       * the combat avatar authoritative in RAM.
+       * Keep the authoritative avatar in RAM during combat or a raid reconnect
+       * grace period. Persistence still writes a raid participant at the safe
+       * exit, so a server restart cannot strand the character on the island.
        */
       await enqueuePlayerPersistence(playerUid, {
         waitForCompletion: true,
         force: true,
       });
 
-      offlineCombatExpiresAtByPlayerUid.set(playerUid, combatExpiresAt);
+      offlineCombatExpiresAtByPlayerUid.set(playerUid, offlineAvatarExpiresAt);
 
       return true;
     }
