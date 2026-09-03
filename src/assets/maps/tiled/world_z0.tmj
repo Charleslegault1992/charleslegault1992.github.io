@@ -8142,12 +8142,12 @@
         {
          "firstgid":5278,
          "source":"house_01_flip.tsj"
-        },
-    
+        }, 
         {
          "firstgid":5630,
          "source":"house3.tsj"
-        }, 
+        },
+    
         {
          "firstgid":5960,
          "source":"deco2.tsj"
